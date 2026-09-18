@@ -8,6 +8,14 @@ function formatAmount(n: number | null) {
   return `$${n.toLocaleString()}`
 }
 
+function formatLoanRange(min: number | null, max: number | null) {
+  if (min === null && max === null) return '—'
+  if (min !== null && max !== null && max !== min) {
+    return `${formatAmount(min)} – ${formatAmount(max)}`
+  }
+  return formatAmount(min ?? max)
+}
+
 type SortKey =
   | 'name_asc'
   | 'name_desc'
@@ -82,7 +90,7 @@ export default async function LendersPage({
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
               <th className="px-4 py-3">Lender</th>
-              <th className="px-4 py-3">Loan range</th>
+              <th className="px-4 py-3">Minimum loan</th>
               <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Status</th>
             </tr>
@@ -100,8 +108,7 @@ export default async function LendersPage({
                     </Link>
                   </td>
                   <td className="px-4 py-3 text-slate-600">
-                    {formatAmount(l.min_loan_amount)} –{' '}
-                    {formatAmount(l.max_loan_amount)}
+                    {formatLoanRange(l.min_loan_amount, l.max_loan_amount)}
                   </td>
                   <td className="max-w-xs truncate px-4 py-3 text-slate-600">
                     {l.asset_types.length > 0
