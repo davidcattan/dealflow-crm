@@ -29,6 +29,7 @@ export async function createLender(
     return { error: 'Lender name is required.' }
   }
 
+  const caresAboutProfit = String(formData.get('cares_about_profit') ?? '')
   const supabase = await createClient()
   const {
     data: { user },
@@ -42,8 +43,13 @@ export async function createLender(
       contact_email: emptyToNull(formData.get('contact_email')),
       contact_phone: emptyToNull(formData.get('contact_phone')),
       website: emptyToNull(formData.get('website')),
+      lending_type: emptyToNull(formData.get('lending_type')),
+      cares_about_profit:
+        caresAboutProfit === 'yes' ? true : caresAboutProfit === 'no' ? false : null,
       min_loan_amount: toNumberOrNull(formData.get('min_loan_amount')),
       max_loan_amount: toNumberOrNull(formData.get('max_loan_amount')),
+      min_revenue: toNumberOrNull(formData.get('min_revenue')),
+      min_ebitda: toNumberOrNull(formData.get('min_ebitda')),
       asset_types: toArray(formData.get('asset_types')),
       industries: toArray(formData.get('industries')),
       geographies: toArray(formData.get('geographies')),
@@ -54,6 +60,9 @@ export async function createLender(
     .single()
 
   if (error || !data) {
+    if (error?.code === '23505') {
+      return { error: `A lender named "${name}" already exists.` }
+    }
     return { error: 'Could not create lender. Please try again.' }
   }
 

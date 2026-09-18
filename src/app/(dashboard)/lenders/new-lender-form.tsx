@@ -54,6 +54,30 @@ export function NewLenderForm() {
       </div>
       <div>
         <label className="block text-xs font-medium text-slate-600">
+          Lending type
+        </label>
+        <input
+          name="lending_type"
+          placeholder="e.g. ABL - AR + Inventory"
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-slate-600">
+          Cares about profit?
+        </label>
+        <select
+          name="cares_about_profit"
+          defaultValue=""
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        >
+          <option value="">Unknown</option>
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-slate-600">
           Min loan amount ($)
         </label>
         <input
@@ -68,6 +92,26 @@ export function NewLenderForm() {
         </label>
         <input
           name="max_loan_amount"
+          type="number"
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-slate-600">
+          Min revenue ($)
+        </label>
+        <input
+          name="min_revenue"
+          type="number"
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-slate-600">
+          Min EBITDA ($)
+        </label>
+        <input
+          name="min_ebitda"
           type="number"
           className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
