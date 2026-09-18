@@ -1,20 +1,59 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { NewLenderForm } from './new-lender-form'
+import { LenderFilterBar } from './filter-bar'
 
 function formatAmount(n: number | null) {
   if (n === null) return '—'
   return `$${n.toLocaleString()}`
 }
 
-export default async function LendersPage() {
+type SortKey =
+  | 'name_asc'
+  | 'name_desc'
+  | 'min_loan_asc'
+  | 'min_loan_desc'
+  | 'max_loan_asc'
+  | 'max_loan_desc'
+  | 'recent'
+
+const SORT_CONFIG: Record<
+  SortKey,
+  { column: string; ascending: boolean; nullsFirst?: boolean }
+> = {
+  name_asc: { column: 'name', ascending: true },
+  name_desc: { column: 'name', ascending: false },
+  min_loan_asc: { column: 'min_loan_amount', ascending: true, nullsFirst: false },
+  min_loan_desc: { column: 'min_loan_amount', ascending: false, nullsFirst: false },
+  max_loan_asc: { column: 'max_loan_amount', ascending: true, nullsFirst: false },
+  max_loan_desc: { column: 'max_loan_amount', ascending: false, nullsFirst: false },
+  recent: { column: 'created_at', ascending: false },
+}
+
+export default async function LendersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; sort?: string }>
+}) {
+  const { q, sort } = await searchParams
+  const sortKey: SortKey = sort && sort in SORT_CONFIG ? (sort as SortKey) : 'name_asc'
+  const sortConfig = SORT_CONFIG[sortKey]
+
   const supabase = await createClient()
-  const { data: lenders } = await supabase
+  let query = supabase
     .from('lenders')
     .select(
       'id, name, min_loan_amount, max_loan_amount, asset_types, lending_type, status, created_at'
     )
-    .order('created_at', { ascending: false })
+
+  if (q) {
+    query = query.ilike('name', `%${q}%`)
+  }
+
+  const { data: lenders } = await query.order(sortConfig.column, {
+    ascending: sortConfig.ascending,
+    nullsFirst: sortConfig.nullsFirst,
+  })
 
   return (
     <div className="space-y-6">
@@ -33,7 +72,10 @@ export default async function LendersPage() {
         </Link>
       </div>
 
-      <NewLenderForm />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <LenderFilterBar />
+        <NewLenderForm />
+      </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
@@ -79,7 +121,9 @@ export default async function LendersPage() {
                   colSpan={4}
                   className="px-4 py-10 text-center text-slate-400"
                 >
-                  No lenders yet. Add your first one above.
+                  {q
+                    ? `No lenders match "${q}".`
+                    : 'No lenders yet. Add your first one above.'}
                 </td>
               </tr>
             )}
