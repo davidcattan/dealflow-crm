@@ -23,7 +23,7 @@ export function StatusSelect({
           updateBorrowerStage(borrowerId, next)
         })
       }}
-      className="mt-2 w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 disabled:opacity-50"
+      className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 disabled:opacity-50"
     >
       {BORROWER_STATUSES.map((s) => (
         <option key={s} value={s}>

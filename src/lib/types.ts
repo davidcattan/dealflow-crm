@@ -63,17 +63,28 @@ export const BORROWER_STATUSES: BorrowerStatus[] = [
 ]
 
 export const STATUS_LABELS: Record<BorrowerStatus, string> = {
-  new: 'Just received',
-  in_review: 'Reviewing docs',
-  underwritten: 'Underwriting complete',
-  matched: 'Matched to lender(s)',
-  submitted: "In lender's hands",
-  closed: 'Closed / funded',
-  dead: 'Dead / passed',
+  new: 'New',
+  in_review: 'In review',
+  underwritten: 'Underwritten',
+  matched: 'Matched',
+  submitted: 'Submitted',
+  closed: 'Closed',
+  dead: 'Dead',
 }
 
-// Columns shown on the pipeline board, in order. Closed and dead deals are
-// resolved, not "active pipeline" — left out of the board by default.
+// Dot/badge color per stage, for quick visual scanning on the pipeline tracker.
+export const STATUS_COLORS: Record<BorrowerStatus, string> = {
+  new: 'bg-slate-400',
+  in_review: 'bg-amber-400',
+  underwritten: 'bg-blue-400',
+  matched: 'bg-violet-400',
+  submitted: 'bg-emerald-400',
+  closed: 'bg-emerald-600',
+  dead: 'bg-red-400',
+}
+
+// Stages shown on the active pipeline tracker, in order. Closed and dead
+// deals are resolved, not "active" — left out by default.
 export const PIPELINE_STATUSES: BorrowerStatus[] = [
   'new',
   'in_review',
