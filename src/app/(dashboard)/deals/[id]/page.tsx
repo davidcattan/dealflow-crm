@@ -1,15 +1,23 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { BORROWER_STATUSES, STATUS_LABELS, type DocumentRecord } from '@/lib/types'
 import {
-  updateBorrower,
+  DEAL_STATUSES,
+  STATUS_LABELS,
+  type DocumentRecord,
+  type DealUpdate,
+} from '@/lib/types'
+import {
+  updateDeal,
   uploadDocument,
   deleteDocument,
-  deleteBorrower,
+  deleteDeal,
+  addDealUpdate,
+  deleteDealUpdate,
 } from './actions'
 import { ConfirmButton } from '@/components/confirm-button'
 import { UnderwritingPanel } from './underwriting-panel'
 import type { Underwriting } from '@/lib/underwriting/schema'
+import { formatDateOnly } from '@/lib/format'
 
 function formatBytes(bytes: number | null) {
   if (!bytes) return ''
@@ -19,7 +27,7 @@ function formatBytes(bytes: number | null) {
   return `${(kb / 1024).toFixed(1)} MB`
 }
 
-export default async function BorrowerDetailPage({
+export default async function DealDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>
@@ -27,16 +35,22 @@ export default async function BorrowerDetailPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: borrower }, { data: documents }] = await Promise.all([
-    supabase.from('borrowers').select('*').eq('id', id).single(),
+  const [{ data: deal }, { data: documents }, { data: updates }] = await Promise.all([
+    supabase.from('deals').select('*').eq('id', id).single(),
     supabase
       .from('documents')
       .select('*')
-      .eq('borrower_id', id)
+      .eq('deal_id', id)
       .order('uploaded_at', { ascending: false }),
+    supabase
+      .from('deal_updates')
+      .select('*')
+      .eq('deal_id', id)
+      .order('entry_date', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false }),
   ])
 
-  if (!borrower) notFound()
+  if (!deal) notFound()
 
   const docsWithUrls = await Promise.all(
     ((documents ?? []) as DocumentRecord[]).map(async (doc) => {
@@ -52,19 +66,19 @@ export default async function BorrowerDetailPage({
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">
-            {borrower.company_name}
+            {deal.company_name}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Added {new Date(borrower.created_at).toLocaleDateString()}
+            Added {formatDateOnly(deal.created_at)}
           </p>
         </div>
-        <form action={deleteBorrower}>
-          <input type="hidden" name="borrower_id" value={borrower.id} />
+        <form action={deleteDeal}>
+          <input type="hidden" name="deal_id" value={deal.id} />
           <ConfirmButton
-            confirmMessage={`Delete ${borrower.company_name}? This also deletes all of its uploaded documents. This cannot be undone.`}
+            confirmMessage={`Delete ${deal.company_name}? This also deletes all of its uploaded documents. This cannot be undone.`}
             className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
           >
-            Delete borrower
+            Delete deal
           </ConfirmButton>
         </form>
       </div>
@@ -74,10 +88,10 @@ export default async function BorrowerDetailPage({
           Deal details
         </h2>
         <form
-          action={updateBorrower}
+          action={updateDeal}
           className="grid grid-cols-1 gap-4 sm:grid-cols-2"
         >
-          <input type="hidden" name="borrower_id" value={borrower.id} />
+          <input type="hidden" name="deal_id" value={deal.id} />
 
           <div>
             <label className="block text-xs font-medium text-slate-600">
@@ -85,7 +99,7 @@ export default async function BorrowerDetailPage({
             </label>
             <input
               name="company_name"
-              defaultValue={borrower.company_name}
+              defaultValue={deal.company_name}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
@@ -95,10 +109,10 @@ export default async function BorrowerDetailPage({
             </label>
             <select
               name="status"
-              defaultValue={borrower.status}
+              defaultValue={deal.status}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             >
-              {BORROWER_STATUSES.map((s) => (
+              {DEAL_STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {STATUS_LABELS[s]}
                 </option>
@@ -111,7 +125,7 @@ export default async function BorrowerDetailPage({
             </label>
             <input
               name="industry"
-              defaultValue={borrower.industry ?? ''}
+              defaultValue={deal.industry ?? ''}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
@@ -121,7 +135,7 @@ export default async function BorrowerDetailPage({
             </label>
             <input
               name="website"
-              defaultValue={borrower.website ?? ''}
+              defaultValue={deal.website ?? ''}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
@@ -131,7 +145,7 @@ export default async function BorrowerDetailPage({
             </label>
             <input
               name="contact_name"
-              defaultValue={borrower.contact_name ?? ''}
+              defaultValue={deal.contact_name ?? ''}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
@@ -141,7 +155,7 @@ export default async function BorrowerDetailPage({
             </label>
             <input
               name="contact_email"
-              defaultValue={borrower.contact_email ?? ''}
+              defaultValue={deal.contact_email ?? ''}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
@@ -151,7 +165,42 @@ export default async function BorrowerDetailPage({
             </label>
             <input
               name="contact_phone"
-              defaultValue={borrower.contact_phone ?? ''}
+              defaultValue={deal.contact_phone ?? ''}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600">
+              Deal type / ask
+            </label>
+            <input
+              name="deal_type"
+              defaultValue={deal.deal_type ?? ''}
+              placeholder="e.g. Ask $250k Bridge"
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600">
+              Rep
+            </label>
+            <input
+              name="rep_name"
+              defaultValue={deal.rep_name ?? ''}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600">
+              Activity score (1–10)
+            </label>
+            <input
+              name="activity_score"
+              type="number"
+              min={1}
+              max={10}
+              defaultValue={deal.activity_score ?? ''}
+              placeholder="10 = working it today"
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
@@ -162,7 +211,7 @@ export default async function BorrowerDetailPage({
             <textarea
               name="notes"
               rows={4}
-              defaultValue={borrower.notes ?? ''}
+              defaultValue={deal.notes ?? ''}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
@@ -186,7 +235,7 @@ export default async function BorrowerDetailPage({
           action={uploadDocument}
           className="mb-5 flex flex-wrap items-center gap-3"
         >
-          <input type="hidden" name="borrower_id" value={borrower.id} />
+          <input type="hidden" name="deal_id" value={deal.id} />
           <input
             type="file"
             name="file"
@@ -229,7 +278,7 @@ export default async function BorrowerDetailPage({
                   </span>
                 </div>
                 <form action={deleteDocument}>
-                  <input type="hidden" name="borrower_id" value={borrower.id} />
+                  <input type="hidden" name="deal_id" value={deal.id} />
                   <input type="hidden" name="document_id" value={doc.id} />
                   <input
                     type="hidden"
@@ -253,10 +302,80 @@ export default async function BorrowerDetailPage({
         )}
       </section>
 
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="mb-4 text-sm font-semibold text-slate-900">Updates</h2>
+
+        <form
+          action={addDealUpdate}
+          className="mb-5 flex flex-wrap items-end gap-3"
+        >
+          <input type="hidden" name="deal_id" value={deal.id} />
+          <div>
+            <label className="block text-xs font-medium text-slate-600">
+              Date
+            </label>
+            <input
+              type="date"
+              name="entry_date"
+              defaultValue={new Date().toISOString().slice(0, 10)}
+              className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="block text-xs font-medium text-slate-600">
+              Note
+            </label>
+            <input
+              name="note"
+              required
+              placeholder="e.g. followed up with borrower, waiting on docs"
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <button
+            type="submit"
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Add update
+          </button>
+        </form>
+
+        {updates && updates.length > 0 ? (
+          <ul className="divide-y divide-slate-100">
+            {(updates as DealUpdate[]).map((u) => (
+              <li key={u.id} className="flex items-start justify-between gap-3 py-3 text-sm">
+                <div>
+                  <span className="mr-2 font-medium text-slate-700">
+                    {u.entry_date
+                      ? new Date(`${u.entry_date}T00:00:00`).toLocaleDateString()
+                      : new Date(u.created_at).toLocaleDateString()}
+                  </span>
+                  <span className="text-slate-600">{u.note}</span>
+                </div>
+                <form action={deleteDealUpdate}>
+                  <input type="hidden" name="deal_id" value={deal.id} />
+                  <input type="hidden" name="update_id" value={u.id} />
+                  <ConfirmButton
+                    confirmMessage="Delete this update? This cannot be undone."
+                    className="shrink-0 text-xs text-red-500 hover:underline"
+                  >
+                    Delete
+                  </ConfirmButton>
+                </form>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="py-6 text-center text-sm text-slate-400">
+            No updates logged yet.
+          </p>
+        )}
+      </section>
+
       <UnderwritingPanel
-        borrowerId={borrower.id}
-        underwriting={borrower.underwriting as Underwriting | null}
-        generatedAt={borrower.underwriting_generated_at}
+        dealId={deal.id}
+        underwriting={deal.underwriting as Underwriting | null}
+        generatedAt={deal.underwriting_generated_at}
       />
     </div>
   )

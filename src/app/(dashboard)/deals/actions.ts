@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 
 export type FormState = { error?: string } | undefined
 
-export async function createBorrower(
+export async function createDeal(
   _prevState: FormState,
   formData: FormData
 ): Promise<FormState> {
@@ -22,7 +22,7 @@ export async function createBorrower(
   } = await supabase.auth.getUser()
 
   const { data, error } = await supabase
-    .from('borrowers')
+    .from('deals')
     .insert({
       company_name: companyName,
       contact_name: emptyToNull(formData.get('contact_name')),
@@ -36,11 +36,11 @@ export async function createBorrower(
     .single()
 
   if (error || !data) {
-    return { error: 'Could not create borrower. Please try again.' }
+    return { error: 'Could not create deal. Please try again.' }
   }
 
-  revalidatePath('/borrowers')
-  redirect(`/borrowers/${data.id}`)
+  revalidatePath('/deals')
+  redirect(`/deals/${data.id}`)
 }
 
 function emptyToNull(value: FormDataEntryValue | null): string | null {

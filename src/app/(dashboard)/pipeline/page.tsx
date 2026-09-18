@@ -4,7 +4,7 @@ import {
   PIPELINE_STATUSES,
   STATUS_LABELS,
   STATUS_COLORS,
-  type BorrowerStatus,
+  type DealStatus,
 } from '@/lib/types'
 import { StatusSelect } from './status-select'
 
@@ -20,22 +20,22 @@ function daysAgo(dateStr: string) {
 export default async function PipelinePage() {
   const supabase = await createClient()
 
-  const [{ data: borrowers }, { count: resolvedCount }] = await Promise.all([
+  const [{ data: rawDeals }, { count: resolvedCount }] = await Promise.all([
     supabase
-      .from('borrowers')
+      .from('deals')
       .select('id, company_name, industry, contact_name, status, updated_at')
       .in('status', PIPELINE_STATUSES)
       .order('updated_at', { ascending: false }),
     supabase
-      .from('borrowers')
+      .from('deals')
       .select('*', { count: 'exact', head: true })
       .in('status', ['closed', 'dead']),
   ])
 
-  const deals = (borrowers ?? []).slice().sort((a, b) => {
+  const deals = (rawDeals ?? []).slice().sort((a, b) => {
     const stageDiff =
-      PIPELINE_STATUSES.indexOf(a.status as BorrowerStatus) -
-      PIPELINE_STATUSES.indexOf(b.status as BorrowerStatus)
+      PIPELINE_STATUSES.indexOf(a.status as DealStatus) -
+      PIPELINE_STATUSES.indexOf(b.status as DealStatus)
     if (stageDiff !== 0) return stageDiff
     return (
       new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
@@ -58,10 +58,10 @@ export default async function PipelinePage() {
         </div>
         {resolvedCount ? (
           <Link
-            href="/borrowers"
+            href="/deals"
             className="text-sm text-slate-500 hover:underline"
           >
-            {resolvedCount} closed / dead — view all borrowers
+            {resolvedCount} closed / dead — view all deals
           </Link>
         ) : null}
       </div>
@@ -98,10 +98,10 @@ export default async function PipelinePage() {
                 <tr key={deal.id} className="hover:bg-slate-50">
                   <td className="px-4 py-2">
                     <span
-                      className={`mr-2 inline-block h-2 w-2 rounded-full ${STATUS_COLORS[deal.status as BorrowerStatus]}`}
+                      className={`mr-2 inline-block h-2 w-2 rounded-full ${STATUS_COLORS[deal.status as DealStatus]}`}
                     />
                     <Link
-                      href={`/borrowers/${deal.id}`}
+                      href={`/deals/${deal.id}`}
                       className="font-medium text-slate-800 hover:underline"
                     >
                       {deal.company_name}
@@ -115,8 +115,8 @@ export default async function PipelinePage() {
                   </td>
                   <td className="px-4 py-2">
                     <StatusSelect
-                      borrowerId={deal.id}
-                      status={deal.status as BorrowerStatus}
+                      dealId={deal.id}
+                      status={deal.status as DealStatus}
                     />
                   </td>
                   <td className="px-4 py-2 text-slate-500">

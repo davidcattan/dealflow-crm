@@ -1,3 +1,13 @@
+// Displays a timestamp's calendar date without the local-timezone shift that
+// `new Date(iso).toLocaleDateString()` introduces — needed for any date that
+// may have been stored as a plain "YYYY-MM-DD" (e.g. backdated on import),
+// since the browser would otherwise render midnight UTC as the previous day
+// in timezones behind UTC.
+export function formatDateOnly(isoString: string) {
+  const datePart = isoString.slice(0, 10)
+  return new Date(`${datePart}T00:00:00`).toLocaleDateString()
+}
+
 export function formatCurrency(value: number | null | undefined) {
   if (value === null || value === undefined) return '—'
   return `$${value.toLocaleString()}`

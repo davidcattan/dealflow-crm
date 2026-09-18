@@ -1,7 +1,7 @@
 # Dealflow CRM
 
-Internal CRM for borrower/lender matching. Phase 1: borrower & lender records,
-team logins, per-borrower document storage, and an active-deal pipeline
+Internal CRM for deal/lender matching. Phase 1: deal & lender records,
+team logins, per-deal document storage, and an active-deal pipeline
 tracker. Phase 2: AI underwriting. Lender matching and Outlook drafting come
 in later phases.
 

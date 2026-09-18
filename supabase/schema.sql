@@ -1,5 +1,7 @@
--- Dealflow CRM — Phase 1 schema
+-- Dealflow CRM — full schema for a fresh install
 -- Run this once in Supabase: Dashboard -> SQL Editor -> New query -> paste -> Run
+-- (If you already have a database from an earlier version, run the files
+-- under supabase/migrations/ in order instead.)
 
 -- ── Profiles (one row per team member, auto-created on signup) ─────────────
 create table if not exists public.profiles (
@@ -38,8 +40,8 @@ begin
 end;
 $$;
 
--- ── Borrowers ────────────────────────────────────────────────────────────
-create table if not exists public.borrowers (
+-- ── Deals ────────────────────────────────────────────────────────────────
+create table if not exists public.deals (
   id uuid primary key default gen_random_uuid(),
   company_name text not null,
   contact_name text,
@@ -50,6 +52,11 @@ create table if not exists public.borrowers (
   status text not null default 'new'
     check (status in ('new', 'in_review', 'underwritten', 'matched', 'submitted', 'closed', 'dead')),
   notes text,
+  -- How actively this deal is being worked right now (1 = not being worked,
+  -- 10 = actively working it today) — separate from pipeline `status`.
+  activity_score smallint check (activity_score between 1 and 10),
+  deal_type text,
+  rep_name text,
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -57,10 +64,23 @@ create table if not exists public.borrowers (
   underwriting_generated_at timestamptz
 );
 
-drop trigger if exists borrowers_set_updated_at on public.borrowers;
-create trigger borrowers_set_updated_at
-  before update on public.borrowers
+drop trigger if exists deals_set_updated_at on public.deals;
+create trigger deals_set_updated_at
+  before update on public.deals
   for each row execute procedure public.set_updated_at();
+
+-- ── Deal updates (a dated activity log per deal, not a single notes blob —
+-- built to support daily manual entries and, later, entries the AI adds
+-- from email threads) ──────────────────────────────────────────────────
+create table if not exists public.deal_updates (
+  id uuid primary key default gen_random_uuid(),
+  deal_id uuid not null references public.deals (id) on delete cascade,
+  entry_date date,
+  note text not null,
+  source text not null default 'manual',
+  created_by uuid references public.profiles (id),
+  created_at timestamptz not null default now()
+);
 
 -- ── Lenders ──────────────────────────────────────────────────────────────
 create table if not exists public.lenders (
@@ -107,7 +127,7 @@ create table if not exists public.lender_contacts (
 -- ── Documents (metadata; the file itself lives in Storage) ─────────────────
 create table if not exists public.documents (
   id uuid primary key default gen_random_uuid(),
-  borrower_id uuid not null references public.borrowers (id) on delete cascade,
+  deal_id uuid not null references public.deals (id) on delete cascade,
   file_name text not null,
   storage_path text not null,
   file_size bigint,
@@ -122,7 +142,8 @@ create table if not exists public.documents (
 -- all records.
 
 alter table public.profiles enable row level security;
-alter table public.borrowers enable row level security;
+alter table public.deals enable row level security;
+alter table public.deal_updates enable row level security;
 alter table public.lenders enable row level security;
 alter table public.lender_contacts enable row level security;
 alter table public.documents enable row level security;
@@ -131,8 +152,12 @@ drop policy if exists "profiles: read all" on public.profiles;
 create policy "profiles: read all" on public.profiles
   for select to authenticated using (true);
 
-drop policy if exists "borrowers: full access" on public.borrowers;
-create policy "borrowers: full access" on public.borrowers
+drop policy if exists "deals: full access" on public.deals;
+create policy "deals: full access" on public.deals
+  for all to authenticated using (true) with check (true);
+
+drop policy if exists "deal_updates: full access" on public.deal_updates;
+create policy "deal_updates: full access" on public.deal_updates
   for all to authenticated using (true) with check (true);
 
 drop policy if exists "lenders: full access" on public.lenders;
@@ -147,7 +172,9 @@ drop policy if exists "documents: full access" on public.documents;
 create policy "documents: full access" on public.documents
   for all to authenticated using (true) with check (true);
 
--- ── Storage bucket for borrower documents ───────────────────────────────
+-- ── Storage bucket for deal documents ────────────────────────────────────
+-- (kept as "borrower-documents" internally — it's just a storage id no one
+-- sees, and renaming it would mean migrating every already-uploaded file)
 insert into storage.buckets (id, name, public)
 values ('borrower-documents', 'borrower-documents', false)
 on conflict (id) do nothing;

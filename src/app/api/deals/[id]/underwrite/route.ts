@@ -6,7 +6,7 @@ export const maxDuration = 300
 
 export async function POST(
   _request: Request,
-  ctx: RouteContext<'/api/borrowers/[id]/underwrite'>
+  ctx: RouteContext<'/api/deals/[id]/underwrite'>
 ) {
   const supabase = await createClient()
   const {
@@ -23,7 +23,7 @@ export async function POST(
     const underwriting = await runUnderwriting(id)
 
     const { data: saved, error } = await supabase
-      .from('borrowers')
+      .from('deals')
       .update({
         underwriting,
         underwriting_generated_at: new Date().toISOString(),

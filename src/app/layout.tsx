@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Dealflow CRM",
-  description: "Borrower and lender matching CRM",
+  description: "Deal and lender matching CRM",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -2,19 +2,19 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { BORROWER_STATUSES, type BorrowerStatus } from '@/lib/types'
+import { DEAL_STATUSES, type DealStatus } from '@/lib/types'
 
-export async function updateBorrowerStage(
-  borrowerId: string,
-  status: BorrowerStatus
+export async function updateDealStage(
+  dealId: string,
+  status: DealStatus
 ) {
-  if (!borrowerId || !BORROWER_STATUSES.includes(status)) return
+  if (!dealId || !DEAL_STATUSES.includes(status)) return
 
   const supabase = await createClient()
-  await supabase.from('borrowers').update({ status }).eq('id', borrowerId)
+  await supabase.from('deals').update({ status }).eq('id', dealId)
 
   revalidatePath('/pipeline')
-  revalidatePath('/borrowers')
-  revalidatePath(`/borrowers/${borrowerId}`)
+  revalidatePath('/deals')
+  revalidatePath(`/deals/${dealId}`)
   revalidatePath('/')
 }

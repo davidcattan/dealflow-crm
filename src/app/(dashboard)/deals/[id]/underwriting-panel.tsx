@@ -6,11 +6,11 @@ import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatCurrency } from '@/lib/format'
 
 export function UnderwritingPanel({
-  borrowerId,
+  dealId,
   underwriting,
   generatedAt,
 }: {
-  borrowerId: string
+  dealId: string
   underwriting: Underwriting | null
   generatedAt: string | null
 }) {
@@ -22,7 +22,7 @@ export function UnderwritingPanel({
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/borrowers/${borrowerId}/underwrite`, {
+      const res = await fetch(`/api/deals/${dealId}/underwrite`, {
         method: 'POST',
       })
       const body = await res.json()

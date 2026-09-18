@@ -1,15 +1,15 @@
 'use client'
 
 import { useTransition } from 'react'
-import { updateBorrowerStage } from './actions'
-import { BORROWER_STATUSES, STATUS_LABELS, type BorrowerStatus } from '@/lib/types'
+import { updateDealStage } from './actions'
+import { DEAL_STATUSES, STATUS_LABELS, type DealStatus } from '@/lib/types'
 
 export function StatusSelect({
-  borrowerId,
+  dealId,
   status,
 }: {
-  borrowerId: string
-  status: BorrowerStatus
+  dealId: string
+  status: DealStatus
 }) {
   const [isPending, startTransition] = useTransition()
 
@@ -18,14 +18,14 @@ export function StatusSelect({
       value={status}
       disabled={isPending}
       onChange={(e) => {
-        const next = e.target.value as BorrowerStatus
+        const next = e.target.value as DealStatus
         startTransition(() => {
-          updateBorrowerStage(borrowerId, next)
+          updateDealStage(dealId, next)
         })
       }}
       className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 disabled:opacity-50"
     >
-      {BORROWER_STATUSES.map((s) => (
+      {DEAL_STATUSES.map((s) => (
         <option key={s} value={s}>
           {STATUS_LABELS[s]}
         </option>
