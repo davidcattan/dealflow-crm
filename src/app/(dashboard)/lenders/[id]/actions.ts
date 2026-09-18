@@ -22,6 +22,7 @@ export async function updateLender(formData: FormData) {
   if (!id) return
 
   const status = String(formData.get('status') ?? 'active')
+  const caresAboutProfit = String(formData.get('cares_about_profit') ?? '')
   const supabase = await createClient()
 
   await supabase
@@ -32,8 +33,13 @@ export async function updateLender(formData: FormData) {
       contact_email: emptyToNull(formData.get('contact_email')),
       contact_phone: emptyToNull(formData.get('contact_phone')),
       website: emptyToNull(formData.get('website')),
+      lending_type: emptyToNull(formData.get('lending_type')),
+      cares_about_profit:
+        caresAboutProfit === 'yes' ? true : caresAboutProfit === 'no' ? false : null,
       min_loan_amount: toNumberOrNull(formData.get('min_loan_amount')),
       max_loan_amount: toNumberOrNull(formData.get('max_loan_amount')),
+      min_revenue: toNumberOrNull(formData.get('min_revenue')),
+      min_ebitda: toNumberOrNull(formData.get('min_ebitda')),
       asset_types: toArray(formData.get('asset_types')),
       industries: toArray(formData.get('industries')),
       geographies: toArray(formData.get('geographies')),

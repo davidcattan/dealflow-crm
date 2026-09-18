@@ -71,8 +71,12 @@ create table if not exists public.lenders (
   contact_phone text,
   website text,
   mandate_notes text,
+  lending_type text,
   min_loan_amount numeric,
   max_loan_amount numeric,
+  min_revenue numeric,
+  min_ebitda numeric,
+  cares_about_profit boolean,
   asset_types text[] not null default '{}',
   industries text[] not null default '{}',
   geographies text[] not null default '{}',
@@ -86,6 +90,19 @@ drop trigger if exists lenders_set_updated_at on public.lenders;
 create trigger lenders_set_updated_at
   before update on public.lenders
   for each row execute procedure public.set_updated_at();
+
+-- Lets the lender importer upsert by name (re-uploading an updated list
+-- updates existing lenders instead of creating duplicates).
+create unique index if not exists lenders_name_lower_key on public.lenders (lower(name));
+
+-- ── Lender contacts (a lender company can have more than one contact) ────
+create table if not exists public.lender_contacts (
+  id uuid primary key default gen_random_uuid(),
+  lender_id uuid not null references public.lenders (id) on delete cascade,
+  name text,
+  email text,
+  created_at timestamptz not null default now()
+);
 
 -- ── Documents (metadata; the file itself lives in Storage) ─────────────────
 create table if not exists public.documents (
@@ -107,6 +124,7 @@ create table if not exists public.documents (
 alter table public.profiles enable row level security;
 alter table public.borrowers enable row level security;
 alter table public.lenders enable row level security;
+alter table public.lender_contacts enable row level security;
 alter table public.documents enable row level security;
 
 drop policy if exists "profiles: read all" on public.profiles;
@@ -119,6 +137,10 @@ create policy "borrowers: full access" on public.borrowers
 
 drop policy if exists "lenders: full access" on public.lenders;
 create policy "lenders: full access" on public.lenders
+  for all to authenticated using (true) with check (true);
+
+drop policy if exists "lender_contacts: full access" on public.lender_contacts;
+create policy "lender_contacts: full access" on public.lender_contacts
   for all to authenticated using (true) with check (true);
 
 drop policy if exists "documents: full access" on public.documents;

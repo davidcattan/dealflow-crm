@@ -10,11 +10,14 @@ export default async function LenderDetailPage({
 }) {
   const { id } = await params
   const supabase = await createClient()
-  const { data: lender } = await supabase
-    .from('lenders')
-    .select('*')
-    .eq('id', id)
-    .single()
+  const [{ data: lender }, { data: contacts }] = await Promise.all([
+    supabase.from('lenders').select('*').eq('id', id).single(),
+    supabase
+      .from('lender_contacts')
+      .select('*')
+      .eq('lender_id', id)
+      .order('created_at', { ascending: true }),
+  ])
 
   if (!lender) notFound()
 
@@ -113,6 +116,37 @@ export default async function LenderDetailPage({
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600">
+              Lending type
+            </label>
+            <input
+              name="lending_type"
+              defaultValue={lender.lending_type ?? ''}
+              placeholder="e.g. ABL - AR + Inventory"
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600">
+              Cares about profit?
+            </label>
+            <select
+              name="cares_about_profit"
+              defaultValue={
+                lender.cares_about_profit === true
+                  ? 'yes'
+                  : lender.cares_about_profit === false
+                    ? 'no'
+                    : ''
+              }
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">Unknown</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600">
               Min loan amount ($)
             </label>
             <input
@@ -130,6 +164,28 @@ export default async function LenderDetailPage({
               name="max_loan_amount"
               type="number"
               defaultValue={lender.max_loan_amount ?? ''}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600">
+              Min revenue ($)
+            </label>
+            <input
+              name="min_revenue"
+              type="number"
+              defaultValue={lender.min_revenue ?? ''}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600">
+              Min EBITDA ($)
+            </label>
+            <input
+              name="min_ebitda"
+              type="number"
+              defaultValue={lender.min_ebitda ?? ''}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
@@ -185,6 +241,26 @@ export default async function LenderDetailPage({
           </div>
         </form>
       </section>
+
+      {contacts && contacts.length > 0 && (
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-sm font-semibold text-slate-900">
+            Contacts
+          </h2>
+          <ul className="divide-y divide-slate-100">
+            {contacts.map((c) => (
+              <li key={c.id} className="py-2 text-sm">
+                <span className="font-medium text-slate-800">
+                  {c.name ?? 'Unnamed contact'}
+                </span>
+                {c.email && (
+                  <span className="ml-2 text-slate-500">{c.email}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   )
 }

@@ -12,17 +12,25 @@ export default async function LendersPage() {
   const { data: lenders } = await supabase
     .from('lenders')
     .select(
-      'id, name, min_loan_amount, max_loan_amount, asset_types, status, created_at'
+      'id, name, min_loan_amount, max_loan_amount, asset_types, lending_type, status, created_at'
     )
     .order('created_at', { ascending: false })
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Lenders</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Your lender network and their mandates.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Lenders</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Your lender network and their mandates.
+          </p>
+        </div>
+        <Link
+          href="/lenders/import"
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+        >
+          Import from file
+        </Link>
       </div>
 
       <NewLenderForm />
@@ -33,7 +41,7 @@ export default async function LendersPage() {
             <tr>
               <th className="px-4 py-3">Lender</th>
               <th className="px-4 py-3">Loan range</th>
-              <th className="px-4 py-3">Asset types</th>
+              <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Status</th>
             </tr>
           </thead>
@@ -53,8 +61,10 @@ export default async function LendersPage() {
                     {formatAmount(l.min_loan_amount)} –{' '}
                     {formatAmount(l.max_loan_amount)}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {l.asset_types.length > 0 ? l.asset_types.join(', ') : '—'}
+                  <td className="max-w-xs truncate px-4 py-3 text-slate-600">
+                    {l.asset_types.length > 0
+                      ? l.asset_types.join(', ')
+                      : (l.lending_type ?? '—')}
                   </td>
                   <td className="px-4 py-3">
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
