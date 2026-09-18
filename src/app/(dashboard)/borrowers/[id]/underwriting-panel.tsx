@@ -67,9 +67,10 @@ export function UnderwritingPanel({
 
       {!underwriting && !loading && (
         <p className="mt-4 text-sm text-slate-400">
-          Reads the uploaded documents, the company website, and recent news
-          to summarize financials and flag risks. Upload documents first for
-          the best results.
+          Reads whatever is available — uploaded documents, the company
+          website, and web search for news — to summarize financials and
+          flag risks. Works fine with limited or no public information;
+          upload documents first for the best results.
         </p>
       )}
 

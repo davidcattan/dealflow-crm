@@ -12,7 +12,7 @@ export const UnderwritingSchema = z.object({
   company_overview: z
     .string()
     .describe(
-      'A 2-4 sentence summary of what the company does, based on its website, documents, and news.'
+      'A 2-4 sentence summary of what the company does, based on whatever is actually available (website, documents, news, broker notes). If little or nothing is known beyond the documents, say so plainly instead of padding with generic language.'
     ),
   historical_financials: z
     .array(FinancialPeriodSchema)

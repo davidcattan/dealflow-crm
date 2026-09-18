@@ -22,15 +22,18 @@ export async function POST(
   try {
     const underwriting = await runUnderwriting(id)
 
-    const { error } = await supabase
+    const { data: saved, error } = await supabase
       .from('borrowers')
       .update({
         underwriting,
         underwriting_generated_at: new Date().toISOString(),
       })
       .eq('id', id)
+      .select('id')
+      .single()
 
-    if (error) {
+    if (error || !saved) {
+      console.error('Underwriting save failed', { id, error })
       return NextResponse.json({ error: 'Failed to save underwriting' }, { status: 500 })
     }
 
