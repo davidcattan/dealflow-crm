@@ -52,7 +52,9 @@ create table if not exists public.borrowers (
   notes text,
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  underwriting jsonb,
+  underwriting_generated_at timestamptz
 );
 
 drop trigger if exists borrowers_set_updated_at on public.borrowers;

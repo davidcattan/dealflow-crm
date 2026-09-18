@@ -8,6 +8,8 @@ import {
   deleteBorrower,
 } from './actions'
 import { ConfirmButton } from '@/components/confirm-button'
+import { UnderwritingPanel } from './underwriting-panel'
+import type { Underwriting } from '@/lib/underwriting/schema'
 
 function formatBytes(bytes: number | null) {
   if (!bytes) return ''
@@ -250,6 +252,12 @@ export default async function BorrowerDetailPage({
           </p>
         )}
       </section>
+
+      <UnderwritingPanel
+        borrowerId={borrower.id}
+        underwriting={borrower.underwriting as Underwriting | null}
+        generatedAt={borrower.underwriting_generated_at}
+      />
     </div>
   )
 }
