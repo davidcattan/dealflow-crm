@@ -1,17 +1,57 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { NewDealForm } from './new-deal-form'
-import { STATUS_LABELS, activityScoreColor, type DealStatus } from '@/lib/types'
+import { DealSortBar } from './sort-bar'
+import { STATUS_LABELS, DEAL_STATUSES, activityScoreColor, type DealStatus } from '@/lib/types'
 import { formatDateOnly } from '@/lib/format'
 
 const RESOLVED_STATUSES = ['closed', 'dead']
 
+type DealRow = {
+  id: string
+  company_name: string
+  industry: string | null
+  status: DealStatus
+  contact_name: string | null
+  activity_score: number | null
+  created_at: string
+}
+
+function sortDeals(deals: DealRow[], sort: string): DealRow[] {
+  const sorted = [...deals]
+  switch (sort) {
+    case 'date_asc':
+      sorted.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      break
+    case 'activity_desc':
+      sorted.sort((a, b) => (b.activity_score ?? -1) - (a.activity_score ?? -1))
+      break
+    case 'activity_asc':
+      sorted.sort((a, b) => (a.activity_score ?? 11) - (b.activity_score ?? 11))
+      break
+    case 'name_asc':
+      sorted.sort((a, b) => a.company_name.localeCompare(b.company_name))
+      break
+    case 'name_desc':
+      sorted.sort((a, b) => b.company_name.localeCompare(a.company_name))
+      break
+    case 'status':
+      sorted.sort((a, b) => DEAL_STATUSES.indexOf(a.status) - DEAL_STATUSES.indexOf(b.status))
+      break
+    case 'date_desc':
+    default:
+      sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      break
+  }
+  return sorted
+}
+
 export default async function DealsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>
+  searchParams: Promise<{ view?: string; sort?: string }>
 }) {
-  const { view } = await searchParams
+  const { view, sort } = await searchParams
   const showPast = view === 'past'
 
   const supabase = await createClient()
@@ -25,7 +65,8 @@ export default async function DealsPage({
     ? query.in('status', RESOLVED_STATUSES)
     : query.not('status', 'in', `(${RESOLVED_STATUSES.join(',')})`)
 
-  const { data: deals } = await query.order('created_at', { ascending: false })
+  const { data: rawDeals } = await query
+  const deals = sortDeals((rawDeals ?? []) as DealRow[], sort ?? 'date_desc')
 
   return (
     <div className="space-y-6">
@@ -69,6 +110,10 @@ export default async function DealsPage({
         </Link>
       </div>
 
+      <div className="flex justify-end">
+        <DealSortBar />
+      </div>
+
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
@@ -82,7 +127,7 @@ export default async function DealsPage({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {deals && deals.length > 0 ? (
+            {deals.length > 0 ? (
               deals.map((b) => (
                 <tr key={b.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3">
