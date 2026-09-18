@@ -30,8 +30,12 @@ export type Lender = {
   contact_phone: string | null
   website: string | null
   mandate_notes: string | null
+  lending_type: string | null
   min_loan_amount: number | null
   max_loan_amount: number | null
+  min_revenue: number | null
+  min_ebitda: number | null
+  cares_about_profit: boolean | null
   asset_types: string[]
   industries: string[]
   geographies: string[]
@@ -39,6 +43,14 @@ export type Lender = {
   created_by: string | null
   created_at: string
   updated_at: string
+}
+
+export type LenderContact = {
+  id: string
+  lender_id: string
+  name: string | null
+  email: string | null
+  created_at: string
 }
 
 export type DocumentRecord = {
