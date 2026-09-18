@@ -117,3 +117,15 @@ export const PIPELINE_STATUSES: DealStatus[] = [
   'matched',
   'submitted',
 ]
+
+// Color for the 0-10 "how actively is this being worked" score — red (cold)
+// through green (hot). Full class strings, not built dynamically, so
+// Tailwind's build-time content scan can find them.
+export function activityScoreColor(score: number | null): string {
+  if (score === null) return 'bg-slate-200'
+  if (score >= 9) return 'bg-emerald-500'
+  if (score >= 7) return 'bg-lime-500'
+  if (score >= 5) return 'bg-yellow-400'
+  if (score >= 3) return 'bg-orange-500'
+  return 'bg-red-500'
+}

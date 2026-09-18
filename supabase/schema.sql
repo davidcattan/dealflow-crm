@@ -52,9 +52,10 @@ create table if not exists public.deals (
   status text not null default 'new'
     check (status in ('new', 'in_review', 'underwritten', 'matched', 'submitted', 'closed', 'dead')),
   notes text,
-  -- How actively this deal is being worked right now (1 = not being worked,
-  -- 10 = actively working it today) — separate from pipeline `status`.
-  activity_score smallint check (activity_score between 1 and 10),
+  -- How actively this deal is being worked right now (0 = completely
+  -- dormant, 10 = actively working it today) — separate from pipeline
+  -- `status`.
+  activity_score smallint check (activity_score between 0 and 10),
   deal_type text,
   rep_name text,
   created_by uuid references public.profiles (id),

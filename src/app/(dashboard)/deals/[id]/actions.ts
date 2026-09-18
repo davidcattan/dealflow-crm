@@ -14,7 +14,7 @@ function toActivityScoreOrNull(value: FormDataEntryValue | null): number | null 
   const str = String(value ?? '').trim()
   if (!str) return null
   const num = Number(str)
-  return Number.isFinite(num) && num >= 1 && num <= 10 ? Math.round(num) : null
+  return Number.isFinite(num) && num >= 0 && num <= 10 ? Math.round(num) : null
 }
 
 export async function updateDeal(formData: FormData) {

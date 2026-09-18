@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { NewDealForm } from './new-deal-form'
-import { STATUS_LABELS, type DealStatus } from '@/lib/types'
+import { STATUS_LABELS, activityScoreColor, type DealStatus } from '@/lib/types'
 import { formatDateOnly } from '@/lib/format'
 
 const RESOLVED_STATUSES = ['closed', 'dead']
@@ -104,8 +104,19 @@ export default async function DealsPage({
                       {STATUS_LABELS[b.status as DealStatus]}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-500">
-                    {b.activity_score ?? '—'}
+                  <td className="px-4 py-3">
+                    {b.activity_score !== null ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className={`h-2.5 w-2.5 rounded-full ${activityScoreColor(b.activity_score)}`}
+                        />
+                        <span className="text-slate-600">
+                          {b.activity_score}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-slate-500">
                     {formatDateOnly(b.created_at)}

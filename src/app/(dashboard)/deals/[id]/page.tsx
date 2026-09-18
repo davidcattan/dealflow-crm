@@ -1,13 +1,7 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import type { Deal, DocumentRecord, DealUpdate } from '@/lib/types'
 import {
-  DEAL_STATUSES,
-  STATUS_LABELS,
-  type DocumentRecord,
-  type DealUpdate,
-} from '@/lib/types'
-import {
-  updateDeal,
   uploadDocument,
   deleteDocument,
   deleteDeal,
@@ -18,6 +12,7 @@ import { ConfirmButton } from '@/components/confirm-button'
 import { UnderwritingPanel } from './underwriting-panel'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
+import { DealDetails } from './deal-details'
 
 function formatBytes(bytes: number | null) {
   if (!bytes) return ''
@@ -83,148 +78,7 @@ export default async function DealDetailPage({
         </form>
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-sm font-semibold text-slate-900">
-          Deal details
-        </h2>
-        <form
-          action={updateDeal}
-          className="grid grid-cols-1 gap-4 sm:grid-cols-2"
-        >
-          <input type="hidden" name="deal_id" value={deal.id} />
-
-          <div>
-            <label className="block text-xs font-medium text-slate-600">
-              Company name
-            </label>
-            <input
-              name="company_name"
-              defaultValue={deal.company_name}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600">
-              Status
-            </label>
-            <select
-              name="status"
-              defaultValue={deal.status}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            >
-              {DEAL_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_LABELS[s]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600">
-              Industry
-            </label>
-            <input
-              name="industry"
-              defaultValue={deal.industry ?? ''}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600">
-              Website
-            </label>
-            <input
-              name="website"
-              defaultValue={deal.website ?? ''}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600">
-              Contact name
-            </label>
-            <input
-              name="contact_name"
-              defaultValue={deal.contact_name ?? ''}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600">
-              Contact email
-            </label>
-            <input
-              name="contact_email"
-              defaultValue={deal.contact_email ?? ''}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600">
-              Contact phone
-            </label>
-            <input
-              name="contact_phone"
-              defaultValue={deal.contact_phone ?? ''}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600">
-              Deal type / ask
-            </label>
-            <input
-              name="deal_type"
-              defaultValue={deal.deal_type ?? ''}
-              placeholder="e.g. Ask $250k Bridge"
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600">
-              Rep
-            </label>
-            <input
-              name="rep_name"
-              defaultValue={deal.rep_name ?? ''}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600">
-              Activity score (1–10)
-            </label>
-            <input
-              name="activity_score"
-              type="number"
-              min={1}
-              max={10}
-              defaultValue={deal.activity_score ?? ''}
-              placeholder="10 = working it today"
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="block text-xs font-medium text-slate-600">
-              Notes
-            </label>
-            <textarea
-              name="notes"
-              rows={4}
-              defaultValue={deal.notes ?? ''}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <button
-              type="submit"
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-            >
-              Save changes
-            </button>
-          </div>
-        </form>
-      </section>
+      <DealDetails deal={deal as Deal} />
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold text-slate-900">
