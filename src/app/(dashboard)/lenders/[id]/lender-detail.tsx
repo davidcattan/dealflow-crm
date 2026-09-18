@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { updateLender, deleteLender } from './actions'
 import { ConfirmButton } from '@/components/confirm-button'
-import { formatCurrency } from '@/lib/format'
+import { formatCompactCurrency } from '@/lib/format'
 import type { Lender, LenderContact } from '@/lib/types'
 
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {
@@ -102,19 +102,25 @@ export function LenderDetail({
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
               <Fact
                 label="Min loan amount"
-                value={formatCurrency(lender.min_loan_amount)}
+                value={formatCompactCurrency(lender.min_loan_amount, {
+                  zeroLabel: 'No minimum',
+                })}
               />
               <Fact
                 label="Max loan amount"
-                value={formatCurrency(lender.max_loan_amount)}
+                value={formatCompactCurrency(lender.max_loan_amount)}
               />
               <Fact
                 label="Min revenue"
-                value={formatCurrency(lender.min_revenue)}
+                value={formatCompactCurrency(lender.min_revenue, {
+                  zeroLabel: 'No minimum',
+                })}
               />
               <Fact
                 label="Min EBITDA"
-                value={formatCurrency(lender.min_ebitda)}
+                value={formatCompactCurrency(lender.min_ebitda, {
+                  zeroLabel: 'No minimum',
+                })}
               />
               <Fact
                 label="Asset types"

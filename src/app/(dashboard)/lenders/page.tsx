@@ -2,15 +2,15 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { NewLenderForm } from './new-lender-form'
 import { LenderFilterBar } from './filter-bar'
+import { formatCompactCurrency } from '@/lib/format'
 
 function formatAmount(n: number | null) {
-  if (n === null) return '—'
-  return `$${n.toLocaleString()}`
+  return formatCompactCurrency(n, { zeroLabel: 'No minimum' })
 }
 
 function formatLoanRange(min: number | null, max: number | null) {
   if (min === null && max === null) return '—'
-  if (min !== null && max !== null && max !== min) {
+  if (min !== null && max !== null && max !== min && max !== 0) {
     return `${formatAmount(min)} – ${formatAmount(max)}`
   }
   return formatAmount(min ?? max)

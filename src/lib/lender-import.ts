@@ -24,7 +24,10 @@ export type LenderGroup = {
   contacts: { name: string | null; email: string | null }[]
 }
 
-const BLANK_VALUES = new Set(['', 'none', 'na', 'n/a', '?'])
+// "None" means the lender explicitly has no minimum (i.e. $0) — distinct
+// from "N/A"/"?"/blank, which mean the minimum simply isn't known.
+const ZERO_VALUES = new Set(['none'])
+const BLANK_VALUES = new Set(['', 'na', 'n/a', '?'])
 
 function cellToString(value: unknown): string {
   if (value === null || value === undefined) return ''
@@ -53,7 +56,11 @@ export function parseAmount(raw: unknown): { value: number | null; unparsed: str
   }
 
   const str = cellToString(raw).trim()
-  if (BLANK_VALUES.has(str.toLowerCase())) {
+  const lower = str.toLowerCase()
+  if (ZERO_VALUES.has(lower)) {
+    return { value: 0, unparsed: null }
+  }
+  if (BLANK_VALUES.has(lower)) {
     return { value: null, unparsed: null }
   }
 
