@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { STATUS_LABELS, type BorrowerStatus } from '@/lib/types'
 
 export default async function DashboardHome() {
   const supabase = await createClient()
@@ -63,7 +64,7 @@ export default async function DashboardHome() {
                     {b.company_name}
                   </span>
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                    {b.status.replace('_', ' ')}
+                    {STATUS_LABELS[b.status as BorrowerStatus]}
                   </span>
                 </Link>
               </li>

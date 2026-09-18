@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { toArray } from '@/lib/form-utils'
 
@@ -43,4 +44,15 @@ export async function updateLender(formData: FormData) {
 
   revalidatePath(`/lenders/${id}`)
   revalidatePath('/lenders')
+}
+
+export async function deleteLender(formData: FormData) {
+  const id = String(formData.get('lender_id') ?? '')
+  if (!id) return
+
+  const supabase = await createClient()
+  await supabase.from('lenders').delete().eq('id', id)
+
+  revalidatePath('/lenders')
+  redirect('/lenders')
 }

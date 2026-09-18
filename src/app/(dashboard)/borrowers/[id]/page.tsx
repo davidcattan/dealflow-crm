@@ -1,11 +1,18 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { BORROWER_STATUSES, type DocumentRecord } from '@/lib/types'
-import { updateBorrower, uploadDocument, deleteDocument } from './actions'
+import { BORROWER_STATUSES, STATUS_LABELS, type DocumentRecord } from '@/lib/types'
+import {
+  updateBorrower,
+  uploadDocument,
+  deleteDocument,
+  deleteBorrower,
+} from './actions'
+import { ConfirmButton } from '@/components/confirm-button'
 
 function formatBytes(bytes: number | null) {
   if (!bytes) return ''
   const kb = bytes / 1024
+  if (kb < 1) return '< 1 KB'
   if (kb < 1024) return `${kb.toFixed(0)} KB`
   return `${(kb / 1024).toFixed(1)} MB`
 }
@@ -40,13 +47,24 @@ export default async function BorrowerDetailPage({
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">
-          {borrower.company_name}
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Added {new Date(borrower.created_at).toLocaleDateString()}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">
+            {borrower.company_name}
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Added {new Date(borrower.created_at).toLocaleDateString()}
+          </p>
+        </div>
+        <form action={deleteBorrower}>
+          <input type="hidden" name="borrower_id" value={borrower.id} />
+          <ConfirmButton
+            confirmMessage={`Delete ${borrower.company_name}? This also deletes all of its uploaded documents. This cannot be undone.`}
+            className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+          >
+            Delete borrower
+          </ConfirmButton>
+        </form>
       </div>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -80,7 +98,7 @@ export default async function BorrowerDetailPage({
             >
               {BORROWER_STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {s.replace('_', ' ')}
+                  {STATUS_LABELS[s]}
                 </option>
               ))}
             </select>
@@ -216,12 +234,12 @@ export default async function BorrowerDetailPage({
                     name="storage_path"
                     value={doc.storage_path}
                   />
-                  <button
-                    type="submit"
+                  <ConfirmButton
+                    confirmMessage={`Delete ${doc.file_name}? This cannot be undone.`}
                     className="text-xs text-red-500 hover:underline"
                   >
                     Delete
-                  </button>
+                  </ConfirmButton>
                 </form>
               </li>
             ))}

@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { updateLender } from './actions'
+import { updateLender, deleteLender } from './actions'
+import { ConfirmButton } from '@/components/confirm-button'
 
 export default async function LenderDetailPage({
   params,
@@ -19,13 +20,24 @@ export default async function LenderDetailPage({
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">
-          {lender.name}
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Added {new Date(lender.created_at).toLocaleDateString()}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">
+            {lender.name}
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Added {new Date(lender.created_at).toLocaleDateString()}
+          </p>
+        </div>
+        <form action={deleteLender}>
+          <input type="hidden" name="lender_id" value={lender.id} />
+          <ConfirmButton
+            confirmMessage={`Delete ${lender.name}? This cannot be undone.`}
+            className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+          >
+            Delete lender
+          </ConfirmButton>
+        </form>
       </div>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">

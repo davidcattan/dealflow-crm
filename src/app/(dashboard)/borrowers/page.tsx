@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { NewBorrowerForm } from './new-borrower-form'
+import { STATUS_LABELS, type BorrowerStatus } from '@/lib/types'
 
 export default async function BorrowersPage() {
   const supabase = await createClient()
@@ -53,7 +54,7 @@ export default async function BorrowersPage() {
                   </td>
                   <td className="px-4 py-3">
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                      {b.status.replace('_', ' ')}
+                      {STATUS_LABELS[b.status as BorrowerStatus]}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-slate-500">

@@ -61,3 +61,23 @@ export const BORROWER_STATUSES: BorrowerStatus[] = [
   'closed',
   'dead',
 ]
+
+export const STATUS_LABELS: Record<BorrowerStatus, string> = {
+  new: 'Just received',
+  in_review: 'Reviewing docs',
+  underwritten: 'Underwriting complete',
+  matched: 'Matched to lender(s)',
+  submitted: "In lender's hands",
+  closed: 'Closed / funded',
+  dead: 'Dead / passed',
+}
+
+// Columns shown on the pipeline board, in order. Closed and dead deals are
+// resolved, not "active pipeline" — left out of the board by default.
+export const PIPELINE_STATUSES: BorrowerStatus[] = [
+  'new',
+  'in_review',
+  'underwritten',
+  'matched',
+  'submitted',
+]

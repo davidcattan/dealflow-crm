@@ -12,29 +12,34 @@ export default async function DashboardLayout({
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-8">
-            <span className="text-sm font-semibold text-slate-900">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-6 py-3">
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
+            <span className="whitespace-nowrap text-sm font-semibold text-slate-900">
               Dealflow CRM
             </span>
-            <nav className="flex gap-5 text-sm text-slate-600">
-              <Link href="/" className="hover:text-slate-900">
+            <nav className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
+              <Link href="/" className="whitespace-nowrap hover:text-slate-900">
                 Dashboard
               </Link>
-              <Link href="/borrowers" className="hover:text-slate-900">
+              <Link href="/pipeline" className="whitespace-nowrap hover:text-slate-900">
+                Pipeline
+              </Link>
+              <Link href="/borrowers" className="whitespace-nowrap hover:text-slate-900">
                 Borrowers
               </Link>
-              <Link href="/lenders" className="hover:text-slate-900">
+              <Link href="/lenders" className="whitespace-nowrap hover:text-slate-900">
                 Lenders
               </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm text-slate-500">
-            <span>{user.email}</span>
+            <span className="hidden whitespace-nowrap sm:inline">
+              {user.email}
+            </span>
             <form action={logout}>
               <button
                 type="submit"
-                className="rounded-md border border-slate-300 px-3 py-1 text-slate-600 hover:bg-slate-100"
+                className="whitespace-nowrap rounded-md border border-slate-300 px-3 py-1 text-slate-600 hover:bg-slate-100"
               >
                 Sign out
               </button>

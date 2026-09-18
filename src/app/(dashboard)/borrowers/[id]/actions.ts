@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { BORROWER_STATUSES } from '@/lib/types'
 
@@ -80,6 +81,30 @@ export async function deleteDocument(formData: FormData) {
   await supabase.from('documents').delete().eq('id', documentId)
 
   revalidatePath(`/borrowers/${borrowerId}`)
+}
+
+export async function deleteBorrower(formData: FormData) {
+  const id = String(formData.get('borrower_id') ?? '')
+  if (!id) return
+
+  const supabase = await createClient()
+
+  const { data: documents } = await supabase
+    .from('documents')
+    .select('storage_path')
+    .eq('borrower_id', id)
+
+  if (documents && documents.length > 0) {
+    await supabase.storage
+      .from('borrower-documents')
+      .remove(documents.map((d) => d.storage_path))
+  }
+
+  await supabase.from('borrowers').delete().eq('id', id)
+
+  revalidatePath('/borrowers')
+  revalidatePath('/pipeline')
+  redirect('/borrowers')
 }
 
 export async function getDocumentUrl(storagePath: string) {
