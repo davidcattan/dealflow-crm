@@ -23,6 +23,8 @@ export type Deal = {
   created_by: string | null
   created_at: string
   updated_at: string
+  underwriting: unknown
+  underwriting_generated_at: string | null
 }
 
 export type DealUpdate = {
@@ -85,6 +87,10 @@ export type DealMatch = {
   reasoning: string
   selected: boolean
   created_at: string
+  draft_subject: string | null
+  draft_body: string | null
+  draft_status: 'none' | 'drafted' | 'sent'
+  draft_generated_at: string | null
 }
 
 export const DEAL_STATUSES: DealStatus[] = [

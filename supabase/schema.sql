@@ -133,7 +133,15 @@ create table if not exists public.deal_matches (
   score smallint not null check (score between 0 and 100),
   reasoning text not null,
   selected boolean not null default false,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Phase 4a: AI-drafted submission email, auto-generated for strong
+  -- matches. Draft-only — "sent" is set later once an actual send path
+  -- (e.g. pushing to Outlook) exists; nothing here sends email itself.
+  draft_subject text,
+  draft_body text,
+  draft_status text not null default 'none'
+    check (draft_status in ('none', 'drafted', 'sent')),
+  draft_generated_at timestamptz
 );
 
 -- ── Documents (metadata; the file itself lives in Storage) ─────────────────

@@ -13,6 +13,60 @@ export type MatchWithLender = {
   score: number
   reasoning: string
   selected: boolean
+  draftSubject: string | null
+  draftBody: string | null
+  draftStatus: 'none' | 'drafted' | 'sent'
+}
+
+function DraftEmail({ subject, body }: { subject: string; body: string }) {
+  const [open, setOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard access can fail quietly (e.g. permissions) — not worth
+      // surfacing an error for a convenience action.
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="text-xs font-medium text-amber-800 hover:underline"
+        >
+          {open ? 'Hide' : 'View'} auto-drafted submission email
+        </button>
+        {open && (
+          <button
+            type="button"
+            onClick={copy}
+            className="rounded border border-amber-300 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100"
+          >
+            {copied ? 'Copied ✓' : 'Copy'}
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="mt-2 space-y-2 text-sm text-slate-700">
+          <p>
+            <span className="font-medium">Subject:</span> {subject}
+          </p>
+          <p className="whitespace-pre-wrap">{body}</p>
+          <p className="text-xs text-amber-700">
+            Draft only — not sent. Paste into Outlook until direct sending
+            is wired up.
+          </p>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function MatchingPanel({
@@ -88,7 +142,8 @@ export function MatchingPanel({
         <p className="mt-4 text-sm text-slate-400">
           Scores every active lender against this deal&apos;s profile
           (underwriting if available, otherwise industry/notes/updates) and
-          returns the best realistic fits with reasoning.
+          returns the best realistic fits with reasoning. Matches that score
+          70+ also get a draft submission email, ready to review below.
         </p>
       )}
 
@@ -142,6 +197,9 @@ export function MatchingPanel({
                 </form>
               </div>
               <p className="mt-2 text-sm text-slate-600">{m.reasoning}</p>
+              {m.draftStatus === 'drafted' && m.draftSubject && m.draftBody && (
+                <DraftEmail subject={m.draftSubject} body={m.draftBody} />
+              )}
             </li>
           ))}
         </ul>

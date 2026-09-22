@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { runMatching } from '@/lib/matching/run'
+import { draftSubmissionEmail, DRAFT_SCORE_THRESHOLD } from '@/lib/matching/draft'
 
 export const maxDuration = 300
 
@@ -39,7 +40,7 @@ export async function POST(
           reasoning: m.reasoning,
         }))
       )
-      .select('id')
+      .select('id, lender_id, score, reasoning')
 
     if (error || !saved) {
       console.error('Match save failed', { id, error })
@@ -55,6 +56,27 @@ export async function POST(
       .update({ status: 'matched' })
       .eq('id', id)
       .in('status', ['new', 'in_review', 'underwritten'])
+
+    // Auto-draft a submission email for any strong match. Best-effort per
+    // lender — one failed draft shouldn't take down the whole match run,
+    // since the matches themselves are already saved at this point.
+    const strongMatches = saved.filter((m) => m.score >= DRAFT_SCORE_THRESHOLD)
+    for (const m of strongMatches) {
+      try {
+        const draft = await draftSubmissionEmail(id, m.lender_id, m.reasoning)
+        await supabase
+          .from('deal_matches')
+          .update({
+            draft_subject: draft.subject,
+            draft_body: draft.body,
+            draft_status: 'drafted',
+            draft_generated_at: new Date().toISOString(),
+          })
+          .eq('id', m.id)
+      } catch (draftErr) {
+        console.error('Draft generation failed', { id, lenderId: m.lender_id, draftErr })
+      }
+    }
 
     return NextResponse.json({ count: saved.length, notes })
   } catch (err) {

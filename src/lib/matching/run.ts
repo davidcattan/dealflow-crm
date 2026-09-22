@@ -3,7 +3,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { createClient } from '@/lib/supabase/server'
 import { MatchSchema } from './schema'
-import type { Underwriting } from '@/lib/underwriting/schema'
+import { buildDealProfile } from './deal-profile'
+import type { Deal, DealUpdate } from '@/lib/types'
 
 const MATCH_INSTRUCTIONS = `You are helping an asset-based lending broker match a borrower deal to the lenders most likely to fund it. Most lenders here describe their mandate in free-text notes, not clean structured fields — read those notes carefully rather than relying only on the loan-size numbers.
 
@@ -73,44 +74,7 @@ export async function runMatching(dealId: string) {
     return parts.join(' | ')
   })
 
-  const underwriting = deal.underwriting as Underwriting | null
-
-  const dealProfileParts = [
-    `Company: ${deal.company_name}`,
-    deal.industry ? `Industry: ${deal.industry}` : null,
-    deal.deal_type ? `Deal type / ask: ${deal.deal_type}` : null,
-    deal.notes ? `Broker notes: ${deal.notes}` : null,
-  ].filter(Boolean)
-
-  if (underwriting) {
-    dealProfileParts.push(
-      '',
-      '--- AI underwriting summary ---',
-      `Company overview: ${underwriting.company_overview}`,
-      underwriting.historical_financials.length > 0
-        ? `Historical financials: ${underwriting.historical_financials
-            .map(
-              (f) =>
-                `${f.period}: revenue ${f.revenue ?? '?'}, EBITDA ${f.ebitda ?? '?'}, net income ${f.net_income ?? '?'}, cash flow ${f.cash_flow ?? '?'}`
-            )
-            .join('; ')}`
-        : 'No historical financials extracted.',
-      `Current position: AR ${underwriting.current_position.accounts_receivable ?? '?'}, inventory ${underwriting.current_position.inventory ?? '?'}, equipment ${underwriting.current_position.equipment_value ?? '?'}, real estate ${underwriting.current_position.real_estate_value ?? '?'}, AP ${underwriting.current_position.accounts_payable ?? '?'}, total debt ${underwriting.current_position.total_debt ?? '?'}`,
-      `Strengths: ${underwriting.strengths.join('; ') || 'none noted'}`,
-      `Risks: ${underwriting.risks.join('; ') || 'none noted'}`,
-      `Data gaps: ${underwriting.data_gaps.join('; ') || 'none noted'}`
-    )
-  } else {
-    dealProfileParts.push('', '(No AI underwriting has been run on this deal yet.)')
-  }
-
-  if (updates && updates.length > 0) {
-    dealProfileParts.push(
-      '',
-      '--- Recent activity log ---',
-      ...updates.map((u) => `${u.entry_date ?? '(no date)'}: ${u.note}`)
-    )
-  }
+  const dealProfile = buildDealProfile(deal as Deal, updates as Pick<DealUpdate, 'entry_date' | 'note'>[] | null)
 
   const client = new Anthropic()
 
@@ -121,7 +85,7 @@ export async function runMatching(dealId: string) {
       {
         role: 'user',
         content: [
-          dealProfileParts.join('\n'),
+          dealProfile,
           '',
           '--- Lender list ---',
           lenderLines.join('\n'),
