@@ -14,7 +14,7 @@ const INSTRUCTIONS = `You are classifying the type of financing a borrower needs
 Choose exactly one of these fixed categories for each deal — do not invent new ones:
 ${LOAN_TYPE_CATEGORIES.map((c) => `- ${c}`).join('\n')}
 
-If the notes and ask give genuinely no signal about what kind of financing is needed, return null rather than guessing.`
+Use "Other" when the ask clearly indicates a real financing need that just doesn't fit any category above (e.g. purchase order financing, litigation funding, DSCR/rental). If the notes and ask give genuinely no signal at all about what kind of financing is needed, return null rather than guessing.`
 
 function truncate(text: string | null | undefined, max: number): string {
   if (!text) return ''

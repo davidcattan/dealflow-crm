@@ -12,7 +12,7 @@ export const LoanTypeBackfillSchema = z.object({
           .enum(LOAN_TYPE_CATEGORIES)
           .nullable()
           .describe(
-            'One of the fixed loan-type categories — pick the closest fit rather than inventing a new one. Null only if the ask/notes genuinely give no signal about what kind of financing is needed.'
+            'One of the fixed loan-type categories — pick the closest fit rather than inventing a new one. Use "Other" when the ask clearly indicates a real financing need that doesn\'t fit any category above (e.g. purchase order financing, litigation funding, DSCR/rental). Null only if the ask/notes genuinely give no signal at all about what kind of financing is needed.'
           ),
       })
     )

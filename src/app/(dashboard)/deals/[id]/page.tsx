@@ -7,6 +7,7 @@ import {
   deleteDeal,
   addDealUpdate,
   deleteDealUpdate,
+  setDealStatusQuick,
 } from './actions'
 import { ConfirmButton } from '@/components/confirm-button'
 import { UnderwritingPanel } from './underwriting-panel'
@@ -98,15 +99,31 @@ export default async function DealDetailPage({
             Added {formatDateOnly(deal.created_at)}
           </p>
         </div>
-        <form action={deleteDeal}>
-          <input type="hidden" name="deal_id" value={deal.id} />
-          <ConfirmButton
-            confirmMessage={`Delete ${deal.company_name}? This also deletes all of its uploaded documents. This cannot be undone.`}
-            className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
-          >
-            Delete deal
-          </ConfirmButton>
-        </form>
+        <div className="flex items-center gap-2">
+          <form action={setDealStatusQuick}>
+            <input type="hidden" name="deal_id" value={deal.id} />
+            <input
+              type="hidden"
+              name="status"
+              value={deal.status === 'dead' ? 'in_review' : 'dead'}
+            />
+            <button
+              type="submit"
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+            >
+              {deal.status === 'dead' ? 'Reopen deal' : 'Mark as dead'}
+            </button>
+          </form>
+          <form action={deleteDeal}>
+            <input type="hidden" name="deal_id" value={deal.id} />
+            <ConfirmButton
+              confirmMessage={`Delete ${deal.company_name}? This also deletes all of its uploaded documents. This cannot be undone.`}
+              className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+            >
+              Delete deal
+            </ConfirmButton>
+          </form>
+        </div>
       </div>
 
       <DealDetails deal={deal as Deal} />

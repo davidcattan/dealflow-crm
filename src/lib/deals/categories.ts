@@ -36,6 +36,7 @@ export const LOAN_TYPE_CATEGORIES = [
   'SBA Loan',
   'Term Loan',
   'M&A / Acquisition Financing',
+  'Other',
 ] as const
 
 export type IndustryCategory = (typeof INDUSTRY_CATEGORIES)[number]

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { DEAL_STATUSES } from '@/lib/types'
+import { DEAL_STATUSES, type DealStatus } from '@/lib/types'
 
 function emptyToNull(value: FormDataEntryValue | null): string | null {
   const str = String(value ?? '').trim()
@@ -148,6 +148,22 @@ export async function deleteDeal(formData: FormData) {
   revalidatePath('/deals')
   revalidatePath('/pipeline')
   redirect('/deals')
+}
+
+// Quick one-click status change from the deal detail page — e.g. "Mark as
+// dead" / "Reopen deal" — distinct from the destructive deleteDeal above
+// (this just changes the pipeline stage, nothing is removed).
+export async function setDealStatusQuick(formData: FormData) {
+  const dealId = String(formData.get('deal_id') ?? '')
+  const status = String(formData.get('status') ?? '')
+  if (!dealId || !DEAL_STATUSES.includes(status as DealStatus)) return
+
+  const supabase = await createClient()
+  await supabase.from('deals').update({ status }).eq('id', dealId)
+
+  revalidatePath(`/deals/${dealId}`)
+  revalidatePath('/deals')
+  revalidatePath('/pipeline')
 }
 
 export async function toggleMatchSelected(formData: FormData) {
