@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { NewDealForm } from './new-deal-form'
 import { DealSortBar } from './sort-bar'
 import { BackfillButton } from './backfill-button'
+import { SearchBar } from '@/components/search-bar'
+import { matchesSearch } from '@/lib/search'
 import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 import {
   STATUS_LABELS,
@@ -21,6 +23,8 @@ type DealRow = {
   industry: string | null
   status: DealStatus
   contact_name: string | null
+  rep_name: string | null
+  notes: string | null
   activity_score: number | null
   created_at: string
   deal_matches: { score: number }[]
@@ -66,16 +70,16 @@ function sortDeals(deals: DealRow[], sort: string): DealRow[] {
 export default async function DealsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; sort?: string }>
+  searchParams: Promise<{ view?: string; sort?: string; q?: string }>
 }) {
-  const { view, sort } = await searchParams
+  const { view, sort, q } = await searchParams
   const showPast = view === 'past'
 
   const supabase = await createClient()
   let query = supabase
     .from('deals')
     .select(
-      'id, company_name, industry, status, contact_name, activity_score, created_at, deal_matches(score)'
+      'id, company_name, industry, status, contact_name, rep_name, notes, activity_score, created_at, deal_matches(score)'
     )
 
   query = showPast
@@ -86,7 +90,21 @@ export default async function DealsPage({
     query,
     supabase.from('deals').select('industry, loan_type'),
   ])
-  const deals = sortDeals((rawDeals ?? []) as DealRow[], sort ?? 'date_desc')
+  const searched = (
+    q
+      ? (rawDeals ?? []).filter((d) =>
+          matchesSearch(q, [
+            d.company_name,
+            d.contact_name,
+            d.rep_name,
+            d.notes,
+            formatDateOnly(d.created_at),
+            d.created_at,
+          ])
+        )
+      : (rawDeals ?? [])
+  ) as DealRow[]
+  const deals = sortDeals(searched, sort ?? 'date_desc')
 
   const industrySet: readonly string[] = INDUSTRY_CATEGORIES
   const loanTypeSet: readonly string[] = LOAN_TYPE_CATEGORIES
@@ -151,7 +169,8 @@ export default async function DealsPage({
         </Link>
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SearchBar placeholder="Search company, contact, rep, notes, date…" />
         <DealSortBar />
       </div>
 
@@ -243,9 +262,11 @@ export default async function DealsPage({
                   colSpan={7}
                   className="px-4 py-10 text-center text-slate-400"
                 >
-                  {showPast
-                    ? 'No closed or dead deals yet.'
-                    : 'No active deals yet. Add your first one above.'}
+                  {q
+                    ? 'No deals match your search.'
+                    : showPast
+                      ? 'No closed or dead deals yet.'
+                      : 'No active deals yet. Add your first one above.'}
                 </td>
               </tr>
             )}

@@ -9,17 +9,21 @@ import {
 } from '@/lib/types'
 import { StatusSelect } from './status-select'
 import { PipelineFilterBar } from './filter-bar'
+import { SearchBar } from '@/components/search-bar'
+import { matchesSearch } from '@/lib/search'
 import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 
 function stageHref(
   status: string | null,
   industry: string | undefined,
-  loanType: string | undefined
+  loanType: string | undefined,
+  search: string | undefined
 ) {
   const params = new URLSearchParams()
   if (status) params.set('stage', status)
   if (industry) params.set('industry', industry)
   if (loanType) params.set('loanType', loanType)
+  if (search) params.set('q', search)
   const qs = params.toString()
   return qs ? `/pipeline?${qs}` : '/pipeline'
 }
@@ -40,6 +44,10 @@ type PipelineDeal = {
   loan_type: string | null
   status: string
   updated_at: string
+  created_at: string
+  contact_name: string | null
+  rep_name: string | null
+  notes: string | null
   activity_score: number | null
   deal_matches: { score: number }[]
 }
@@ -88,6 +96,7 @@ export default async function PipelinePage({
     industry?: string
     loanType?: string
     sort?: string
+    q?: string
   }>
 }) {
   const {
@@ -95,6 +104,7 @@ export default async function PipelinePage({
     industry: industryParam,
     loanType: loanTypeParam,
     sort: sortParam,
+    q,
   } = await searchParams
   const activeStage = PIPELINE_STATUSES.includes(stageParam as DealStatus)
     ? (stageParam as DealStatus)
@@ -106,7 +116,7 @@ export default async function PipelinePage({
     supabase
       .from('deals')
       .select(
-        'id, company_name, industry, loan_type, status, updated_at, activity_score, deal_matches(score)'
+        'id, company_name, industry, loan_type, status, updated_at, created_at, contact_name, rep_name, notes, activity_score, deal_matches(score)'
       )
       .in('status', PIPELINE_STATUSES)
       .order('updated_at', { ascending: false }),
@@ -142,6 +152,20 @@ export default async function PipelinePage({
     .filter((d) => !activeStage || d.status === activeStage)
     .filter((d) => !industryParam || d.industry === industryParam)
     .filter((d) => !loanTypeParam || d.loan_type === loanTypeParam)
+    .filter(
+      (d) =>
+        !q ||
+        matchesSearch(q, [
+          d.company_name,
+          d.contact_name,
+          d.rep_name,
+          d.notes,
+          new Date(d.created_at).toLocaleDateString(),
+          new Date(d.updated_at).toLocaleDateString(),
+          d.created_at,
+          d.updated_at,
+        ])
+    )
 
   const visibleDeals = applySort(filtered, sortParam)
 
@@ -151,12 +175,13 @@ export default async function PipelinePage({
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Pipeline</h1>
           <p className="mt-1 text-sm text-slate-500">
-            {activeStage || industryParam || loanTypeParam ? (
+            {activeStage || industryParam || loanTypeParam || q ? (
               <>
                 {visibleDeals.length} deal{visibleDeals.length === 1 ? '' : 's'}
                 {activeStage ? ` · ${STATUS_LABELS[activeStage].toLowerCase()}` : ''}
                 {industryParam ? ` · ${industryParam}` : ''}
-                {loanTypeParam ? ` · ${loanTypeParam}` : ''} ·{' '}
+                {loanTypeParam ? ` · ${loanTypeParam}` : ''}
+                {q ? ` · "${q}"` : ''} ·{' '}
                 <Link href="/pipeline" className="underline hover:text-slate-700">
                   show all {deals.length}
                 </Link>
@@ -184,7 +209,7 @@ export default async function PipelinePage({
           return (
             <Link
               key={status}
-              href={stageHref(isActive ? null : status, industryParam, loanTypeParam)}
+              href={stageHref(isActive ? null : status, industryParam, loanTypeParam, q)}
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
                 isActive
                   ? 'border-slate-900 bg-slate-900 text-white'
@@ -203,7 +228,8 @@ export default async function PipelinePage({
         })}
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SearchBar placeholder="Search company, contact, rep, notes, date…" />
         <PipelineFilterBar industries={industries} loanTypes={loanTypes} />
       </div>
 
@@ -286,7 +312,7 @@ export default async function PipelinePage({
                   colSpan={6}
                   className="px-4 py-10 text-center text-slate-400"
                 >
-                  {activeStage || industryParam || loanTypeParam
+                  {activeStage || industryParam || loanTypeParam || q
                     ? 'No deals match this filter.'
                     : 'No active deals right now.'}
                 </td>
