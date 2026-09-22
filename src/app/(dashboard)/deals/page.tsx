@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { NewDealForm } from './new-deal-form'
 import { DealSortBar } from './sort-bar'
+import { BackfillIndustryButton } from './backfill-industry-button'
 import {
   STATUS_LABELS,
   DEAL_STATUSES,
@@ -80,7 +81,10 @@ export default async function DealsPage({
     ? query.in('status', RESOLVED_STATUSES)
     : query.not('status', 'in', `(${RESOLVED_STATUSES.join(',')})`)
 
-  const { data: rawDeals } = await query
+  const [{ data: rawDeals }, { count: missingIndustryCount }] = await Promise.all([
+    query,
+    supabase.from('deals').select('*', { count: 'exact', head: true }).is('industry', null),
+  ])
   const deals = sortDeals((rawDeals ?? []) as DealRow[], sort ?? 'date_desc')
 
   return (
@@ -92,12 +96,15 @@ export default async function DealsPage({
             Every deal you&apos;re working, in one place.
           </p>
         </div>
-        <Link
-          href="/deals/import"
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-        >
-          Import from file
-        </Link>
+        <div className="flex items-center gap-3">
+          <BackfillIndustryButton missingCount={missingIndustryCount ?? 0} />
+          <Link
+            href="/deals/import"
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+          >
+            Import from file
+          </Link>
+        </div>
       </div>
 
       <NewDealForm />
