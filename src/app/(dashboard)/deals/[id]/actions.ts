@@ -81,38 +81,6 @@ export async function deleteDealUpdate(formData: FormData) {
   revalidatePath(`/deals/${dealId}`)
 }
 
-export async function uploadDocument(formData: FormData) {
-  const dealId = String(formData.get('deal_id') ?? '')
-  const file = formData.get('file') as File | null
-
-  if (!dealId || !file || file.size === 0) return
-
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-  const storagePath = `${dealId}/${Date.now()}-${safeName}`
-
-  const { error: uploadError } = await supabase.storage
-    .from('borrower-documents')
-    .upload(storagePath, file, { contentType: file.type || undefined })
-
-  if (uploadError) return
-
-  await supabase.from('documents').insert({
-    deal_id: dealId,
-    file_name: file.name,
-    storage_path: storagePath,
-    file_size: file.size,
-    content_type: file.type || null,
-    uploaded_by: user?.id ?? null,
-  })
-
-  revalidatePath(`/deals/${dealId}`)
-}
-
 export async function deleteDocument(formData: FormData) {
   const dealId = String(formData.get('deal_id') ?? '')
   const documentId = String(formData.get('document_id') ?? '')

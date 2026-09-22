@@ -2,7 +2,6 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import type { Deal, DocumentRecord, DealUpdate } from '@/lib/types'
 import {
-  uploadDocument,
   deleteDocument,
   deleteDeal,
   addDealUpdate,
@@ -12,6 +11,7 @@ import {
 import { ConfirmButton } from '@/components/confirm-button'
 import { UnderwritingPanel } from './underwriting-panel'
 import { MatchingPanel, type MatchWithLender } from './matching-panel'
+import { DocumentUploader } from './document-uploader'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
@@ -133,24 +133,7 @@ export default async function DealDetailPage({
           Diligence documents
         </h2>
 
-        <form
-          action={uploadDocument}
-          className="mb-5 flex flex-wrap items-center gap-3"
-        >
-          <input type="hidden" name="deal_id" value={deal.id} />
-          <input
-            type="file"
-            name="file"
-            required
-            className="text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-slate-200"
-          />
-          <button
-            type="submit"
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
-            Upload
-          </button>
-        </form>
+        <DocumentUploader dealId={deal.id} />
 
         {docsWithUrls.length > 0 ? (
           <ul className="divide-y divide-slate-100">

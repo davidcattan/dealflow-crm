@@ -1,10 +1,9 @@
 'use server'
 
-import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 
-export type FormState = { error?: string } | undefined
+export type FormState = { error?: string; dealId?: string } | undefined
 
 export async function createDeal(
   _prevState: FormState,
@@ -40,32 +39,11 @@ export async function createDeal(
     return { error: 'Could not create deal. Please try again.' }
   }
 
-  // Upload any diligence documents attached at creation time — best
-  // effort per file, since the deal itself is already created and
-  // shouldn't be blocked by one bad upload.
-  const files = formData.getAll('files').filter((f): f is File => f instanceof File && f.size > 0)
-  for (const file of files) {
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const storagePath = `${data.id}/${Date.now()}-${safeName}`
-
-    const { error: uploadError } = await supabase.storage
-      .from('borrower-documents')
-      .upload(storagePath, file, { contentType: file.type || undefined })
-
-    if (uploadError) continue
-
-    await supabase.from('documents').insert({
-      deal_id: data.id,
-      file_name: file.name,
-      storage_path: storagePath,
-      file_size: file.size,
-      content_type: file.type || null,
-      uploaded_by: user?.id ?? null,
-    })
-  }
-
   revalidatePath('/deals')
-  redirect(`/deals/${data.id}`)
+  // No redirect() here — any attached documents still need to be uploaded
+  // (client-side, straight to Storage) before navigating, and the client
+  // needs the new id back to do that. See new-deal-form.tsx.
+  return { dealId: data.id }
 }
 
 function emptyToNull(value: FormDataEntryValue | null): string | null {
