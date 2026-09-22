@@ -10,6 +10,7 @@ const SORT_OPTIONS = [
   { value: 'name_asc', label: 'Company (A–Z)' },
   { value: 'name_desc', label: 'Company (Z–A)' },
   { value: 'status', label: 'Status' },
+  { value: 'match_desc', label: 'Best lender match (high–low)' },
 ]
 
 export function DealSortBar() {

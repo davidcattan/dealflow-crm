@@ -2,7 +2,13 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { NewDealForm } from './new-deal-form'
 import { DealSortBar } from './sort-bar'
-import { STATUS_LABELS, DEAL_STATUSES, activityScoreColor, type DealStatus } from '@/lib/types'
+import {
+  STATUS_LABELS,
+  DEAL_STATUSES,
+  activityScoreColor,
+  matchScoreColor,
+  type DealStatus,
+} from '@/lib/types'
 import { formatDateOnly } from '@/lib/format'
 
 const RESOLVED_STATUSES = ['closed', 'dead']
@@ -15,6 +21,12 @@ type DealRow = {
   contact_name: string | null
   activity_score: number | null
   created_at: string
+  deal_matches: { score: number }[]
+}
+
+function topMatchScore(deal: DealRow): number | null {
+  if (!deal.deal_matches || deal.deal_matches.length === 0) return null
+  return Math.max(...deal.deal_matches.map((m) => m.score))
 }
 
 function sortDeals(deals: DealRow[], sort: string): DealRow[] {
@@ -38,6 +50,9 @@ function sortDeals(deals: DealRow[], sort: string): DealRow[] {
     case 'status':
       sorted.sort((a, b) => DEAL_STATUSES.indexOf(a.status) - DEAL_STATUSES.indexOf(b.status))
       break
+    case 'match_desc':
+      sorted.sort((a, b) => (topMatchScore(b) ?? -1) - (topMatchScore(a) ?? -1))
+      break
     case 'date_desc':
     default:
       sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -58,7 +73,7 @@ export default async function DealsPage({
   let query = supabase
     .from('deals')
     .select(
-      'id, company_name, industry, status, contact_name, activity_score, created_at'
+      'id, company_name, industry, status, contact_name, activity_score, created_at, deal_matches(score)'
     )
 
   query = showPast
@@ -123,6 +138,7 @@ export default async function DealsPage({
               <th className="px-4 py-3">Contact</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Activity</th>
+              <th className="px-4 py-3">Matches</th>
               <th className="px-4 py-3">Added</th>
             </tr>
           </thead>
@@ -163,6 +179,28 @@ export default async function DealsPage({
                       <span className="text-slate-400">—</span>
                     )}
                   </td>
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const score = topMatchScore(b)
+                      const count = b.deal_matches?.length ?? 0
+                      if (score === null) {
+                        return <span className="text-slate-400">—</span>
+                      }
+                      return (
+                        <Link
+                          href={`/deals/${b.id}#lender-matches`}
+                          className="inline-flex items-center gap-1.5 hover:underline"
+                        >
+                          <span
+                            className={`h-2.5 w-2.5 rounded-full ${matchScoreColor(score)}`}
+                          />
+                          <span className="text-slate-600">
+                            {count} match{count === 1 ? '' : 'es'}
+                          </span>
+                        </Link>
+                      )
+                    })()}
+                  </td>
                   <td className="px-4 py-3 text-slate-500">
                     {formatDateOnly(b.created_at)}
                   </td>
@@ -171,7 +209,7 @@ export default async function DealsPage({
             ) : (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-4 py-10 text-center text-slate-400"
                 >
                   {showPast

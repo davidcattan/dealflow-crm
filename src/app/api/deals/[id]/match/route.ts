@@ -46,6 +46,16 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to save matches' }, { status: 500 })
     }
 
+    // Advance the pipeline stage automatically the first time a deal gets
+    // real matches — but only from the early stages. If it's already
+    // further along (submitted/closed/dead) or already "matched", leave
+    // the stage alone; re-running matching shouldn't undo manual progress.
+    await supabase
+      .from('deals')
+      .update({ status: 'matched' })
+      .eq('id', id)
+      .in('status', ['new', 'in_review', 'underwritten'])
+
     return NextResponse.json({ count: saved.length, notes })
   } catch (err) {
     console.error('Matching failed', err)

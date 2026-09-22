@@ -4,6 +4,7 @@ import {
   PIPELINE_STATUSES,
   STATUS_LABELS,
   STATUS_COLORS,
+  matchScoreColor,
   type DealStatus,
 } from '@/lib/types'
 import { StatusSelect } from './status-select'
@@ -23,7 +24,9 @@ export default async function PipelinePage() {
   const [{ data: rawDeals }, { count: resolvedCount }] = await Promise.all([
     supabase
       .from('deals')
-      .select('id, company_name, industry, contact_name, status, updated_at')
+      .select(
+        'id, company_name, industry, contact_name, status, updated_at, deal_matches(score)'
+      )
       .in('status', PIPELINE_STATUSES)
       .order('updated_at', { ascending: false }),
     supabase
@@ -89,6 +92,7 @@ export default async function PipelinePage() {
               <th className="px-4 py-2.5">Industry</th>
               <th className="px-4 py-2.5">Contact</th>
               <th className="px-4 py-2.5">Stage</th>
+              <th className="px-4 py-2.5">Matches</th>
               <th className="px-4 py-2.5">Updated</th>
             </tr>
           </thead>
@@ -119,6 +123,28 @@ export default async function PipelinePage() {
                       status={deal.status as DealStatus}
                     />
                   </td>
+                  <td className="px-4 py-2">
+                    {(() => {
+                      const scores = (deal.deal_matches ?? []).map((m) => m.score)
+                      if (scores.length === 0) {
+                        return <span className="text-slate-400">—</span>
+                      }
+                      const topScore = Math.max(...scores)
+                      return (
+                        <Link
+                          href={`/deals/${deal.id}#lender-matches`}
+                          className="inline-flex items-center gap-1.5 hover:underline"
+                        >
+                          <span
+                            className={`h-2.5 w-2.5 rounded-full ${matchScoreColor(topScore)}`}
+                          />
+                          <span className="text-slate-600">
+                            {scores.length} match{scores.length === 1 ? '' : 'es'}
+                          </span>
+                        </Link>
+                      )
+                    })()}
+                  </td>
                   <td className="px-4 py-2 text-slate-500">
                     {daysAgo(deal.updated_at)}
                   </td>
@@ -127,7 +153,7 @@ export default async function PipelinePage() {
             ) : (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-4 py-10 text-center text-slate-400"
                 >
                   No active deals right now.
