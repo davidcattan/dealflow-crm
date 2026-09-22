@@ -136,24 +136,24 @@ export default async function DealsPage({
         <DealSortBar />
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              <th className="px-4 py-3">Company</th>
-              <th className="px-4 py-3">Industry</th>
-              <th className="px-4 py-3">Contact</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Activity</th>
-              <th className="px-4 py-3">Matches</th>
-              <th className="px-4 py-3">Added</th>
+              <th className="whitespace-nowrap px-4 py-3">Company</th>
+              <th className="whitespace-nowrap px-4 py-3">Industry</th>
+              <th className="whitespace-nowrap px-4 py-3">Contact</th>
+              <th className="whitespace-nowrap px-4 py-3">Status</th>
+              <th className="whitespace-nowrap px-4 py-3">Activity</th>
+              <th className="whitespace-nowrap px-4 py-3">Matches</th>
+              <th className="whitespace-nowrap px-4 py-3">Added</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {deals.length > 0 ? (
               deals.map((b) => (
                 <tr key={b.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-4 py-3">
                     <Link
                       href={`/deals/${b.id}`}
                       className="font-medium text-slate-800 hover:underline"
@@ -161,18 +161,18 @@ export default async function DealsPage({
                       {b.company_name}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-600">
                     {b.industry ?? '—'}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-600">
                     {b.contact_name ?? '—'}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-4 py-3">
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                       {STATUS_LABELS[b.status as DealStatus]}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-4 py-3">
                     {b.activity_score !== null ? (
                       <span className="inline-flex items-center gap-1.5">
                         <span
@@ -186,7 +186,7 @@ export default async function DealsPage({
                       <span className="text-slate-400">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-4 py-3">
                     {(() => {
                       const score = topMatchScore(b)
                       const count = b.deal_matches?.length ?? 0
@@ -208,7 +208,7 @@ export default async function DealsPage({
                       )
                     })()}
                   </td>
-                  <td className="px-4 py-3 text-slate-500">
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-500">
                     {formatDateOnly(b.created_at)}
                   </td>
                 </tr>

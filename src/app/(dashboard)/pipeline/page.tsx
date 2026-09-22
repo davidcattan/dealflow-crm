@@ -33,9 +33,7 @@ export default async function PipelinePage({
   const [{ data: rawDeals }, { count: resolvedCount }] = await Promise.all([
     supabase
       .from('deals')
-      .select(
-        'id, company_name, industry, contact_name, status, updated_at, deal_matches(score)'
-      )
+      .select('id, company_name, industry, status, updated_at, deal_matches(score)')
       .in('status', PIPELINE_STATUSES)
       .order('updated_at', { ascending: false }),
     supabase
@@ -119,23 +117,22 @@ export default async function PipelinePage({
         })}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              <th className="px-4 py-2.5">Company</th>
-              <th className="px-4 py-2.5">Industry</th>
-              <th className="px-4 py-2.5">Contact</th>
-              <th className="px-4 py-2.5">Stage</th>
-              <th className="px-4 py-2.5">Matches</th>
-              <th className="px-4 py-2.5">Updated</th>
+              <th className="whitespace-nowrap px-4 py-2.5">Company</th>
+              <th className="whitespace-nowrap px-4 py-2.5">Industry</th>
+              <th className="whitespace-nowrap px-4 py-2.5">Stage</th>
+              <th className="whitespace-nowrap px-4 py-2.5">Matches</th>
+              <th className="whitespace-nowrap px-4 py-2.5">Updated</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {visibleDeals.length > 0 ? (
               visibleDeals.map((deal) => (
                 <tr key={deal.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-2">
+                  <td className="whitespace-nowrap px-4 py-2">
                     <span
                       className={`mr-2 inline-block h-2 w-2 rounded-full ${STATUS_COLORS[deal.status as DealStatus]}`}
                     />
@@ -146,19 +143,16 @@ export default async function PipelinePage({
                       {deal.company_name}
                     </Link>
                   </td>
-                  <td className="px-4 py-2 text-slate-600">
+                  <td className="whitespace-nowrap px-4 py-2 text-slate-600">
                     {deal.industry ?? '—'}
                   </td>
-                  <td className="px-4 py-2 text-slate-600">
-                    {deal.contact_name ?? '—'}
-                  </td>
-                  <td className="px-4 py-2">
+                  <td className="whitespace-nowrap px-4 py-2">
                     <StatusSelect
                       dealId={deal.id}
                       status={deal.status as DealStatus}
                     />
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="whitespace-nowrap px-4 py-2">
                     {(() => {
                       const scores = (deal.deal_matches ?? []).map((m) => m.score)
                       if (scores.length === 0) {
@@ -180,7 +174,7 @@ export default async function PipelinePage({
                       )
                     })()}
                   </td>
-                  <td className="px-4 py-2 text-slate-500">
+                  <td className="whitespace-nowrap px-4 py-2 text-slate-500">
                     {daysAgo(deal.updated_at)}
                   </td>
                 </tr>
@@ -188,7 +182,7 @@ export default async function PipelinePage({
             ) : (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={5}
                   className="px-4 py-10 text-center text-slate-400"
                 >
                   {activeStage
