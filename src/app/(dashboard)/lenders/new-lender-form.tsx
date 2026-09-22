@@ -2,6 +2,13 @@
 
 import { useActionState, useState } from 'react'
 import { createLender } from './actions'
+import { CategoryChecklist } from '@/components/category-checklist'
+import {
+  LENDING_TYPE_CATEGORIES,
+  ASSET_TYPE_CATEGORIES,
+  INDUSTRY_CATEGORIES,
+  GEOGRAPHY_CATEGORIES,
+} from '@/lib/lenders/categories'
 
 export function NewLenderForm() {
   const [open, setOpen] = useState(false)
@@ -56,11 +63,18 @@ export function NewLenderForm() {
         <label className="block text-xs font-medium text-slate-600">
           Lending type
         </label>
-        <input
+        <select
           name="lending_type"
-          placeholder="e.g. ABL - AR + Inventory"
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
+          defaultValue=""
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+        >
+          <option value="">—</option>
+          {LENDING_TYPE_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
       </div>
       <div>
         <label className="block text-xs font-medium text-slate-600">
@@ -78,72 +92,73 @@ export function NewLenderForm() {
       </div>
       <div>
         <label className="block text-xs font-medium text-slate-600">
-          Min loan amount ($)
+          Min loan amount
         </label>
         <input
           name="min_loan_amount"
-          type="number"
+          placeholder="e.g. $250K or 0 = no minimum"
           className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
       </div>
       <div>
         <label className="block text-xs font-medium text-slate-600">
-          Max loan amount ($)
+          Max loan amount
         </label>
         <input
           name="max_loan_amount"
-          type="number"
+          placeholder="e.g. $5M"
           className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
       </div>
       <div>
         <label className="block text-xs font-medium text-slate-600">
-          Min revenue ($)
+          Min revenue
         </label>
         <input
           name="min_revenue"
-          type="number"
+          placeholder="e.g. $1M or 0 = no minimum"
           className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
       </div>
       <div>
         <label className="block text-xs font-medium text-slate-600">
-          Min EBITDA ($)
+          Min EBITDA
         </label>
         <input
           name="min_ebitda"
-          type="number"
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-slate-600">
-          Asset types (comma separated)
-        </label>
-        <input
-          name="asset_types"
-          placeholder="AR, Inventory, Equipment, Real Estate"
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-slate-600">
-          Industries (comma separated)
-        </label>
-        <input
-          name="industries"
-          placeholder="Manufacturing, Distribution"
+          placeholder="e.g. $250K or 0 = no minimum"
           className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
       </div>
       <div className="sm:col-span-2">
         <label className="block text-xs font-medium text-slate-600">
-          Geographies (comma separated)
+          Asset types
         </label>
-        <input
+        <CategoryChecklist
+          name="asset_types"
+          categories={ASSET_TYPE_CATEGORIES}
+          defaultValue={[]}
+        />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="block text-xs font-medium text-slate-600">
+          Industries
+        </label>
+        <CategoryChecklist
+          name="industries"
+          categories={INDUSTRY_CATEGORIES}
+          defaultValue={[]}
+        />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="block text-xs font-medium text-slate-600">
+          Geographies
+        </label>
+        <CategoryChecklist
           name="geographies"
-          placeholder="Northeast, Mid-Atlantic"
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          categories={GEOGRAPHY_CATEGORIES}
+          defaultValue={[]}
+          allLabel="Nationwide"
         />
       </div>
       <div className="sm:col-span-2">

@@ -4,8 +4,19 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { updateLender, deleteLender } from './actions'
 import { ConfirmButton } from '@/components/confirm-button'
+import { CategoryChecklist } from '@/components/category-checklist'
 import { formatCompactCurrency } from '@/lib/format'
+import {
+  LENDING_TYPE_CATEGORIES,
+  ASSET_TYPE_CATEGORIES,
+  INDUSTRY_CATEGORIES,
+  GEOGRAPHY_CATEGORIES,
+} from '@/lib/lenders/categories'
 import type { Lender, LenderContact } from '@/lib/types'
+
+function moneyInputDefault(value: number | null): string {
+  return value === null ? '' : formatCompactCurrency(value)
+}
 
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -256,12 +267,26 @@ export function LenderDetail({
               <label className="block text-xs font-medium text-slate-600">
                 Lending type
               </label>
-              <input
+              <select
                 name="lending_type"
                 defaultValue={lender.lending_type ?? ''}
-                placeholder="e.g. ABL - AR + Inventory"
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              />
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+              >
+                <option value="">—</option>
+                {lender.lending_type &&
+                  !(LENDING_TYPE_CATEGORIES as readonly string[]).includes(
+                    lender.lending_type
+                  ) && (
+                    <option value={lender.lending_type}>
+                      {lender.lending_type} (non-standard)
+                    </option>
+                  )}
+                {LENDING_TYPE_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600">
@@ -285,76 +310,77 @@ export function LenderDetail({
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600">
-                Min loan amount ($)
+                Min loan amount
               </label>
               <input
                 name="min_loan_amount"
-                type="number"
-                defaultValue={lender.min_loan_amount ?? ''}
+                defaultValue={moneyInputDefault(lender.min_loan_amount)}
+                placeholder="e.g. $250K or 0 = no minimum"
                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
               />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600">
-                Max loan amount ($)
+                Max loan amount
               </label>
               <input
                 name="max_loan_amount"
-                type="number"
-                defaultValue={lender.max_loan_amount ?? ''}
+                defaultValue={moneyInputDefault(lender.max_loan_amount)}
+                placeholder="e.g. $5M"
                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
               />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600">
-                Min revenue ($)
+                Min revenue
               </label>
               <input
                 name="min_revenue"
-                type="number"
-                defaultValue={lender.min_revenue ?? ''}
+                defaultValue={moneyInputDefault(lender.min_revenue)}
+                placeholder="e.g. $1M or 0 = no minimum"
                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
               />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600">
-                Min EBITDA ($)
+                Min EBITDA
               </label>
               <input
                 name="min_ebitda"
-                type="number"
-                defaultValue={lender.min_ebitda ?? ''}
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600">
-                Asset types (comma separated)
-              </label>
-              <input
-                name="asset_types"
-                defaultValue={lender.asset_types.join(', ')}
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600">
-                Industries (comma separated)
-              </label>
-              <input
-                name="industries"
-                defaultValue={lender.industries.join(', ')}
+                defaultValue={moneyInputDefault(lender.min_ebitda)}
+                placeholder="e.g. $250K or 0 = no minimum"
                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
               />
             </div>
             <div className="sm:col-span-2">
               <label className="block text-xs font-medium text-slate-600">
-                Geographies (comma separated)
+                Asset types
               </label>
-              <input
+              <CategoryChecklist
+                name="asset_types"
+                categories={ASSET_TYPE_CATEGORIES}
+                defaultValue={lender.asset_types}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-slate-600">
+                Industries
+              </label>
+              <CategoryChecklist
+                name="industries"
+                categories={INDUSTRY_CATEGORIES}
+                defaultValue={lender.industries}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-slate-600">
+                Geographies
+              </label>
+              <CategoryChecklist
                 name="geographies"
-                defaultValue={lender.geographies.join(', ')}
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                categories={GEOGRAPHY_CATEGORIES}
+                defaultValue={lender.geographies}
+                allLabel="Nationwide"
               />
             </div>
             <div className="sm:col-span-2">

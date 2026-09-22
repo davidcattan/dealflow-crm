@@ -30,3 +30,25 @@ export function formatCompactCurrency(
   if (abs >= 1_000) return `$${trim(value / 1_000)}K`
   return `$${value.toLocaleString()}`
 }
+
+// Reverse of the above, for form inputs — lets someone type "$5M", "250k",
+// "1.5M", or a plain "500000" and get back a real number to store. Returns
+// null for empty/unparseable input so callers can fall back to "unset"
+// rather than silently storing 0.
+export function parseCompactCurrency(input: FormDataEntryValue | null): number | null {
+  const str = String(input ?? '')
+    .trim()
+    .replace(/[$,\s]/g, '')
+  if (!str) return null
+
+  const match = str.match(/^(-?\d+(?:\.\d+)?)([kKmM]?)$/)
+  if (!match) return null
+
+  const [, numStr, suffix] = match
+  const num = Number(numStr)
+  if (!Number.isFinite(num)) return null
+
+  if (suffix.toLowerCase() === 'k') return Math.round(num * 1_000)
+  if (suffix.toLowerCase() === 'm') return Math.round(num * 1_000_000)
+  return Math.round(num)
+}

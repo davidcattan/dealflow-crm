@@ -4,19 +4,13 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { toArray } from '@/lib/form-utils'
+import { parseCompactCurrency } from '@/lib/format'
 
 export type FormState = { error?: string } | undefined
 
 function emptyToNull(value: FormDataEntryValue | null): string | null {
   const str = String(value ?? '').trim()
   return str.length > 0 ? str : null
-}
-
-function toNumberOrNull(value: FormDataEntryValue | null): number | null {
-  const str = String(value ?? '').trim()
-  if (!str) return null
-  const num = Number(str)
-  return Number.isFinite(num) ? num : null
 }
 
 export async function createLender(
@@ -46,10 +40,10 @@ export async function createLender(
       lending_type: emptyToNull(formData.get('lending_type')),
       cares_about_profit:
         caresAboutProfit === 'yes' ? true : caresAboutProfit === 'no' ? false : null,
-      min_loan_amount: toNumberOrNull(formData.get('min_loan_amount')),
-      max_loan_amount: toNumberOrNull(formData.get('max_loan_amount')),
-      min_revenue: toNumberOrNull(formData.get('min_revenue')),
-      min_ebitda: toNumberOrNull(formData.get('min_ebitda')),
+      min_loan_amount: parseCompactCurrency(formData.get('min_loan_amount')),
+      max_loan_amount: parseCompactCurrency(formData.get('max_loan_amount')),
+      min_revenue: parseCompactCurrency(formData.get('min_revenue')),
+      min_ebitda: parseCompactCurrency(formData.get('min_ebitda')),
       asset_types: toArray(formData.get('asset_types')),
       industries: toArray(formData.get('industries')),
       geographies: toArray(formData.get('geographies')),
