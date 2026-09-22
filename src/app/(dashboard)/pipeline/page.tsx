@@ -32,13 +32,69 @@ function daysAgo(dateStr: string) {
   return `${days} days ago`
 }
 
+type PipelineDeal = {
+  id: string
+  company_name: string
+  industry: string | null
+  loan_type: string | null
+  status: string
+  updated_at: string
+  activity_score: number | null
+  deal_matches: { score: number }[]
+}
+
+function topMatchScore(deal: PipelineDeal): number | null {
+  if (!deal.deal_matches || deal.deal_matches.length === 0) return null
+  return Math.max(...deal.deal_matches.map((m) => m.score))
+}
+
+function applySort(deals: PipelineDeal[], sort: string | undefined): PipelineDeal[] {
+  if (!sort) return deals
+  const sorted = [...deals]
+  switch (sort) {
+    case 'name_asc':
+      sorted.sort((a, b) => a.company_name.localeCompare(b.company_name))
+      break
+    case 'name_desc':
+      sorted.sort((a, b) => b.company_name.localeCompare(a.company_name))
+      break
+    case 'updated_asc':
+      sorted.sort((a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime())
+      break
+    case 'activity_desc':
+      sorted.sort((a, b) => (b.activity_score ?? -1) - (a.activity_score ?? -1))
+      break
+    case 'activity_asc':
+      sorted.sort((a, b) => (a.activity_score ?? 11) - (b.activity_score ?? 11))
+      break
+    case 'match_desc':
+      sorted.sort((a, b) => (topMatchScore(b) ?? -1) - (topMatchScore(a) ?? -1))
+      break
+    case 'updated_desc':
+      sorted.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      break
+    default:
+      break
+  }
+  return sorted
+}
+
 export default async function PipelinePage({
   searchParams,
 }: {
-  searchParams: Promise<{ stage?: string; industry?: string; loanType?: string }>
+  searchParams: Promise<{
+    stage?: string
+    industry?: string
+    loanType?: string
+    sort?: string
+  }>
 }) {
-  const { stage: stageParam, industry: industryParam, loanType: loanTypeParam } =
-    await searchParams
+  const {
+    stage: stageParam,
+    industry: industryParam,
+    loanType: loanTypeParam,
+    sort: sortParam,
+  } = await searchParams
   const activeStage = PIPELINE_STATUSES.includes(stageParam as DealStatus)
     ? (stageParam as DealStatus)
     : null
@@ -49,7 +105,7 @@ export default async function PipelinePage({
     supabase
       .from('deals')
       .select(
-        'id, company_name, industry, loan_type, status, updated_at, deal_matches(score)'
+        'id, company_name, industry, loan_type, status, updated_at, activity_score, deal_matches(score)'
       )
       .in('status', PIPELINE_STATUSES)
       .order('updated_at', { ascending: false }),
@@ -59,7 +115,8 @@ export default async function PipelinePage({
       .in('status', ['closed', 'dead']),
   ])
 
-  const deals = (rawDeals ?? []).slice().sort((a, b) => {
+  const deals = (rawDeals ?? []) as PipelineDeal[]
+  const defaultOrdered = deals.slice().sort((a, b) => {
     const stageDiff =
       PIPELINE_STATUSES.indexOf(a.status as DealStatus) -
       PIPELINE_STATUSES.indexOf(b.status as DealStatus)
@@ -81,10 +138,12 @@ export default async function PipelinePage({
     new Set(deals.map((d) => d.loan_type).filter((v): v is string => Boolean(v)))
   ).sort((a, b) => a.localeCompare(b))
 
-  const visibleDeals = deals
+  const filtered = defaultOrdered
     .filter((d) => !activeStage || d.status === activeStage)
     .filter((d) => !industryParam || d.industry === industryParam)
     .filter((d) => !loanTypeParam || d.loan_type === loanTypeParam)
+
+  const visibleDeals = applySort(filtered, sortParam)
 
   return (
     <div className="space-y-5">
@@ -149,67 +208,74 @@ export default async function PipelinePage({
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
+        <table className="w-full table-fixed text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              <th className="whitespace-nowrap px-4 py-2.5">Company</th>
-              <th className="whitespace-nowrap px-4 py-2.5">Industry</th>
-              <th className="whitespace-nowrap px-4 py-2.5">Loan Type</th>
-              <th className="whitespace-nowrap px-4 py-2.5">Stage</th>
-              <th className="whitespace-nowrap px-4 py-2.5">Matches</th>
-              <th className="whitespace-nowrap px-4 py-2.5">Updated</th>
+              <th className="w-[22%] truncate px-4 py-2.5">Company</th>
+              <th className="w-[16%] truncate px-4 py-2.5">Industry</th>
+              <th className="w-[16%] truncate px-4 py-2.5">Loan Type</th>
+              <th className="w-[14%] truncate px-4 py-2.5">Stage</th>
+              <th className="w-[16%] truncate px-4 py-2.5">Matches</th>
+              <th className="w-[16%] truncate px-4 py-2.5">Updated</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {visibleDeals.length > 0 ? (
               visibleDeals.map((deal) => (
                 <tr key={deal.id} className="hover:bg-slate-50">
-                  <td className="whitespace-nowrap px-4 py-2">
-                    <span
-                      className={`mr-2 inline-block h-2 w-2 rounded-full ${STATUS_COLORS[deal.status as DealStatus]}`}
-                    />
-                    <Link
-                      href={`/deals/${deal.id}`}
-                      className="font-medium text-slate-800 hover:underline"
-                    >
-                      {deal.company_name}
-                    </Link>
+                  <td className="px-4 py-2">
+                    <div className="flex min-w-0 items-center">
+                      <span
+                        className={`mr-2 inline-block h-2 w-2 shrink-0 rounded-full ${STATUS_COLORS[deal.status as DealStatus]}`}
+                      />
+                      <Link
+                        href={`/deals/${deal.id}`}
+                        title={deal.company_name}
+                        className="truncate font-medium text-slate-800 hover:underline"
+                      >
+                        {deal.company_name}
+                      </Link>
+                    </div>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-600">
-                    {deal.industry ?? '—'}
+                  <td className="px-4 py-2 text-slate-600">
+                    <div className="truncate" title={deal.industry ?? undefined}>
+                      {deal.industry ?? '—'}
+                    </div>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-600">
-                    {deal.loan_type ?? '—'}
+                  <td className="px-4 py-2 text-slate-600">
+                    <div className="truncate" title={deal.loan_type ?? undefined}>
+                      {deal.loan_type ?? '—'}
+                    </div>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2">
+                  <td className="px-4 py-2">
                     <StatusSelect
                       dealId={deal.id}
                       status={deal.status as DealStatus}
                     />
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2">
+                  <td className="px-4 py-2">
                     {(() => {
-                      const scores = (deal.deal_matches ?? []).map((m) => m.score)
-                      if (scores.length === 0) {
+                      const topScore = topMatchScore(deal)
+                      const count = deal.deal_matches?.length ?? 0
+                      if (topScore === null) {
                         return <span className="text-slate-400">—</span>
                       }
-                      const topScore = Math.max(...scores)
                       return (
                         <Link
                           href={`/deals/${deal.id}#lender-matches`}
-                          className="inline-flex items-center gap-1.5 hover:underline"
+                          className="flex min-w-0 items-center gap-1.5 hover:underline"
                         >
                           <span
-                            className={`h-2.5 w-2.5 rounded-full ${matchScoreColor(topScore)}`}
+                            className={`h-2.5 w-2.5 shrink-0 rounded-full ${matchScoreColor(topScore)}`}
                           />
-                          <span className="text-slate-600">
-                            {scores.length} match{scores.length === 1 ? '' : 'es'}
+                          <span className="truncate text-slate-600">
+                            {count} match{count === 1 ? '' : 'es'}
                           </span>
                         </Link>
                       )
                     })()}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-500">
+                  <td className="truncate px-4 py-2 text-slate-500">
                     {daysAgo(deal.updated_at)}
                   </td>
                 </tr>

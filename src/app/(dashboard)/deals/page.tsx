@@ -148,48 +148,53 @@ export default async function DealsPage({
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
+        <table className="w-full table-fixed text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              <th className="whitespace-nowrap px-4 py-3">Company</th>
-              <th className="whitespace-nowrap px-4 py-3">Industry</th>
-              <th className="whitespace-nowrap px-4 py-3">Contact</th>
-              <th className="whitespace-nowrap px-4 py-3">Status</th>
-              <th className="whitespace-nowrap px-4 py-3">Activity</th>
-              <th className="whitespace-nowrap px-4 py-3">Matches</th>
-              <th className="whitespace-nowrap px-4 py-3">Added</th>
+              <th className="w-[22%] truncate px-4 py-3">Company</th>
+              <th className="w-[16%] truncate px-4 py-3">Industry</th>
+              <th className="w-[14%] truncate px-4 py-3">Contact</th>
+              <th className="w-[12%] truncate px-4 py-3">Status</th>
+              <th className="w-[10%] truncate px-4 py-3">Activity</th>
+              <th className="w-[14%] truncate px-4 py-3">Matches</th>
+              <th className="w-[12%] truncate px-4 py-3">Added</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {deals.length > 0 ? (
               deals.map((b) => (
                 <tr key={b.id} className="hover:bg-slate-50">
-                  <td className="whitespace-nowrap px-4 py-3">
+                  <td className="px-4 py-3">
                     <Link
                       href={`/deals/${b.id}`}
-                      className="font-medium text-slate-800 hover:underline"
+                      title={b.company_name}
+                      className="block truncate font-medium text-slate-800 hover:underline"
                     >
                       {b.company_name}
                     </Link>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-slate-600">
-                    {b.industry ?? '—'}
+                  <td className="px-4 py-3 text-slate-600">
+                    <div className="truncate" title={b.industry ?? undefined}>
+                      {b.industry ?? '—'}
+                    </div>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-slate-600">
-                    {b.contact_name ?? '—'}
+                  <td className="px-4 py-3 text-slate-600">
+                    <div className="truncate" title={b.contact_name ?? undefined}>
+                      {b.contact_name ?? '—'}
+                    </div>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                  <td className="px-4 py-3">
+                    <span className="inline-block max-w-full truncate rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                       {STATUS_LABELS[b.status as DealStatus]}
                     </span>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3">
+                  <td className="px-4 py-3">
                     {b.activity_score !== null ? (
-                      <span className="inline-flex items-center gap-1.5">
+                      <span className="flex min-w-0 items-center gap-1.5">
                         <span
-                          className={`h-2.5 w-2.5 rounded-full ${activityScoreColor(b.activity_score)}`}
+                          className={`h-2.5 w-2.5 shrink-0 rounded-full ${activityScoreColor(b.activity_score)}`}
                         />
-                        <span className="text-slate-600">
+                        <span className="truncate text-slate-600">
                           {b.activity_score}
                         </span>
                       </span>
@@ -197,7 +202,7 @@ export default async function DealsPage({
                       <span className="text-slate-400">—</span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3">
+                  <td className="px-4 py-3">
                     {(() => {
                       const score = topMatchScore(b)
                       const count = b.deal_matches?.length ?? 0
@@ -207,19 +212,19 @@ export default async function DealsPage({
                       return (
                         <Link
                           href={`/deals/${b.id}#lender-matches`}
-                          className="inline-flex items-center gap-1.5 hover:underline"
+                          className="flex min-w-0 items-center gap-1.5 hover:underline"
                         >
                           <span
-                            className={`h-2.5 w-2.5 rounded-full ${matchScoreColor(score)}`}
+                            className={`h-2.5 w-2.5 shrink-0 rounded-full ${matchScoreColor(score)}`}
                           />
-                          <span className="text-slate-600">
+                          <span className="truncate text-slate-600">
                             {count} match{count === 1 ? '' : 'es'}
                           </span>
                         </Link>
                       )
                     })()}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-slate-500">
+                  <td className="truncate px-4 py-3 text-slate-500">
                     {formatDateOnly(b.created_at)}
                   </td>
                 </tr>

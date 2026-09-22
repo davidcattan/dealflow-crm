@@ -23,7 +23,7 @@ export function StatusSelect({
           updateDealStage(dealId, next)
         })
       }}
-      className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 disabled:opacity-50"
+      className="w-full max-w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 disabled:opacity-50"
     >
       {DEAL_STATUSES.map((s) => (
         <option key={s} value={s}>
