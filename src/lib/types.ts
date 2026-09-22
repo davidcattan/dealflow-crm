@@ -77,6 +77,16 @@ export type DocumentRecord = {
   uploaded_at: string
 }
 
+export type DealMatch = {
+  id: string
+  deal_id: string
+  lender_id: string
+  score: number
+  reasoning: string
+  selected: boolean
+  created_at: string
+}
+
 export const DEAL_STATUSES: DealStatus[] = [
   'new',
   'in_review',
@@ -127,5 +137,14 @@ export function activityScoreColor(score: number | null): string {
   if (score >= 7) return 'bg-lime-500'
   if (score >= 5) return 'bg-yellow-400'
   if (score >= 3) return 'bg-orange-500'
+  return 'bg-red-500'
+}
+
+// Same idea, for the 0-100 lender-match fit score.
+export function matchScoreColor(score: number): string {
+  if (score >= 80) return 'bg-emerald-500'
+  if (score >= 60) return 'bg-lime-500'
+  if (score >= 40) return 'bg-yellow-400'
+  if (score >= 20) return 'bg-orange-500'
   return 'bg-red-500'
 }

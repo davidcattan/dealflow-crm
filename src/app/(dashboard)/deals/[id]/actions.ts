@@ -150,6 +150,18 @@ export async function deleteDeal(formData: FormData) {
   redirect('/deals')
 }
 
+export async function toggleMatchSelected(formData: FormData) {
+  const dealId = String(formData.get('deal_id') ?? '')
+  const matchId = String(formData.get('match_id') ?? '')
+  const nextSelected = String(formData.get('next_selected') ?? '') === 'true'
+  if (!matchId) return
+
+  const supabase = await createClient()
+  await supabase.from('deal_matches').update({ selected: nextSelected }).eq('id', matchId)
+
+  revalidatePath(`/deals/${dealId}`)
+}
+
 export async function getDocumentUrl(storagePath: string) {
   const supabase = await createClient()
   const { data } = await supabase.storage

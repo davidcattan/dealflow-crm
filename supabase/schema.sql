@@ -125,6 +125,17 @@ create table if not exists public.lender_contacts (
   created_at timestamptz not null default now()
 );
 
+-- ── Deal <-> lender match results (AI-scored) ────────────────────────────
+create table if not exists public.deal_matches (
+  id uuid primary key default gen_random_uuid(),
+  deal_id uuid not null references public.deals (id) on delete cascade,
+  lender_id uuid not null references public.lenders (id) on delete cascade,
+  score smallint not null check (score between 0 and 100),
+  reasoning text not null,
+  selected boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
 -- ── Documents (metadata; the file itself lives in Storage) ─────────────────
 create table if not exists public.documents (
   id uuid primary key default gen_random_uuid(),
@@ -147,6 +158,7 @@ alter table public.deals enable row level security;
 alter table public.deal_updates enable row level security;
 alter table public.lenders enable row level security;
 alter table public.lender_contacts enable row level security;
+alter table public.deal_matches enable row level security;
 alter table public.documents enable row level security;
 
 drop policy if exists "profiles: read all" on public.profiles;
@@ -167,6 +179,10 @@ create policy "lenders: full access" on public.lenders
 
 drop policy if exists "lender_contacts: full access" on public.lender_contacts;
 create policy "lender_contacts: full access" on public.lender_contacts
+  for all to authenticated using (true) with check (true);
+
+drop policy if exists "deal_matches: full access" on public.deal_matches;
+create policy "deal_matches: full access" on public.deal_matches
   for all to authenticated using (true) with check (true);
 
 drop policy if exists "documents: full access" on public.documents;

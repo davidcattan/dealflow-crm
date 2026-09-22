@@ -10,6 +10,7 @@ import {
 } from './actions'
 import { ConfirmButton } from '@/components/confirm-button'
 import { UnderwritingPanel } from './underwriting-panel'
+import { MatchingPanel, type MatchWithLender } from './matching-panel'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
@@ -30,22 +31,47 @@ export default async function DealDetailPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: deal }, { data: documents }, { data: updates }] = await Promise.all([
-    supabase.from('deals').select('*').eq('id', id).single(),
-    supabase
-      .from('documents')
-      .select('*')
-      .eq('deal_id', id)
-      .order('uploaded_at', { ascending: false }),
-    supabase
-      .from('deal_updates')
-      .select('*')
-      .eq('deal_id', id)
-      .order('entry_date', { ascending: false, nullsFirst: false })
-      .order('created_at', { ascending: false }),
-  ])
+  const [{ data: deal }, { data: documents }, { data: updates }, { data: matches }] =
+    await Promise.all([
+      supabase.from('deals').select('*').eq('id', id).single(),
+      supabase
+        .from('documents')
+        .select('*')
+        .eq('deal_id', id)
+        .order('uploaded_at', { ascending: false }),
+      supabase
+        .from('deal_updates')
+        .select('*')
+        .eq('deal_id', id)
+        .order('entry_date', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('deal_matches')
+        .select('id, lender_id, score, reasoning, selected, created_at, lenders(name)')
+        .eq('deal_id', id)
+        .order('score', { ascending: false }),
+    ])
 
   if (!deal) notFound()
+
+  const matchesWithLender: MatchWithLender[] = (matches ?? []).map((m) => {
+    const lender = Array.isArray(m.lenders) ? m.lenders[0] : m.lenders
+    return {
+      id: m.id,
+      lender_id: m.lender_id,
+      lender_name: lender?.name ?? 'Unknown lender',
+      score: m.score,
+      reasoning: m.reasoning,
+      selected: m.selected,
+    }
+  })
+  const lastMatchRunAt =
+    matches && matches.length > 0
+      ? matches.reduce(
+          (latest, m) => (m.created_at > latest ? m.created_at : latest),
+          matches[0].created_at
+        )
+      : null
 
   const docsWithUrls = await Promise.all(
     ((documents ?? []) as DocumentRecord[]).map(async (doc) => {
@@ -230,6 +256,12 @@ export default async function DealDetailPage({
         dealId={deal.id}
         underwriting={deal.underwriting as Underwriting | null}
         generatedAt={deal.underwriting_generated_at}
+      />
+
+      <MatchingPanel
+        dealId={deal.id}
+        matches={matchesWithLender}
+        lastRunAt={lastMatchRunAt}
       />
     </div>
   )
