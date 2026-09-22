@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react'
 import { createDeal } from './actions'
+import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 
 export function NewDealForm() {
   const [open, setOpen] = useState(false)
@@ -46,10 +47,35 @@ export function NewDealForm() {
         <label className="block text-xs font-medium text-slate-600">
           Industry
         </label>
-        <input
+        <select
           name="industry"
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
+          defaultValue=""
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+        >
+          <option value="">—</option>
+          {INDUSTRY_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-slate-600">
+          Loan type
+        </label>
+        <select
+          name="loan_type"
+          defaultValue=""
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+        >
+          <option value="">—</option>
+          {LOAN_TYPE_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
       </div>
       <div>
         <label className="block text-xs font-medium text-slate-600">
@@ -79,6 +105,20 @@ export function NewDealForm() {
           placeholder="https://"
           className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="block text-xs font-medium text-slate-600">
+          Diligence documents
+        </label>
+        <input
+          type="file"
+          name="files"
+          multiple
+          className="mt-1 w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-slate-200"
+        />
+        <p className="mt-1 text-xs text-slate-400">
+          Optional — you can also add these later from the deal page.
+        </p>
       </div>
 
       {state?.error && (

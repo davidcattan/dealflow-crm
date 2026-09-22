@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { updateDeal } from './actions'
 import { DEAL_STATUSES, STATUS_LABELS, activityScoreColor, type Deal } from '@/lib/types'
+import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -34,6 +35,7 @@ export function DealDetails({ deal }: { deal: Deal }) {
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           <Fact label="Status" value={STATUS_LABELS[deal.status]} />
           <Fact label="Industry" value={deal.industry} />
+          <Fact label="Loan type" value={deal.loan_type} />
           <Fact
             label="Website"
             value={
@@ -115,11 +117,43 @@ export function DealDetails({ deal }: { deal: Deal }) {
             <label className="block text-xs font-medium text-slate-600">
               Industry
             </label>
-            <input
+            <select
               name="industry"
               defaultValue={deal.industry ?? ''}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+            >
+              <option value="">—</option>
+              {deal.industry &&
+                !(INDUSTRY_CATEGORIES as readonly string[]).includes(deal.industry) && (
+                  <option value={deal.industry}>{deal.industry} (non-standard)</option>
+                )}
+              {INDUSTRY_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600">
+              Loan type
+            </label>
+            <select
+              name="loan_type"
+              defaultValue={deal.loan_type ?? ''}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+            >
+              <option value="">—</option>
+              {deal.loan_type &&
+                !(LOAN_TYPE_CATEGORIES as readonly string[]).includes(deal.loan_type) && (
+                  <option value={deal.loan_type}>{deal.loan_type} (non-standard)</option>
+                )}
+              {LOAN_TYPE_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600">

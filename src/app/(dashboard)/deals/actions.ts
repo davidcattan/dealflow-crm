@@ -29,6 +29,7 @@ export async function createDeal(
       contact_email: emptyToNull(formData.get('contact_email')),
       contact_phone: emptyToNull(formData.get('contact_phone')),
       industry: emptyToNull(formData.get('industry')),
+      loan_type: emptyToNull(formData.get('loan_type')),
       website: emptyToNull(formData.get('website')),
       created_by: user?.id ?? null,
     })
@@ -37,6 +38,30 @@ export async function createDeal(
 
   if (error || !data) {
     return { error: 'Could not create deal. Please try again.' }
+  }
+
+  // Upload any diligence documents attached at creation time — best
+  // effort per file, since the deal itself is already created and
+  // shouldn't be blocked by one bad upload.
+  const files = formData.getAll('files').filter((f): f is File => f instanceof File && f.size > 0)
+  for (const file of files) {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const storagePath = `${data.id}/${Date.now()}-${safeName}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('borrower-documents')
+      .upload(storagePath, file, { contentType: file.type || undefined })
+
+    if (uploadError) continue
+
+    await supabase.from('documents').insert({
+      deal_id: data.id,
+      file_name: file.name,
+      storage_path: storagePath,
+      file_size: file.size,
+      content_type: file.type || null,
+      uploaded_by: user?.id ?? null,
+    })
   }
 
   revalidatePath('/deals')
