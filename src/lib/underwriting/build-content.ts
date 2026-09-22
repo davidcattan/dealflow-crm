@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs'
+import { extractText, getDocumentProxy } from 'unpdf'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { DocumentRecord } from '@/lib/types'
 
@@ -23,6 +24,31 @@ const SPREADSHEET_TYPES = new Set([
 function extensionOf(fileName: string) {
   const dot = fileName.lastIndexOf('.')
   return dot === -1 ? '' : fileName.slice(dot + 1).toLowerCase()
+}
+
+// Native PDF "document" blocks make Claude visually read every page, which
+// is noticeably slower (and costs more) than plain text — worthwhile for an
+// actual scanned/image-only document, wasteful for a normal digitally-
+// generated PDF (financial statements, tax returns, etc. almost always have
+// a real text layer). Try extracting text first; if there's too little of
+// it per page to be a real text layer, return null so the caller falls back
+// to sending the raw PDF for Claude to read visually.
+async function pdfToText(buffer: Buffer, fileName: string): Promise<string | null> {
+  try {
+    const pdf = await getDocumentProxy(new Uint8Array(buffer))
+    const { totalPages, text } = await extractText(pdf, { mergePages: true })
+    const trimmed = text.trim()
+
+    // ~30 chars/page is a low bar any real text layer clears easily; a
+    // scanned page with no text layer extracts to empty or near-empty.
+    if (totalPages === 0 || trimmed.length < totalPages * 30) {
+      return null
+    }
+
+    return `--- ${fileName} ---\n${trimmed}`
+  } catch {
+    return null
+  }
 }
 
 async function spreadsheetToText(buffer: Buffer, fileName: string): Promise<string> {
@@ -97,14 +123,21 @@ export async function buildDocumentContent(
     const contentType = doc.content_type ?? ''
 
     if (contentType === 'application/pdf' || ext === 'pdf') {
-      blocks.push({
-        type: 'document',
-        source: {
-          type: 'base64',
-          media_type: 'application/pdf',
-          data: buffer.toString('base64'),
-        },
-      })
+      const text = await pdfToText(buffer, doc.file_name)
+      if (text) {
+        blocks.push({ type: 'text', text })
+      } else {
+        // No usable text layer — likely a scan — fall back to letting
+        // Claude read it visually, page by page.
+        blocks.push({
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: 'application/pdf',
+            data: buffer.toString('base64'),
+          },
+        })
+      }
     } else if (IMAGE_TYPES.has(contentType) || ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) {
       const mediaType = contentType || `image/${ext === 'jpg' ? 'jpeg' : ext}`
       blocks.push({
