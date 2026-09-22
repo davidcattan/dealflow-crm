@@ -51,6 +51,15 @@ export type DocumentContentResult = {
   skipped: string[]
 }
 
+// Every document here gets fully base64-encoded into one request to
+// Claude — with no cap, a handful of real diligence PDFs can blow past
+// Anthropic's request-size limit or just take long enough to time out the
+// function, and either way the failure is opaque to the user. Stop adding
+// documents once this budget (of *original* file bytes, before the ~33%
+// base64 inflation) is used up; anything beyond it is skipped with a clear
+// reason instead of silently failing the whole run.
+const MAX_TOTAL_DOCUMENT_BYTES = 15 * 1024 * 1024
+
 export async function buildDocumentContent(
   supabase: SupabaseClient,
   documents: DocumentRecord[]
@@ -58,7 +67,21 @@ export async function buildDocumentContent(
   const blocks: ContentBlock[] = []
   const skipped: string[] = []
 
-  for (const doc of documents) {
+  // Smallest first, so the budget is spent on as many documents as
+  // possible rather than one large file crowding everything else out.
+  const ordered = [...documents].sort(
+    (a, b) => (a.file_size ?? 0) - (b.file_size ?? 0)
+  )
+
+  let bytesUsed = 0
+
+  for (const doc of ordered) {
+    const size = doc.file_size ?? 0
+    if (bytesUsed + size > MAX_TOTAL_DOCUMENT_BYTES) {
+      skipped.push(`${doc.file_name} (skipped — total document size limit reached)`)
+      continue
+    }
+
     const { data, error } = await supabase.storage
       .from('borrower-documents')
       .download(doc.storage_path)
@@ -69,6 +92,7 @@ export async function buildDocumentContent(
     }
 
     const buffer = Buffer.from(await data.arrayBuffer())
+    bytesUsed += buffer.byteLength
     const ext = extensionOf(doc.file_name)
     const contentType = doc.content_type ?? ''
 

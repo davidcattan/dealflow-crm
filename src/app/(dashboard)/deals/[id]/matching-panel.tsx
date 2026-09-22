@@ -5,6 +5,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { matchScoreColor } from '@/lib/types'
 import { toggleMatchSelected } from './actions'
+import { readJsonResponse } from '@/lib/fetch-json'
 
 export type MatchWithLender = {
   id: string
@@ -89,13 +90,13 @@ export function MatchingPanel({
     setInfoNote(null)
     try {
       const res = await fetch(`/api/deals/${dealId}/match`, { method: 'POST' })
-      const body = await res.json()
-      if (!res.ok) {
-        throw new Error(body.error ?? 'Matching failed')
+      const result = await readJsonResponse<{ count: number; notes?: string | null }>(res)
+      if (!result.ok) {
+        throw new Error(result.message)
       }
-      if (body.count === 0) {
+      if (result.body.count === 0) {
         setInfoNote(
-          body.notes ?? 'No plausible lender matches were found for this deal.'
+          result.body.notes ?? 'No plausible lender matches were found for this deal.'
         )
       }
       router.refresh()

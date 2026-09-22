@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatCurrency } from '@/lib/format'
+import { readJsonResponse } from '@/lib/fetch-json'
 
 export function UnderwritingPanel({
   dealId,
@@ -25,9 +26,9 @@ export function UnderwritingPanel({
       const res = await fetch(`/api/deals/${dealId}/underwrite`, {
         method: 'POST',
       })
-      const body = await res.json()
-      if (!res.ok) {
-        throw new Error(body.error ?? 'Underwriting failed')
+      const result = await readJsonResponse(res)
+      if (!result.ok) {
+        throw new Error(result.message)
       }
       router.refresh()
     } catch (err) {

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { readJsonResponse } from '@/lib/fetch-json'
 
 export function BackfillButton({
   endpoint,
@@ -25,11 +26,11 @@ export function BackfillButton({
     setResult(null)
     try {
       const res = await fetch(endpoint, { method: 'POST' })
-      const body = await res.json()
-      if (!res.ok) {
-        throw new Error(body.error ?? 'Backfill failed')
+      const result = await readJsonResponse<{ updated: number; skipped: number }>(res)
+      if (!result.ok) {
+        throw new Error(result.message)
       }
-      setResult(body)
+      setResult(result.body)
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Backfill failed')
