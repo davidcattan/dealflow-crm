@@ -267,6 +267,8 @@ export default async function DealDetailPage({
         dealId={deal.id}
         matches={matchesWithLender}
         lastRunAt={lastMatchRunAt}
+        hasUnderwriting={Boolean(deal.underwriting)}
+        currentLoanType={deal.loan_type}
       />
     </div>
   )

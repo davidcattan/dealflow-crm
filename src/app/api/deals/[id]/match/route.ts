@@ -20,6 +20,19 @@ export async function POST(
 
   const { id } = await ctx.params
 
+  const { data: deal } = await supabase
+    .from('deals')
+    .select('underwriting')
+    .eq('id', id)
+    .single()
+
+  if (!deal?.underwriting) {
+    return NextResponse.json(
+      { error: 'Run underwriting on this deal before matching lenders.' },
+      { status: 400 }
+    )
+  }
+
   try {
     const { matches, notes } = await runMatching(id)
 

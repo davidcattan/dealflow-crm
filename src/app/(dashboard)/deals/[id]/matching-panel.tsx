@@ -70,14 +70,81 @@ function DraftEmail({ subject, body }: { subject: string; body: string }) {
   )
 }
 
+function LoanTypeRecommender({
+  dealId,
+  currentLoanType,
+}: {
+  dealId: string
+  currentLoanType: string | null
+}) {
+  const router = useRouter()
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [reasoning, setReasoning] = useState<string | null>(null)
+
+  async function run() {
+    setLoading(true)
+    setError(null)
+    setReasoning(null)
+    try {
+      const res = await fetch(`/api/deals/${dealId}/recommend-loan-type`, {
+        method: 'POST',
+      })
+      const result = await readJsonResponse<{ loanType: string | null; reasoning: string }>(res)
+      if (!result.ok) {
+        throw new Error(result.message)
+      }
+      setReasoning(result.body.reasoning)
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Recommendation failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-slate-800">
+            Loan type: {currentLoanType ?? 'not set'}
+          </p>
+          <p className="text-xs text-slate-500">
+            Uses underwriting, documents, and notes to suggest the best-fit
+            loan type before matching.
+          </p>
+        </div>
+        <button
+          onClick={run}
+          disabled={loading}
+          className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+        >
+          {loading
+            ? 'Analyzing…'
+            : currentLoanType
+              ? 'Re-recommend loan type'
+              : 'Recommend loan type'}
+        </button>
+      </div>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {reasoning && <p className="mt-2 text-sm text-slate-600">{reasoning}</p>}
+    </div>
+  )
+}
+
 export function MatchingPanel({
   dealId,
   matches,
   lastRunAt,
+  hasUnderwriting,
+  currentLoanType,
 }: {
   dealId: string
   matches: MatchWithLender[]
   lastRunAt: string | null
+  hasUnderwriting: boolean
+  currentLoanType: string | null
 }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -123,26 +190,46 @@ export function MatchingPanel({
             </p>
           )}
         </div>
-        <button
-          onClick={run}
-          disabled={loading}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-        >
-          {loading
-            ? 'Matching…'
-            : matches.length > 0
-              ? 'Re-run matching'
-              : 'Find matching lenders'}
-        </button>
+        {hasUnderwriting ? (
+          <button
+            onClick={run}
+            disabled={loading}
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          >
+            {loading
+              ? 'Matching…'
+              : matches.length > 0
+                ? 'Re-run matching'
+                : 'Find matching lenders'}
+          </button>
+        ) : (
+          <button
+            disabled
+            title="Run underwriting on this deal first"
+            className="cursor-not-allowed rounded-md bg-slate-200 px-4 py-2 text-sm font-medium text-slate-400"
+          >
+            Find matching lenders
+          </button>
+        )}
       </div>
+
+      {!hasUnderwriting && (
+        <p className="mt-3 text-sm text-amber-700">
+          Run underwriting above first — matching uses it to judge fit, so
+          it&apos;s locked until then.
+        </p>
+      )}
+
+      {hasUnderwriting && (
+        <LoanTypeRecommender dealId={dealId} currentLoanType={currentLoanType} />
+      )}
 
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       {infoNote && <p className="mt-3 text-sm text-slate-500">{infoNote}</p>}
 
-      {matches.length === 0 && !loading && !infoNote && (
+      {hasUnderwriting && matches.length === 0 && !loading && !infoNote && (
         <p className="mt-4 text-sm text-slate-400">
-          Scores every active lender against this deal&apos;s profile
-          (underwriting if available, otherwise industry/notes/updates) and
+          Scores every active lender against this deal&apos;s profile and
           returns the best realistic fits with reasoning. Matches that score
           70+ also get a draft submission email, ready to review below.
         </p>
