@@ -148,6 +148,14 @@ export default async function PipelinePage({
   const industries = [...INDUSTRY_CATEGORIES].sort((a, b) => a.localeCompare(b))
   const loanTypes = [...LOAN_TYPE_CATEGORIES].sort((a, b) => a.localeCompare(b))
 
+  const suggestions = deals.map((d) => ({
+    id: d.id,
+    label: d.company_name,
+    sublabel: d.contact_name,
+    searchText: d.rep_name,
+    href: `/deals/${d.id}`,
+  }))
+
   const filtered = defaultOrdered
     .filter((d) => !activeStage || d.status === activeStage)
     .filter((d) => !industryParam || d.industry === industryParam)
@@ -229,7 +237,10 @@ export default async function PipelinePage({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <SearchBar placeholder="Search company, contact, rep, notes, date…" />
+        <SearchBar
+          placeholder="Search company, contact, rep, notes, date…"
+          suggestions={suggestions}
+        />
         <PipelineFilterBar industries={industries} loanTypes={loanTypes} />
       </div>
 

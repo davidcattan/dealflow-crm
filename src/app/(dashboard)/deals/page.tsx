@@ -106,6 +106,14 @@ export default async function DealsPage({
   ) as DealRow[]
   const deals = sortDeals(searched, sort ?? 'date_desc')
 
+  const suggestions = (rawDeals ?? []).map((d) => ({
+    id: d.id,
+    label: d.company_name,
+    sublabel: d.contact_name,
+    searchText: d.rep_name,
+    href: `/deals/${d.id}`,
+  }))
+
   const industrySet: readonly string[] = INDUSTRY_CATEGORIES
   const loanTypeSet: readonly string[] = LOAN_TYPE_CATEGORIES
   const nonStandardIndustryCount = (categoryCheck ?? []).filter(
@@ -170,7 +178,10 @@ export default async function DealsPage({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <SearchBar placeholder="Search company, contact, rep, notes, date…" />
+        <SearchBar
+          placeholder="Search company, contact, rep, notes, date…"
+          suggestions={suggestions}
+        />
         <DealSortBar />
       </div>
 
