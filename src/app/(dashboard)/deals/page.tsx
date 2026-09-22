@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NewDealForm } from './new-deal-form'
 import { DealSortBar } from './sort-bar'
 import { BackfillButton } from './backfill-button'
+import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 import {
   STATUS_LABELS,
   DEAL_STATUSES,
@@ -81,13 +82,20 @@ export default async function DealsPage({
     ? query.in('status', RESOLVED_STATUSES)
     : query.not('status', 'in', `(${RESOLVED_STATUSES.join(',')})`)
 
-  const [{ data: rawDeals }, { count: missingIndustryCount }, { count: missingLoanTypeCount }] =
-    await Promise.all([
-      query,
-      supabase.from('deals').select('*', { count: 'exact', head: true }).is('industry', null),
-      supabase.from('deals').select('*', { count: 'exact', head: true }).is('loan_type', null),
-    ])
+  const [{ data: rawDeals }, { data: categoryCheck }] = await Promise.all([
+    query,
+    supabase.from('deals').select('industry, loan_type'),
+  ])
   const deals = sortDeals((rawDeals ?? []) as DealRow[], sort ?? 'date_desc')
+
+  const industrySet: readonly string[] = INDUSTRY_CATEGORIES
+  const loanTypeSet: readonly string[] = LOAN_TYPE_CATEGORIES
+  const nonStandardIndustryCount = (categoryCheck ?? []).filter(
+    (d) => !d.industry || !industrySet.includes(d.industry)
+  ).length
+  const nonStandardLoanTypeCount = (categoryCheck ?? []).filter(
+    (d) => !d.loan_type || !loanTypeSet.includes(d.loan_type)
+  ).length
 
   return (
     <div className="space-y-6">
@@ -101,13 +109,13 @@ export default async function DealsPage({
         <div className="flex items-center gap-3">
           <BackfillButton
             endpoint="/api/deals/backfill-industry"
-            label="Backfill missing industries"
-            missingCount={missingIndustryCount ?? 0}
+            label="Standardize industries"
+            missingCount={nonStandardIndustryCount}
           />
           <BackfillButton
             endpoint="/api/deals/backfill-loan-type"
-            label="Backfill missing loan types"
-            missingCount={missingLoanTypeCount ?? 0}
+            label="Standardize loan types"
+            missingCount={nonStandardLoanTypeCount}
           />
           <Link
             href="/deals/import"

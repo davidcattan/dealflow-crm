@@ -3,12 +3,18 @@ import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { createClient } from '@/lib/supabase/server'
 import { LoanTypeBackfillSchema } from './backfill-loan-type-schema'
+import { LOAN_TYPE_CATEGORIES } from './categories'
 import type { Underwriting } from '@/lib/underwriting/schema'
 
 // Deals per Claude call — see backfill-industry.ts for the same reasoning.
 const BATCH_SIZE = 40
 
-const INSTRUCTIONS = `You are classifying the type of financing a borrower needs for a debt brokerage's CRM, using only the company name, its deal notes, and its ask. Use a short, standard lending-industry category (1-4 words) such as: ABL (accounts receivable & inventory), HELOC, Real Estate Bridge, Equipment Financing, Factoring, Construction, Working Capital, SBA, Term Loan, M&A / Acquisition Financing, DSCR / Rental. Prefer the most standard/common label a lender would recognize. If the notes and ask give genuinely no signal about what kind of financing is needed, return null rather than guessing.`
+const INSTRUCTIONS = `You are classifying the type of financing a borrower needs for a debt brokerage's CRM, using only the company name, its deal notes, and its ask.
+
+Choose exactly one of these fixed categories for each deal — do not invent new ones:
+${LOAN_TYPE_CATEGORIES.map((c) => `- ${c}`).join('\n')}
+
+If the notes and ask give genuinely no signal about what kind of financing is needed, return null rather than guessing.`
 
 function truncate(text: string | null | undefined, max: number): string {
   if (!text) return ''
@@ -18,13 +24,20 @@ function truncate(text: string | null | undefined, max: number): string {
 export async function backfillLoanTypes() {
   const supabase = await createClient()
 
-  const { data: deals, error } = await supabase
+  const { data: allDeals, error } = await supabase
     .from('deals')
-    .select('id, company_name, deal_type, notes, underwriting')
-    .is('loan_type', null)
+    .select('id, company_name, deal_type, notes, underwriting, loan_type')
 
   if (error) throw new Error('Failed to load deals')
-  if (!deals || deals.length === 0) {
+
+  // Reclassify anything missing or not already one of the fixed
+  // categories — covers both brand-new deals and deals still holding an
+  // older freeform label from before the taxonomy was fixed.
+  const deals = (allDeals ?? []).filter(
+    (d) => !d.loan_type || !(LOAN_TYPE_CATEGORIES as readonly string[]).includes(d.loan_type)
+  )
+
+  if (deals.length === 0) {
     return { updated: 0, skipped: 0, batches: 0 }
   }
 
@@ -72,15 +85,17 @@ export async function backfillLoanTypes() {
     for (const c of structured.parsed_output.classifications) {
       const dealId = refMap.get(c.deal_ref)
       if (!dealId) continue
-      if (!c.loan_type) {
-        skipped++
-        continue
-      }
+      // A null classification means "genuinely no signal" — clear the
+      // field rather than leaving whatever freeform value was there
+      // before, or old non-standard labels would keep polluting the
+      // filter dropdown even after standardizing.
       const { error: updateError } = await supabase
         .from('deals')
         .update({ loan_type: c.loan_type })
         .eq('id', dealId)
-      if (!updateError) updated++
+      if (updateError) continue
+      if (c.loan_type) updated++
+      else skipped++
     }
   }
 

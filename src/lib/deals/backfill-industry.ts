@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { createClient } from '@/lib/supabase/server'
 import { IndustryBackfillSchema } from './backfill-industry-schema'
+import { INDUSTRY_CATEGORIES } from './categories'
 import type { Underwriting } from '@/lib/underwriting/schema'
 
 // Deals per Claude call. Classification is a light task per deal, so a
@@ -10,7 +11,12 @@ import type { Underwriting } from '@/lib/underwriting/schema'
 // pipeline.
 const BATCH_SIZE = 40
 
-const INSTRUCTIONS = `You are classifying the industry of small/private borrower companies for a debt brokerage's CRM, using only their company name, deal notes, and ask. Most of these are small private businesses — infer from name conventions and context (e.g. "... Construction LLC", "... Auto Sale", "... Concrete") where possible. Use a short, general category (2-4 words) rather than an overly specific one. If a company name and notes give genuinely no signal (e.g. a personal name with no other context), return null rather than guessing.`
+const INSTRUCTIONS = `You are classifying the industry of small/private borrower companies for a debt brokerage's CRM, using only their company name, deal notes, and ask. Most of these are small private businesses — infer from name conventions and context (e.g. "... Construction LLC", "... Auto Sale", "... Concrete") where possible.
+
+Choose exactly one of these fixed categories for each deal — do not invent new ones:
+${INDUSTRY_CATEGORIES.map((c) => `- ${c}`).join('\n')}
+
+Use "Other" for a real but uncommon industry that doesn't fit any category above. If a company name and notes give genuinely no signal at all, return null rather than guessing.`
 
 function truncate(text: string | null | undefined, max: number): string {
   if (!text) return ''
@@ -20,13 +26,20 @@ function truncate(text: string | null | undefined, max: number): string {
 export async function backfillIndustries() {
   const supabase = await createClient()
 
-  const { data: deals, error } = await supabase
+  const { data: allDeals, error } = await supabase
     .from('deals')
-    .select('id, company_name, deal_type, notes, underwriting')
-    .is('industry', null)
+    .select('id, company_name, deal_type, notes, underwriting, industry')
 
   if (error) throw new Error('Failed to load deals')
-  if (!deals || deals.length === 0) {
+
+  // Reclassify anything missing or not already one of the fixed
+  // categories — covers both brand-new deals and deals still holding an
+  // older freeform label from before the taxonomy was fixed.
+  const deals = (allDeals ?? []).filter(
+    (d) => !d.industry || !(INDUSTRY_CATEGORIES as readonly string[]).includes(d.industry)
+  )
+
+  if (deals.length === 0) {
     return { updated: 0, skipped: 0, batches: 0 }
   }
 
@@ -74,15 +87,17 @@ export async function backfillIndustries() {
     for (const c of structured.parsed_output.classifications) {
       const dealId = refMap.get(c.deal_ref)
       if (!dealId) continue
-      if (!c.industry) {
-        skipped++
-        continue
-      }
+      // A null classification means "genuinely no signal" — clear the
+      // field rather than leaving whatever freeform value was there
+      // before, or old non-standard labels would keep polluting the
+      // filter dropdown even after standardizing.
       const { error: updateError } = await supabase
         .from('deals')
         .update({ industry: c.industry })
         .eq('id', dealId)
-      if (!updateError) updated++
+      if (updateError) continue
+      if (c.industry) updated++
+      else skipped++
     }
   }
 

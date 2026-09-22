@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { LOAN_TYPE_CATEGORIES } from './categories'
 
 export const LoanTypeBackfillSchema = z.object({
   classifications: z
@@ -8,10 +9,10 @@ export const LoanTypeBackfillSchema = z.object({
           .string()
           .describe('The D# reference from the list, e.g. "D12"'),
         loan_type: z
-          .string()
+          .enum(LOAN_TYPE_CATEGORIES)
           .nullable()
           .describe(
-            'A short loan/financing category (1-4 words) such as "ABL", "HELOC", "Real Estate Bridge", "Equipment Financing", "Factoring", "Construction", "Working Capital", "SBA", "Term Loan", "M&A / Acquisition Financing". Null if the ask/notes genuinely give no signal — do not guess.'
+            'One of the fixed loan-type categories — pick the closest fit rather than inventing a new one. Null only if the ask/notes genuinely give no signal about what kind of financing is needed.'
           ),
       })
     )

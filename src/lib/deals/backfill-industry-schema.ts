@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { INDUSTRY_CATEGORIES } from './categories'
 
 export const IndustryBackfillSchema = z.object({
   classifications: z
@@ -8,10 +9,10 @@ export const IndustryBackfillSchema = z.object({
           .string()
           .describe('The D# reference from the list, e.g. "D12"'),
         industry: z
-          .string()
+          .enum(INDUSTRY_CATEGORIES)
           .nullable()
           .describe(
-            'A concise industry category (2-4 words), e.g. "Construction", "Trucking & Logistics", "Restaurants / Food Service", "Healthcare Services". Null if the company name, notes, and ask genuinely give no signal to infer from — do not guess.'
+            'One of the fixed industry categories — pick the closest fit rather than inventing a new one. Use "Other" for a real but uncommon industry, and null only if the company name, notes, and ask genuinely give no signal at all.'
           ),
       })
     )
