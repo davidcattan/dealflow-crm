@@ -67,7 +67,7 @@ export async function runUnderwriting(dealId: string): Promise<Underwriting> {
   const runner = client.beta.messages.toolRunner({
     model: 'claude-opus-5',
     max_tokens: 16000,
-    tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 5 }],
+    tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
     messages: [{ role: 'user', content: researchContent }],
   })
 
