@@ -17,8 +17,8 @@ export function PipelineFilterBar({
   industries,
   loanTypes,
 }: {
-  industries: string[]
-  loanTypes: string[]
+  industries: readonly string[]
+  loanTypes: readonly string[]
 }) {
   const router = useRouter()
   const pathname = usePathname()

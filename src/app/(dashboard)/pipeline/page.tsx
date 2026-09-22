@@ -9,6 +9,7 @@ import {
 } from '@/lib/types'
 import { StatusSelect } from './status-select'
 import { PipelineFilterBar } from './filter-bar'
+import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 
 function stageHref(
   status: string | null,
@@ -131,12 +132,11 @@ export default async function PipelinePage({
     count: deals.filter((d) => d.status === status).length,
   }))
 
-  const industries = Array.from(
-    new Set(deals.map((d) => d.industry).filter((v): v is string => Boolean(v)))
-  ).sort((a, b) => a.localeCompare(b))
-  const loanTypes = Array.from(
-    new Set(deals.map((d) => d.loan_type).filter((v): v is string => Boolean(v)))
-  ).sort((a, b) => a.localeCompare(b))
+  // The full fixed taxonomies, not just values currently in use — so a
+  // category like "Other" is always filterable even before any deal has
+  // been classified into it. Sorted alphabetically for easy scanning.
+  const industries = [...INDUSTRY_CATEGORIES].sort((a, b) => a.localeCompare(b))
+  const loanTypes = [...LOAN_TYPE_CATEGORIES].sort((a, b) => a.localeCompare(b))
 
   const filtered = defaultOrdered
     .filter((d) => !activeStage || d.status === activeStage)
