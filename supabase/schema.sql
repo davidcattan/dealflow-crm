@@ -57,6 +57,11 @@ create table if not exists public.deals (
   -- `status`.
   activity_score smallint check (activity_score between 0 and 10),
   deal_type text,
+  -- Structured loan-type category (e.g. "ABL", "HELOC", "Real Estate
+  -- Bridge") — distinct from deal_type, which is a free-text ask
+  -- description. Used for the Pipeline filter and as a lender-matching
+  -- signal.
+  loan_type text,
   rep_name text,
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),

@@ -3,7 +3,15 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
-export function BackfillIndustryButton({ missingCount }: { missingCount: number }) {
+export function BackfillButton({
+  endpoint,
+  label,
+  missingCount,
+}: {
+  endpoint: string
+  label: string
+  missingCount: number
+}) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -16,7 +24,7 @@ export function BackfillIndustryButton({ missingCount }: { missingCount: number 
     setError(null)
     setResult(null)
     try {
-      const res = await fetch('/api/deals/backfill-industry', { method: 'POST' })
+      const res = await fetch(endpoint, { method: 'POST' })
       const body = await res.json()
       if (!res.ok) {
         throw new Error(body.error ?? 'Backfill failed')
@@ -38,9 +46,7 @@ export function BackfillIndustryButton({ missingCount }: { missingCount: number 
           disabled={loading}
           className="rounded-md border border-slate-300 px-3 py-1.5 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
         >
-          {loading
-            ? 'Classifying…'
-            : `Backfill missing industries (${missingCount})`}
+          {loading ? 'Classifying…' : `${label} (${missingCount})`}
         </button>
       )}
       {error && <span className="text-xs text-red-600">{error}</span>}

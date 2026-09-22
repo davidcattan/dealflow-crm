@@ -19,6 +19,7 @@ export type Deal = {
   notes: string | null
   activity_score: number | null
   deal_type: string | null
+  loan_type: string | null
   rep_name: string | null
   created_by: string | null
   created_at: string

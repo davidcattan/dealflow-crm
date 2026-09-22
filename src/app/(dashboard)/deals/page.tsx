@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { NewDealForm } from './new-deal-form'
 import { DealSortBar } from './sort-bar'
-import { BackfillIndustryButton } from './backfill-industry-button'
+import { BackfillButton } from './backfill-button'
 import {
   STATUS_LABELS,
   DEAL_STATUSES,
@@ -81,10 +81,12 @@ export default async function DealsPage({
     ? query.in('status', RESOLVED_STATUSES)
     : query.not('status', 'in', `(${RESOLVED_STATUSES.join(',')})`)
 
-  const [{ data: rawDeals }, { count: missingIndustryCount }] = await Promise.all([
-    query,
-    supabase.from('deals').select('*', { count: 'exact', head: true }).is('industry', null),
-  ])
+  const [{ data: rawDeals }, { count: missingIndustryCount }, { count: missingLoanTypeCount }] =
+    await Promise.all([
+      query,
+      supabase.from('deals').select('*', { count: 'exact', head: true }).is('industry', null),
+      supabase.from('deals').select('*', { count: 'exact', head: true }).is('loan_type', null),
+    ])
   const deals = sortDeals((rawDeals ?? []) as DealRow[], sort ?? 'date_desc')
 
   return (
@@ -97,7 +99,16 @@ export default async function DealsPage({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <BackfillIndustryButton missingCount={missingIndustryCount ?? 0} />
+          <BackfillButton
+            endpoint="/api/deals/backfill-industry"
+            label="Backfill missing industries"
+            missingCount={missingIndustryCount ?? 0}
+          />
+          <BackfillButton
+            endpoint="/api/deals/backfill-loan-type"
+            label="Backfill missing loan types"
+            missingCount={missingLoanTypeCount ?? 0}
+          />
           <Link
             href="/deals/import"
             className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"

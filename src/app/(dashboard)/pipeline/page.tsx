@@ -8,6 +8,20 @@ import {
   type DealStatus,
 } from '@/lib/types'
 import { StatusSelect } from './status-select'
+import { PipelineFilterBar } from './filter-bar'
+
+function stageHref(
+  status: string | null,
+  industry: string | undefined,
+  loanType: string | undefined
+) {
+  const params = new URLSearchParams()
+  if (status) params.set('stage', status)
+  if (industry) params.set('industry', industry)
+  if (loanType) params.set('loanType', loanType)
+  const qs = params.toString()
+  return qs ? `/pipeline?${qs}` : '/pipeline'
+}
 
 function daysAgo(dateStr: string) {
   const days = Math.floor(
@@ -21,9 +35,10 @@ function daysAgo(dateStr: string) {
 export default async function PipelinePage({
   searchParams,
 }: {
-  searchParams: Promise<{ stage?: string }>
+  searchParams: Promise<{ stage?: string; industry?: string; loanType?: string }>
 }) {
-  const { stage: stageParam } = await searchParams
+  const { stage: stageParam, industry: industryParam, loanType: loanTypeParam } =
+    await searchParams
   const activeStage = PIPELINE_STATUSES.includes(stageParam as DealStatus)
     ? (stageParam as DealStatus)
     : null
@@ -33,7 +48,9 @@ export default async function PipelinePage({
   const [{ data: rawDeals }, { count: resolvedCount }] = await Promise.all([
     supabase
       .from('deals')
-      .select('id, company_name, industry, status, updated_at, deal_matches(score)')
+      .select(
+        'id, company_name, industry, loan_type, status, updated_at, deal_matches(score)'
+      )
       .in('status', PIPELINE_STATUSES)
       .order('updated_at', { ascending: false }),
     supabase
@@ -57,9 +74,17 @@ export default async function PipelinePage({
     count: deals.filter((d) => d.status === status).length,
   }))
 
-  const visibleDeals = activeStage
-    ? deals.filter((d) => d.status === activeStage)
-    : deals
+  const industries = Array.from(
+    new Set(deals.map((d) => d.industry).filter((v): v is string => Boolean(v)))
+  ).sort((a, b) => a.localeCompare(b))
+  const loanTypes = Array.from(
+    new Set(deals.map((d) => d.loan_type).filter((v): v is string => Boolean(v)))
+  ).sort((a, b) => a.localeCompare(b))
+
+  const visibleDeals = deals
+    .filter((d) => !activeStage || d.status === activeStage)
+    .filter((d) => !industryParam || d.industry === industryParam)
+    .filter((d) => !loanTypeParam || d.loan_type === loanTypeParam)
 
   return (
     <div className="space-y-5">
@@ -67,10 +92,12 @@ export default async function PipelinePage({
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Pipeline</h1>
           <p className="mt-1 text-sm text-slate-500">
-            {activeStage ? (
+            {activeStage || industryParam || loanTypeParam ? (
               <>
-                {visibleDeals.length} {STATUS_LABELS[activeStage].toLowerCase()}{' '}
-                deal{visibleDeals.length === 1 ? '' : 's'} ·{' '}
+                {visibleDeals.length} deal{visibleDeals.length === 1 ? '' : 's'}
+                {activeStage ? ` · ${STATUS_LABELS[activeStage].toLowerCase()}` : ''}
+                {industryParam ? ` · ${industryParam}` : ''}
+                {loanTypeParam ? ` · ${loanTypeParam}` : ''} ·{' '}
                 <Link href="/pipeline" className="underline hover:text-slate-700">
                   show all {deals.length}
                 </Link>
@@ -98,7 +125,7 @@ export default async function PipelinePage({
           return (
             <Link
               key={status}
-              href={isActive ? '/pipeline' : `/pipeline?stage=${status}`}
+              href={stageHref(isActive ? null : status, industryParam, loanTypeParam)}
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
                 isActive
                   ? 'border-slate-900 bg-slate-900 text-white'
@@ -117,12 +144,17 @@ export default async function PipelinePage({
         })}
       </div>
 
+      <div className="flex justify-end">
+        <PipelineFilterBar industries={industries} loanTypes={loanTypes} />
+      </div>
+
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
               <th className="whitespace-nowrap px-4 py-2.5">Company</th>
               <th className="whitespace-nowrap px-4 py-2.5">Industry</th>
+              <th className="whitespace-nowrap px-4 py-2.5">Loan Type</th>
               <th className="whitespace-nowrap px-4 py-2.5">Stage</th>
               <th className="whitespace-nowrap px-4 py-2.5">Matches</th>
               <th className="whitespace-nowrap px-4 py-2.5">Updated</th>
@@ -145,6 +177,9 @@ export default async function PipelinePage({
                   </td>
                   <td className="whitespace-nowrap px-4 py-2 text-slate-600">
                     {deal.industry ?? '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-slate-600">
+                    {deal.loan_type ?? '—'}
                   </td>
                   <td className="whitespace-nowrap px-4 py-2">
                     <StatusSelect
@@ -182,11 +217,11 @@ export default async function PipelinePage({
             ) : (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-4 py-10 text-center text-slate-400"
                 >
-                  {activeStage
-                    ? `No ${STATUS_LABELS[activeStage].toLowerCase()} deals right now.`
+                  {activeStage || industryParam || loanTypeParam
+                    ? 'No deals match this filter.'
                     : 'No active deals right now.'}
                 </td>
               </tr>
