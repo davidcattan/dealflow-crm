@@ -77,7 +77,7 @@ export function UnderwritingRunnerProvider({ children }: { children: React.React
   return (
     <RunnerContext.Provider value={{ run, result, start, stop }}>
       {run && (
-        <div className="fixed inset-x-0 top-0 z-50 flex flex-wrap items-center justify-center gap-4 bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow">
+        <div className="fixed inset-x-0 bottom-0 z-50 flex flex-wrap items-center justify-center gap-4 bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow">
           <span>
             Underwriting {run.dealName} — {Math.floor(elapsed / 60)}:
             {String(elapsed % 60).padStart(2, '0')}. This can take several
