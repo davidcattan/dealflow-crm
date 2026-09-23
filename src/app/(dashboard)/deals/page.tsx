@@ -90,7 +90,12 @@ export default async function DealsPage({
 
   const [{ data: rawDeals }, { data: categoryCheck }] = await Promise.all([
     query,
-    supabase.from('deals').select('industry, loan_type'),
+    // Only active deals count toward the standardize buttons; old/dead/closed
+    // deals are left as they are.
+    supabase
+      .from('deals')
+      .select('industry, loan_type')
+      .not('status', 'in', `(${RESOLVED_STATUSES.join(',')})`),
   ])
   const searched = (
     q

@@ -28,6 +28,8 @@ export async function backfillLoanTypes() {
   const { data: allDeals, error } = await supabase
     .from('deals')
     .select('id, company_name, deal_type, notes, underwriting, loan_type')
+    // Skip old/dead/closed deals — no point spending on deals we've shelved.
+    .not('status', 'in', '(old,dead,closed)')
 
   if (error) throw new Error('Failed to load deals')
 
