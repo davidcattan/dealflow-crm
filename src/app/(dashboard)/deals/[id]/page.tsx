@@ -10,6 +10,7 @@ import {
 } from './actions'
 import { ConfirmButton } from '@/components/confirm-button'
 import { UnderwritingPanel } from './underwriting-panel'
+import { estimateUnderwriting } from '@/lib/underwriting/estimate'
 import { MatchingPanel, type MatchWithLender } from './matching-panel'
 import { DocumentUploader } from './document-uploader'
 import type { Underwriting } from '@/lib/underwriting/schema'
@@ -59,9 +60,14 @@ export default async function DealDetailPage({
 
   const { data: usageRows } = await supabase
     .from('ai_usage')
-    .select('cost_usd')
+    .select('cost_usd, feature, created_at')
     .eq('deal_id', id)
+    .order('created_at', { ascending: false })
   const dealSpend = (usageRows ?? []).reduce((sum, r) => sum + Number(r.cost_usd), 0)
+
+  // A run logs two rows (research + structuring), newest first.
+  const uwRows = (usageRows ?? []).filter((r) => r.feature === 'underwriting').slice(0, 2)
+  const lastRunCost = uwRows.length > 0 ? uwRows.reduce((n, r) => n + Number(r.cost_usd), 0) : null
 
   const matchesWithLender: MatchWithLender[] = (matches ?? []).map((m) => {
     const lender = Array.isArray(m.lenders) ? m.lenders[0] : m.lenders
@@ -289,6 +295,8 @@ export default async function DealDetailPage({
       <UnderwritingPanel
         dealId={deal.id}
         dealName={deal.company_name}
+        estimate={estimateUnderwriting((documents ?? []) as DocumentRecord[])}
+        lastRunCost={lastRunCost}
         underwriting={deal.underwriting as Underwriting | null}
         generatedAt={deal.underwriting_generated_at}
       />

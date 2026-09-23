@@ -1,5 +1,7 @@
 'use client'
 
+import { useState } from 'react'
+import type { UnderwritingEstimate } from '@/lib/underwriting/estimate'
 import { useUnderwritingRunner } from '@/components/underwriting-runner'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatCurrency } from '@/lib/format'
@@ -7,14 +9,19 @@ import { formatCurrency } from '@/lib/format'
 export function UnderwritingPanel({
   dealId,
   dealName,
+  estimate,
+  lastRunCost,
   underwriting,
   generatedAt,
 }: {
   dealId: string
   dealName: string
+  estimate: UnderwritingEstimate
+  lastRunCost: number | null
   underwriting: Underwriting | null
   generatedAt: string | null
 }) {
+  const [confirming, setConfirming] = useState(false)
   const { run, result, start } = useUnderwritingRunner()
   // The run itself lives in the layout, so it survives navigating away.
   const loading = run?.dealId === dealId
@@ -35,8 +42,8 @@ export function UnderwritingPanel({
           )}
         </div>
         <button
-          onClick={() => start(dealId, dealName)}
-          disabled={loading || busyElsewhere}
+          onClick={() => setConfirming(true)}
+          disabled={loading || busyElsewhere || confirming}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
         >
           {loading
@@ -48,6 +55,55 @@ export function UnderwritingPanel({
               : 'Run underwriting'}
         </button>
       </div>
+
+      {confirming && (
+        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-slate-800">
+          <p className="font-medium">
+            This will likely cost about ${estimate.low.toFixed(2)}–${estimate.high.toFixed(2)}.
+          </p>
+          <p className="mt-1 text-slate-600">
+            {estimate.docCount === 0
+              ? 'No documents are uploaded, so this is mostly the research and write-up.'
+              : `Based on ${estimate.docCount} document${estimate.docCount === 1 ? '' : 's'} (~${Math.round(estimate.docTokens / 1000)}k tokens to read), plus web research and the written analysis.`}
+            {lastRunCost !== null && ` The last run on this deal cost about $${lastRunCost.toFixed(2)}.`}
+          </p>
+          {estimate.lines.length > 0 && (
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-slate-500">
+              {estimate.lines.map((l) => (
+                <li key={l}>{l}</li>
+              ))}
+            </ul>
+          )}
+          {estimate.untriagedPdfs > 0 && (
+            <p className="mt-2 text-xs text-amber-800">
+              Some long PDFs haven&apos;t been analyzed yet. Clicking &quot;Analyze documents&quot;
+              first can trim boilerplate pages and lower the cost.
+            </p>
+          )}
+          <p className="mt-2 text-xs text-slate-500">
+            It&apos;s an estimate — actual cost depends on how much web research the AI does. It
+            also bills if a run is stopped or times out.
+          </p>
+          <p className="mt-3 font-medium">Are you sure you want to underwrite {dealName}?</p>
+          <div className="mt-2 flex gap-2">
+            <button
+              onClick={() => {
+                setConfirming(false)
+                start(dealId, dealName)
+              }}
+              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              Yes, run underwriting
+            </button>
+            <button
+              onClick={() => setConfirming(false)}
+              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
