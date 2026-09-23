@@ -18,7 +18,10 @@ Using the documents above, the company's website content (if provided), and web 
 
 Write your findings as a clear, well-organized plain-text analysis. Be specific with numbers and note which document or source each figure came from. This analysis will be converted into structured data afterward, so make sure every number and finding you want captured appears explicitly in your text. Do not invent or estimate figures that are not present in the documents or a verified source — a short, honest analysis based on thin data is far more useful than a padded one.`
 
-export async function runUnderwriting(dealId: string): Promise<Underwriting> {
+export async function runUnderwriting(
+  dealId: string,
+  signal?: AbortSignal
+): Promise<Underwriting> {
   const supabase = await createClient()
 
   const [{ data: deal, error: dealError }, { data: documents }] = await Promise.all([
@@ -69,7 +72,7 @@ export async function runUnderwriting(dealId: string): Promise<Underwriting> {
     max_tokens: 16000,
     tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
     messages: [{ role: 'user', content: researchContent }],
-  })
+  }, { signal })
 
   for await (const message of runner) {
     if (message.stop_reason === 'pause_turn') {
@@ -97,7 +100,7 @@ export async function runUnderwriting(dealId: string): Promise<Underwriting> {
       },
     ],
     output_config: { format: zodOutputFormat(UnderwritingSchema) },
-  })
+  }, { signal })
 
   if (!structured.parsed_output) {
     throw new Error('Could not structure the underwriting analysis')

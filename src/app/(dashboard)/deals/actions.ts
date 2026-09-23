@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { DEAL_STATUSES } from '@/lib/types'
 
 export type FormState = { error?: string; dealId?: string } | undefined
 
@@ -30,6 +31,13 @@ export async function createDeal(
       industry: emptyToNull(formData.get('industry')),
       loan_type: emptyToNull(formData.get('loan_type')),
       website: emptyToNull(formData.get('website')),
+      notes: emptyToNull(formData.get('notes')),
+      deal_type: emptyToNull(formData.get('deal_type')),
+      rep_name: emptyToNull(formData.get('rep_name')),
+      activity_score: toActivityScoreOrNull(formData.get('activity_score')),
+      status: DEAL_STATUSES.includes(String(formData.get('status')) as (typeof DEAL_STATUSES)[number])
+        ? String(formData.get('status'))
+        : 'new',
       created_by: user?.id ?? null,
     })
     .select('id')
@@ -44,6 +52,13 @@ export async function createDeal(
   // (client-side, straight to Storage) before navigating, and the client
   // needs the new id back to do that. See new-deal-form.tsx.
   return { dealId: data.id }
+}
+
+function toActivityScoreOrNull(value: FormDataEntryValue | null): number | null {
+  const str = String(value ?? '').trim()
+  if (!str) return null
+  const num = Number(str)
+  return Number.isFinite(num) && num >= 0 && num <= 10 ? Math.round(num) : null
 }
 
 function emptyToNull(value: FormDataEntryValue | null): string | null {

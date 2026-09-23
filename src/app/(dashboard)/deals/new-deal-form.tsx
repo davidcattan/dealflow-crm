@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createDeal } from './actions'
+import { DEAL_STATUSES, STATUS_LABELS } from '@/lib/types'
 import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 import { FileDropzone } from '@/components/file-dropzone'
 import { uploadDealDocuments } from '@/lib/upload-documents'
@@ -150,6 +151,64 @@ export function NewDealForm() {
         <input
           name="website"
           placeholder="https://"
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-slate-600">
+          Status
+        </label>
+        <select
+          name="status"
+          defaultValue="new"
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        >
+          {DEAL_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABELS[s]}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-slate-600">
+          Deal type / ask
+        </label>
+        <input
+          name="deal_type"
+          placeholder="e.g. Ask $250k Bridge"
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-slate-600">
+          Rep
+        </label>
+        <input
+          name="rep_name"
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-slate-600">
+          Activity score (0–10)
+        </label>
+        <input
+          name="activity_score"
+          type="number"
+          min={0}
+          max={10}
+          placeholder="10 = working it today"
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="block text-xs font-medium text-slate-600">
+          Notes
+        </label>
+        <textarea
+          name="notes"
+          rows={3}
           className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
       </div>

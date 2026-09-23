@@ -5,7 +5,7 @@ import { runUnderwriting } from '@/lib/underwriting/run'
 export const maxDuration = 300
 
 export async function POST(
-  _request: Request,
+  request: Request,
   ctx: RouteContext<'/api/deals/[id]/underwrite'>
 ) {
   const supabase = await createClient()
@@ -20,7 +20,7 @@ export async function POST(
   const { id } = await ctx.params
 
   try {
-    const underwriting = await runUnderwriting(id)
+    const underwriting = await runUnderwriting(id, request.signal)
 
     const { data: saved, error } = await supabase
       .from('deals')

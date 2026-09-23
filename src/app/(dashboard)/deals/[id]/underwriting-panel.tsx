@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatCurrency } from '@/lib/format'
 import { readJsonResponse } from '@/lib/fetch-json'
@@ -18,13 +18,30 @@ export function UnderwritingPanel({
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [elapsed, setElapsed] = useState(0)
+  const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    if (!loading) return
+    const start = Date.now()
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000)
+    return () => clearInterval(t)
+  }, [loading])
+
+  function stop() {
+    abortRef.current?.abort()
+  }
 
   async function run() {
     setLoading(true)
+    setElapsed(0)
     setError(null)
+    const controller = new AbortController()
+    abortRef.current = controller
     try {
       const res = await fetch(`/api/deals/${dealId}/underwrite`, {
         method: 'POST',
+        signal: controller.signal,
       })
       const result = await readJsonResponse(res)
       if (!result.ok) {
@@ -32,7 +49,11 @@ export function UnderwritingPanel({
       }
       router.refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Underwriting failed')
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setError('Underwriting stopped. Nothing was saved and the AI run was cancelled.')
+      } else {
+        setError(err instanceof Error ? err.message : 'Underwriting failed')
+      }
     } finally {
       setLoading(false)
     }
@@ -40,6 +61,21 @@ export function UnderwritingPanel({
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      {loading && (
+        <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-4 bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow">
+          <span>
+            Underwriting in progress — {Math.floor(elapsed / 60)}:
+            {String(elapsed % 60).padStart(2, '0')}. This can take several
+            minutes; please give it time and stay on this page.
+          </span>
+          <button
+            onClick={stop}
+            className="rounded-md bg-white px-3 py-1 text-amber-700 hover:bg-amber-50"
+          >
+            Stop
+          </button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">
@@ -57,7 +93,7 @@ export function UnderwritingPanel({
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
         >
           {loading
-            ? 'Analyzing… this can take a minute or two'
+            ? 'Analyzing… (see banner above)'
             : underwriting
               ? 'Re-run underwriting'
               : 'Run underwriting'}
