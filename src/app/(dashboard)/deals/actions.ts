@@ -50,3 +50,15 @@ function emptyToNull(value: FormDataEntryValue | null): string | null {
   const str = String(value ?? '').trim()
   return str.length > 0 ? str : null
 }
+
+// Bulk "mark as dead" from the Deals list checkboxes.
+export async function markDealsDead(formData: FormData) {
+  const ids = formData.getAll('deal_ids').map(String).filter(Boolean)
+  if (ids.length === 0) return
+
+  const supabase = await createClient()
+  await supabase.from('deals').update({ status: 'dead' }).in('id', ids)
+
+  revalidatePath('/deals')
+  revalidatePath('/pipeline')
+}
