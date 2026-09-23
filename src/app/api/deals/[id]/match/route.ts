@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { runMatching } from '@/lib/matching/run'
 import { draftSubmissionEmail, DRAFT_SCORE_THRESHOLD } from '@/lib/matching/draft'
 
-export const maxDuration = 300
+export const maxDuration = 800
 
 export async function POST(
   _request: Request,

@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { runUnderwriting } from '@/lib/underwriting/run'
 
-export const maxDuration = 300
+// Needs Fluid Compute on Vercel Pro (max 800s); without it the cap is 300s.
+export const maxDuration = 800
 
 export async function POST(
   request: Request,
