@@ -19,9 +19,9 @@ const BYTES_PER_PDF_PAGE = 75_000
 const PRICE_IN = 5 / 1_000_000 // Opus 5, $ per input token
 const PRICE_OUT = 25 / 1_000_000
 
-// Fixed part of every run: research write-up (~12-18k output tokens), the
+// Fixed part of every run: research write-up (~8-12k output tokens), the
 // structuring call, and up to 3 web searches.
-const OUTPUT_TOKENS = 20_000
+const OUTPUT_TOKENS = 14_000
 const WEB_SEARCH_COST = 0.03
 const BASE_INPUT_TOKENS = 4_000 // prompt, website text, search results
 
@@ -61,7 +61,7 @@ export function estimateUnderwriting(documents: DocumentRecord[]): UnderwritingE
   const input = docTokens + BASE_INPUT_TOKENS
   const fixed = OUTPUT_TOKENS * PRICE_OUT + WEB_SEARCH_COST
   const low = input * 1 * PRICE_IN + fixed
-  const high = input * 3.5 * PRICE_IN + fixed * 1.8
+  const high = input * 3.5 * PRICE_IN + fixed * 1.5
 
   return { low, high, docTokens, docCount: documents.length, untriagedPdfs, lines }
 }
