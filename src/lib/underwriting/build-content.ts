@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs'
 import { PDFDocument } from 'pdf-lib'
+import { simpleParser } from 'mailparser'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { DocumentRecord } from '@/lib/types'
 
@@ -53,6 +54,29 @@ async function slicePdf(
   } catch {
     return null
   }
+}
+
+// Saved emails (.eml): headers + plain-text body, plus a list of any
+// attachment names (the attachments themselves aren't opened — upload
+// those separately if they matter).
+async function emlToText(buffer: Buffer, fileName: string): Promise<string> {
+  const mail = await simpleParser(buffer)
+  const addr = (a: typeof mail.from) => a?.text ?? ''
+  const body = (mail.text ?? '').trim() || (mail.html ? String(mail.html).replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '')
+  const attachments = mail.attachments.map((a) => a.filename).filter(Boolean)
+  return [
+    `--- Email: ${fileName} ---`,
+    `From: ${addr(mail.from)}`,
+    `To: ${Array.isArray(mail.to) ? mail.to.map((t) => t.text).join(', ') : addr(mail.to)}`,
+    mail.date ? `Date: ${mail.date.toISOString()}` : null,
+    `Subject: ${mail.subject ?? ''}`,
+    attachments.length ? `Attachments (not included here): ${attachments.join(', ')}` : null,
+    '',
+    // Tracking/redirect links are long and carry no information.
+    body.replace(/<?https?:\/\/\S{60,}>?/g, '[link]').slice(0, 40000),
+  ]
+    .filter((l) => l !== null)
+    .join('\n')
 }
 
 async function spreadsheetToText(buffer: Buffer, fileName: string): Promise<string> {
@@ -162,6 +186,12 @@ export async function buildDocumentContent(
         blocks.push({ type: 'text', text })
       } catch {
         skipped.push(`${doc.file_name} (could not be parsed as a spreadsheet)`)
+      }
+    } else if (contentType === 'message/rfc822' || ext === 'eml') {
+      try {
+        blocks.push({ type: 'text', text: await emlToText(buffer, doc.file_name) })
+      } catch {
+        skipped.push(`${doc.file_name} (could not be parsed as an email)`)
       }
     } else if (contentType.startsWith('text/') || ['csv', 'txt'].includes(ext)) {
       blocks.push({
