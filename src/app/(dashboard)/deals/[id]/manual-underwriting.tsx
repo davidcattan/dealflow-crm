@@ -7,7 +7,22 @@ import { readJsonResponse } from '@/lib/fetch-json'
 // Underwrite outside the app (Claude.ai, covered by a subscription) and
 // bring the written result back in. Only the small structuring step here
 // uses the paid API.
-export function ManualUnderwriting({ dealId, prompt }: { dealId: string; prompt: string }) {
+export type ManualDoc = {
+  id: string
+  name: string
+  downloadUrl: string | null
+  trimmedUrl: string | null
+}
+
+export function ManualUnderwriting({
+  dealId,
+  prompt,
+  docs,
+}: {
+  dealId: string
+  prompt: string
+  docs: ManualDoc[]
+}) {
   const router = useRouter()
   const [copied, setCopied] = useState(false)
   const [text, setText] = useState('')
@@ -59,9 +74,37 @@ export function ManualUnderwriting({ dealId, prompt }: { dealId: string; prompt:
           </button>
         </li>
         <li>
-          Open Claude.ai, start a new chat, attach this deal&apos;s documents, and paste the
-          prompt. Turn on web search if it&apos;s available. This uses your subscription, not
-          the API.
+          Download the deal&apos;s documents (a copied prompt can&apos;t carry files with it):
+          {docs.length > 0 ? (
+            <ul className="mt-2 space-y-1 text-xs">
+              {docs.map((d) => (
+                <li key={d.id} className="flex flex-wrap items-center gap-x-3">
+                  <span className="truncate text-slate-700">{d.name}</span>
+                  {d.downloadUrl && (
+                    <a href={d.downloadUrl} className="text-slate-600 underline hover:text-slate-900">
+                      Download
+                    </a>
+                  )}
+                  {d.trimmedUrl && (
+                    <a href={d.trimmedUrl} className="text-slate-600 underline hover:text-slate-900">
+                      Download key pages only
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span> no documents uploaded for this deal.</span>
+          )}
+          <p className="mt-1 text-xs text-slate-500">
+            &quot;Key pages only&quot; is the version the app itself would read — smaller, and better if
+            Claude.ai complains a file is too long or too big.
+          </p>
+        </li>
+        <li>
+          Open Claude.ai, start a new chat, drag the downloaded files into the message box, then
+          paste the prompt. Turn on web search if it&apos;s available. This uses your
+          subscription, not the API.
         </li>
         <li>
           Copy Claude&apos;s full answer and paste it here:

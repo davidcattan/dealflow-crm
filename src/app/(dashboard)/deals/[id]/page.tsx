@@ -97,7 +97,10 @@ export default async function DealDetailPage({
       const { data } = await supabase.storage
         .from('borrower-documents')
         .createSignedUrl(doc.storage_path, 60 * 10)
-      return { ...doc, url: data?.signedUrl ?? null }
+      const { data: dl } = await supabase.storage
+        .from('borrower-documents')
+        .createSignedUrl(doc.storage_path, 60 * 60, { download: doc.file_name })
+      return { ...doc, url: data?.signedUrl ?? null, downloadUrl: dl?.signedUrl ?? null }
     })
   )
 
@@ -298,6 +301,15 @@ export default async function DealDetailPage({
         dealName={deal.company_name}
         estimate={estimateUnderwriting((documents ?? []) as DocumentRecord[])}
         lastRunCost={lastRunCost}
+        manualDocs={docsWithUrls.map((d) => ({
+          id: d.id,
+          name: d.file_name,
+          downloadUrl: d.downloadUrl,
+          trimmedUrl:
+            d.triage && d.triage.important_pages.length > 0 && (d.content_type === 'application/pdf' || d.file_name.toLowerCase().endsWith('.pdf'))
+              ? `/api/deals/${deal.id}/documents/${d.id}/trimmed`
+              : null,
+        }))}
         manualPrompt={buildManualPrompt(deal, ((documents ?? []) as DocumentRecord[]).map((d) => d.file_name))}
         underwriting={deal.underwriting as Underwriting | null}
         generatedAt={deal.underwriting_generated_at}

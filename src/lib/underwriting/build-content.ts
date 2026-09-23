@@ -1,5 +1,4 @@
 import ExcelJS from 'exceljs'
-import { PDFDocument } from 'pdf-lib'
 import { simpleParser } from 'mailparser'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { DocumentRecord } from '@/lib/types'
@@ -31,14 +30,19 @@ function extensionOf(fileName: string) {
 // them as real PDF pages (so Claude still reads tables visually — flat text
 // extraction scrambled them). Returns null if slicing isn't worthwhile or
 // fails, in which case the caller sends the whole document.
-async function slicePdf(
+export async function slicePdf(
   buffer: Buffer,
   ranges: { start: number; end: number }[],
   totalPages: number
 ): Promise<{ data: Buffer; kept: number; total: number } | null> {
   try {
-    const src = await PDFDocument.load(buffer, { ignoreEncryption: true })
-    const total = src.getPageCount()
+    // mupdf reads PDFs that pdf-lib chokes on (e.g. ones with damaged or
+    // hybrid cross-reference tables, which loan packages often have).
+    const mupdf = await import('mupdf')
+    const opened = mupdf.Document.openDocument(buffer, 'application/pdf')
+    const doc = opened.asPDF()
+    if (!doc) return null
+    const total = doc.countPages()
     if (total !== totalPages && Math.abs(total - totalPages) > 1) return null
 
     const keep = new Set<number>()
@@ -47,11 +51,13 @@ async function slicePdf(
     }
     if (keep.size === 0 || keep.size >= total) return null
 
-    const out = await PDFDocument.create()
-    const pages = await out.copyPages(src, [...keep].sort((a, b) => a - b))
-    pages.forEach((pg) => out.addPage(pg))
-    return { data: Buffer.from(await out.save()), kept: keep.size, total }
-  } catch {
+    for (let i = total - 1; i >= 0; i--) {
+      if (!keep.has(i)) doc.deletePage(i)
+    }
+    const data = Buffer.from(doc.saveToBuffer('compress,garbage=deduplicate').asUint8Array())
+    return { data, kept: keep.size, total }
+  } catch (err) {
+    console.error('PDF slicing failed', err)
     return null
   }
 }

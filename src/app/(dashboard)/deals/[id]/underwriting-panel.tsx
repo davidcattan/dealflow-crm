@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { UnderwritingEstimate } from '@/lib/underwriting/estimate'
-import { ManualUnderwriting } from './manual-underwriting'
+import { ManualUnderwriting, type ManualDoc } from './manual-underwriting'
 import { useUnderwritingRunner } from '@/components/underwriting-runner'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatCurrency } from '@/lib/format'
@@ -13,6 +13,7 @@ export function UnderwritingPanel({
   estimate,
   lastRunCost,
   manualPrompt,
+  manualDocs,
   underwriting,
   generatedAt,
 }: {
@@ -21,6 +22,7 @@ export function UnderwritingPanel({
   estimate: UnderwritingEstimate
   lastRunCost: number | null
   manualPrompt: string
+  manualDocs: ManualDoc[]
   underwriting: Underwriting | null
   generatedAt: string | null
 }) {
@@ -59,7 +61,7 @@ export function UnderwritingPanel({
         </button>
       </div>
 
-      <ManualUnderwriting dealId={dealId} prompt={manualPrompt} />
+      <ManualUnderwriting dealId={dealId} prompt={manualPrompt} docs={manualDocs} />
 
       {confirming && (
         <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-slate-800">
