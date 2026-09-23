@@ -57,6 +57,12 @@ export default async function DealDetailPage({
 
   if (!deal) notFound()
 
+  const { data: usageRows } = await supabase
+    .from('ai_usage')
+    .select('cost_usd')
+    .eq('deal_id', id)
+  const dealSpend = (usageRows ?? []).reduce((sum, r) => sum + Number(r.cost_usd), 0)
+
   const matchesWithLender: MatchWithLender[] = (matches ?? []).map((m) => {
     const lender = Array.isArray(m.lenders) ? m.lenders[0] : m.lenders
     return {
@@ -97,6 +103,11 @@ export default async function DealDetailPage({
           </h1>
           <p className="mt-1 text-sm text-slate-500">
             Added {formatDateOnly(deal.created_at)}
+            {dealSpend > 0 && (
+              <span className="ml-3 text-slate-400">
+                AI spend on this deal: ${dealSpend.toFixed(2)}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">

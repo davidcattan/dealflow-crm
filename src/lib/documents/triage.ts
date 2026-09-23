@@ -2,6 +2,7 @@ import 'server-only'
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { createClient } from '@/lib/supabase/server'
+import { logUsage } from '@/lib/usage'
 import { DocTriageSchema } from './triage-schema'
 import type { DocumentRecord } from '@/lib/types'
 
@@ -42,6 +43,8 @@ export async function triageDocument(doc: DocumentRecord): Promise<DocumentRecor
     ],
     output_config: { format: zodOutputFormat(DocTriageSchema) },
   })
+
+  await logUsage({ feature: 'document-triage', model: TRIAGE_MODEL, dealId: doc.deal_id, usage: structured.usage })
 
   const triage = structured.parsed_output
   if (!triage) throw new Error(`Could not triage ${doc.file_name}`)

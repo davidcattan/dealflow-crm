@@ -2,6 +2,7 @@ import 'server-only'
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { createClient } from '@/lib/supabase/server'
+import { logUsage } from '@/lib/usage'
 import { MatchSchema } from './schema'
 import { buildDealProfile } from './deal-profile'
 import type { Deal, DealUpdate } from '@/lib/types'
@@ -96,6 +97,8 @@ export async function runMatching(dealId: string) {
     ],
     output_config: { format: zodOutputFormat(MatchSchema) },
   })
+
+  await logUsage({ feature: 'matching', model: 'claude-opus-5', dealId: dealId, usage: structured.usage })
 
   if (!structured.parsed_output) {
     throw new Error('Could not produce lender matches')

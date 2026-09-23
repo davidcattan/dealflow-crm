@@ -2,6 +2,7 @@ import 'server-only'
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { createClient } from '@/lib/supabase/server'
+import { logUsage } from '@/lib/usage'
 import { buildDealProfile } from '@/lib/matching/deal-profile'
 import { LoanTypeRecommendationSchema } from './recommend-loan-type-schema'
 import { LOAN_TYPE_CATEGORIES } from './categories'
@@ -52,6 +53,8 @@ export async function recommendLoanType(dealId: string) {
     ],
     output_config: { format: zodOutputFormat(LoanTypeRecommendationSchema) },
   })
+
+  await logUsage({ feature: 'loan-type-recommendation', model: 'claude-opus-5', dealId: dealId, usage: structured.usage })
 
   if (!structured.parsed_output) {
     throw new Error('Could not produce a loan type recommendation')

@@ -30,6 +30,9 @@ export default async function DashboardLayout({
               <Link href="/lenders" className="whitespace-nowrap hover:text-slate-900">
                 Lenders
               </Link>
+              <Link href="/usage" className="whitespace-nowrap hover:text-slate-900">
+                Usage
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm text-slate-500">

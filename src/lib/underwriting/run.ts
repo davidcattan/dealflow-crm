@@ -2,6 +2,7 @@ import 'server-only'
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { createClient } from '@/lib/supabase/server'
+import { logUsage, addUsage, emptyUsage } from '@/lib/usage'
 import { buildDocumentContent, fetchWebsiteText } from './build-content'
 import { UnderwritingSchema, type Underwriting } from './schema'
 import type { DocumentRecord } from '@/lib/types'
@@ -74,7 +75,9 @@ export async function runUnderwriting(
     messages: [{ role: 'user', content: researchContent }],
   }, { signal })
 
+  const researchUsage = emptyUsage()
   for await (const message of runner) {
+    addUsage(researchUsage, message.usage as never)
     if (message.stop_reason === 'pause_turn') {
       runner.pushMessages({ role: 'assistant', content: message.content })
     }
@@ -101,6 +104,9 @@ export async function runUnderwriting(
     ],
     output_config: { format: zodOutputFormat(UnderwritingSchema) },
   }, { signal })
+
+  await logUsage({ feature: 'underwriting', model: 'claude-opus-5', dealId, usage: researchUsage })
+  await logUsage({ feature: 'underwriting', model: 'claude-opus-5', dealId, usage: structured.usage })
 
   if (!structured.parsed_output) {
     throw new Error('Could not structure the underwriting analysis')
