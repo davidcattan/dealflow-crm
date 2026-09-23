@@ -44,6 +44,12 @@ export function NewDealForm() {
       }
     }
 
+    // Kick off AI relevance triage of the uploaded PDFs; keepalive lets it
+    // continue while we navigate to the new deal page.
+    if (files.length > 0) {
+      fetch(`/api/deals/${dealId}/triage`, { method: 'POST', keepalive: true }).catch(() => {})
+    }
+
     router.push(`/deals/${dealId}`)
   }
 

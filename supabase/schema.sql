@@ -158,7 +158,10 @@ create table if not exists public.documents (
   file_size bigint,
   content_type text,
   uploaded_by uuid references public.profiles (id),
-  uploaded_at timestamptz not null default now()
+  uploaded_at timestamptz not null default now(),
+  -- AI triage: which pages matter for underwriting (see documents/triage.ts)
+  triage jsonb,
+  triaged_at timestamptz
 );
 
 -- ── Row Level Security ───────────────────────────────────────────────────

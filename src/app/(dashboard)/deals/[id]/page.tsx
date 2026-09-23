@@ -133,7 +133,14 @@ export default async function DealDetailPage({
           Diligence documents
         </h2>
 
-        <DocumentUploader dealId={deal.id} />
+        <DocumentUploader
+          dealId={deal.id}
+          untriagedCount={
+            docsWithUrls.filter(
+              (d) => !d.triage && d.file_name.toLowerCase().endsWith('.pdf')
+            ).length
+          }
+        />
 
         {docsWithUrls.length > 0 ? (
           <ul className="divide-y divide-slate-100">
@@ -161,6 +168,17 @@ export default async function DealDetailPage({
                     {formatBytes(doc.file_size)} ·{' '}
                     {new Date(doc.uploaded_at).toLocaleDateString()}
                   </span>
+                  {doc.triage && (
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      <span className="font-medium capitalize">{doc.triage.relevance} relevance</span>
+                      {' · '}
+                      {doc.triage.doc_type}
+                      {doc.triage.important_pages.length > 0 &&
+                        ` · pages ${doc.triage.important_pages
+                          .map((r) => (r.start === r.end ? r.start : `${r.start}-${r.end}`))
+                          .join(', ')} of ${doc.triage.total_pages} used`}
+                    </p>
+                  )}
                 </div>
                 <form action={deleteDocument}>
                   <input type="hidden" name="deal_id" value={deal.id} />

@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs'
+import { PDFDocument } from 'pdf-lib'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { DocumentRecord } from '@/lib/types'
 
@@ -23,6 +24,35 @@ const SPREADSHEET_TYPES = new Set([
 function extensionOf(fileName: string) {
   const dot = fileName.lastIndexOf('.')
   return dot === -1 ? '' : fileName.slice(dot + 1).toLowerCase()
+}
+
+// Cut a PDF down to just the pages triage flagged as important, keeping
+// them as real PDF pages (so Claude still reads tables visually — flat text
+// extraction scrambled them). Returns null if slicing isn't worthwhile or
+// fails, in which case the caller sends the whole document.
+async function slicePdf(
+  buffer: Buffer,
+  ranges: { start: number; end: number }[],
+  totalPages: number
+): Promise<{ data: Buffer; kept: number; total: number } | null> {
+  try {
+    const src = await PDFDocument.load(buffer, { ignoreEncryption: true })
+    const total = src.getPageCount()
+    if (total !== totalPages && Math.abs(total - totalPages) > 1) return null
+
+    const keep = new Set<number>()
+    for (const r of ranges) {
+      for (let p = Math.max(1, r.start); p <= Math.min(total, r.end); p++) keep.add(p - 1)
+    }
+    if (keep.size === 0 || keep.size >= total) return null
+
+    const out = await PDFDocument.create()
+    const pages = await out.copyPages(src, [...keep].sort((a, b) => a - b))
+    pages.forEach((pg) => out.addPage(pg))
+    return { data: Buffer.from(await out.save()), kept: keep.size, total }
+  } catch {
+    return null
+  }
 }
 
 async function spreadsheetToText(buffer: Buffer, fileName: string): Promise<string> {
@@ -97,19 +127,27 @@ export async function buildDocumentContent(
     const contentType = doc.content_type ?? ''
 
     if (contentType === 'application/pdf' || ext === 'pdf') {
-      // Sending the raw PDF for Claude to read natively (visually, page by
-      // page) is slower than plain text, but preserves table/column
-      // structure that flat text extraction destroys — financial
-      // statements are inherently tabular, and a text-extraction attempt
-      // here measurably reduced underwriting output quality without
-      // actually saving time (the real bottleneck was research depth, not
-      // document reading). Reverted; see 2026-09-22 notes.
+      // Native page reading preserves table structure (flat text extraction
+      // scrambled it). If the AI triage flagged which pages matter, send
+      // only those pages — still as real PDF pages.
+      let pdfBuffer: Buffer = buffer
+      const triage = doc.triage
+      if (triage && triage.important_pages.length > 0) {
+        const sliced = await slicePdf(buffer, triage.important_pages, triage.total_pages)
+        if (sliced) {
+          pdfBuffer = sliced.data
+          blocks.push({
+            type: 'text',
+            text: `Note on "${doc.file_name}" (${triage.doc_type}): only ${sliced.kept} of its ${sliced.total} pages are included below — the rest were triaged as boilerplate. ${triage.summary}`,
+          })
+        }
+      }
       blocks.push({
         type: 'document',
         source: {
           type: 'base64',
           media_type: 'application/pdf',
-          data: buffer.toString('base64'),
+          data: pdfBuffer.toString('base64'),
         },
       })
     } else if (IMAGE_TYPES.has(contentType) || ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) {

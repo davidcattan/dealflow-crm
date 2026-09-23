@@ -78,6 +78,16 @@ export type DocumentRecord = {
   content_type: string | null
   uploaded_by: string | null
   uploaded_at: string
+  triage: DocTriage | null
+  triaged_at: string | null
+}
+
+export type DocTriage = {
+  doc_type: string
+  total_pages: number
+  relevance: 'high' | 'medium' | 'low'
+  summary: string
+  important_pages: { start: number; end: number }[]
 }
 
 export type DealMatch = {
