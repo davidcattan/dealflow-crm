@@ -236,3 +236,5 @@ alter table public.ai_usage enable row level security;
 drop policy if exists "ai_usage: full access" on public.ai_usage;
 create policy "ai_usage: full access" on public.ai_usage
   for all to authenticated using (true) with check (true);
+
+alter table public.deals add column if not exists description text;

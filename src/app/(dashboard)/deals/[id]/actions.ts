@@ -34,6 +34,7 @@ export async function updateDeal(formData: FormData) {
       industry: emptyToNull(formData.get('industry')),
       loan_type: emptyToNull(formData.get('loan_type')),
       website: emptyToNull(formData.get('website')),
+      description: emptyToNull(formData.get('description')),
       notes: emptyToNull(formData.get('notes')),
       activity_score: toActivityScoreOrNull(formData.get('activity_score')),
       deal_type: emptyToNull(formData.get('deal_type')),

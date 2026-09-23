@@ -40,6 +40,7 @@ export async function runUnderwriting(
     `Company: ${deal.company_name}`,
     `Industry: ${deal.industry ?? 'unknown'}`,
     `Website: ${deal.website ?? 'none provided'}`,
+    deal.description ? `Deal description (from the broker): ${deal.description}` : null,
     deal.notes ? `Broker notes: ${deal.notes}` : null,
     skipped.length > 0
       ? `Note: the following uploaded files could not be analyzed and are not included below: ${skipped.join(', ')}`

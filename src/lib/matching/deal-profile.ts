@@ -16,6 +16,7 @@ export function buildDealProfile(
     deal.industry ? `Industry: ${deal.industry}` : null,
     deal.loan_type ? `Loan type: ${deal.loan_type}` : null,
     deal.deal_type ? `Deal type / ask: ${deal.deal_type}` : null,
+    deal.description ? `Deal description (from the broker): ${deal.description}` : null,
     deal.notes ? `Broker notes: ${deal.notes}` : null,
   ].filter(Boolean) as string[]
 

@@ -204,6 +204,17 @@ export function NewDealForm() {
       </div>
       <div className="sm:col-span-2">
         <label className="block text-xs font-medium text-slate-600">
+          Description
+        </label>
+        <textarea
+          name="description"
+          rows={6}
+          placeholder="The rundown of the deal — what the business does, the ask, collateral, anything the broker told you."
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="block text-xs font-medium text-slate-600">
           Notes
         </label>
         <textarea

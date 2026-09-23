@@ -17,6 +17,7 @@ export type Deal = {
   website: string | null
   status: DealStatus
   notes: string | null
+  description: string | null
   activity_score: number | null
   deal_type: string | null
   loan_type: string | null

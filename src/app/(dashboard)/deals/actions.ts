@@ -31,6 +31,7 @@ export async function createDeal(
       industry: emptyToNull(formData.get('industry')),
       loan_type: emptyToNull(formData.get('loan_type')),
       website: emptyToNull(formData.get('website')),
+      description: emptyToNull(formData.get('description')),
       notes: emptyToNull(formData.get('notes')),
       deal_type: emptyToNull(formData.get('deal_type')),
       rep_name: emptyToNull(formData.get('rep_name')),

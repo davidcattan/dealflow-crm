@@ -17,13 +17,11 @@ export function buildManualPrompt(deal: {
   industry: string | null
   website: string | null
   notes: string | null
-  description?: string | null
 }, documentNames: string[]): string {
   return [
     `Company: ${deal.company_name}`,
     `Industry: ${deal.industry ?? 'unknown'}`,
     `Website: ${deal.website ?? 'none provided'}`,
-    deal.description ? `Deal description (from the broker): ${deal.description}` : null,
     deal.notes ? `Broker notes: ${deal.notes}` : null,
     documentNames.length > 0
       ? `Documents: I have attached ${documentNames.length} file(s): ${documentNames.join(', ')}`
