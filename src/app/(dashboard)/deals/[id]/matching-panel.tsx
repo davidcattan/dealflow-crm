@@ -150,6 +150,25 @@ export function MatchingPanel({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [infoNote, setInfoNote] = useState<string | null>(null)
+  const [draftingId, setDraftingId] = useState<string | null>(null)
+  const [draftError, setDraftError] = useState<{ id: string; message: string } | null>(null)
+
+  // Drafts one email on demand (matches under the auto-draft score don't
+  // get one automatically). Costs a few cents.
+  async function draftFor(matchId: string) {
+    setDraftingId(matchId)
+    setDraftError(null)
+    try {
+      const res = await fetch(`/api/deals/${dealId}/matches/${matchId}/draft`, { method: 'POST' })
+      const result = await readJsonResponse(res)
+      if (!result.ok) throw new Error(result.message)
+      router.refresh()
+    } catch (err) {
+      setDraftError({ id: matchId, message: err instanceof Error ? err.message : 'Draft failed' })
+    } finally {
+      setDraftingId(null)
+    }
+  }
 
   async function run() {
     setLoading(true)
@@ -231,7 +250,8 @@ export function MatchingPanel({
         <p className="mt-4 text-sm text-slate-400">
           Scores every active lender against this deal&apos;s profile and
           returns the best realistic fits with reasoning. Matches that score
-          70+ also get a draft submission email, ready to review below.
+          70+ also get a draft submission email, ready to review below. Select any
+          other match to draft one for it.
         </p>
       )}
 
@@ -263,6 +283,8 @@ export function MatchingPanel({
                   action={async (formData) => {
                     await toggleMatchSelected(formData)
                     router.refresh()
+                    // Selecting a match with no draft yet drafts one now.
+                    if (!m.selected && m.draftStatus !== 'drafted') draftFor(m.id)
                   }}
                 >
                   <input type="hidden" name="deal_id" value={dealId} />
@@ -287,6 +309,21 @@ export function MatchingPanel({
               <p className="mt-2 text-sm text-slate-600">{m.reasoning}</p>
               {m.draftStatus === 'drafted' && m.draftSubject && m.draftBody && (
                 <DraftEmail subject={m.draftSubject} body={m.draftBody} />
+              )}
+              {draftingId === m.id && (
+                <p className="mt-3 text-xs text-slate-500">Drafting submission email…</p>
+              )}
+              {draftError?.id === m.id && (
+                <p className="mt-3 text-xs text-red-600">{draftError.message}</p>
+              )}
+              {m.selected && m.draftStatus !== 'drafted' && draftingId !== m.id && (
+                <button
+                  type="button"
+                  onClick={() => draftFor(m.id)}
+                  className="mt-3 rounded-md border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                >
+                  Draft submission email
+                </button>
               )}
             </li>
           ))}
