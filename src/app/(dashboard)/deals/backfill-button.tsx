@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { readJsonResponse } from '@/lib/fetch-json'
+import { ErrorText } from '@/components/error-text'
 
 export function BackfillButton({
   endpoint,
@@ -50,7 +51,7 @@ export function BackfillButton({
           {loading ? 'Classifying…' : `${label} (${missingCount})`}
         </button>
       )}
-      {error && <span className="text-xs text-red-600">{error}</span>}
+      {error && <ErrorText message={error} className="text-xs text-red-600" />}
       {result && (
         <span className="text-xs text-slate-500">
           Filled in {result.updated}

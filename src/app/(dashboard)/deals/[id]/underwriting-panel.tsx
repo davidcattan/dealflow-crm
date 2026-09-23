@@ -6,6 +6,7 @@ import { ManualUnderwriting, type ManualDoc } from './manual-underwriting'
 import { useUnderwritingRunner } from '@/components/underwriting-runner'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatCurrency } from '@/lib/format'
+import { ErrorText } from '@/components/error-text'
 
 export function UnderwritingPanel({
   dealId,
@@ -112,7 +113,11 @@ export function UnderwritingPanel({
         </div>
       )}
 
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {error && (
+        <p className="mt-3 text-sm text-red-600">
+          <ErrorText message={error} />
+        </p>
+      )}
 
       {!underwriting && !loading && (
         <p className="mt-4 text-sm text-slate-400">

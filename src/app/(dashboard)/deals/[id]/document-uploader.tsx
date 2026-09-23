@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { FileDropzone } from '@/components/file-dropzone'
 import { uploadDealDocuments } from '@/lib/upload-documents'
 import { readJsonResponse } from '@/lib/fetch-json'
+import { ErrorText } from '@/components/error-text'
 
 export function DocumentUploader({
   dealId,
@@ -68,7 +69,11 @@ export function DocumentUploader({
   return (
     <div className="mb-5 space-y-3">
       <FileDropzone files={files} onFilesChange={setFiles} disabled={uploading} />
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <p className="text-sm text-red-600">
+          <ErrorText message={error} />
+        </p>
+      )}
       {analyzing && (
         <p className="text-sm text-slate-500">
           AI is reading your documents to decide which pages matter for

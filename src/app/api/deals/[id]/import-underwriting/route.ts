@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { friendlyAiError } from '@/lib/ai-errors'
 import { createClient } from '@/lib/supabase/server'
 import { structureUnderwriting } from '@/lib/underwriting/run'
 
@@ -47,7 +48,7 @@ export async function POST(
 
     return NextResponse.json({ underwriting })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Import failed'
+    const message = friendlyAiError(err, 'Import failed')
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

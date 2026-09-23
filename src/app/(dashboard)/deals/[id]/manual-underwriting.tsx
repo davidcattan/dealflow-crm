@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { readJsonResponse } from '@/lib/fetch-json'
+import { ErrorText } from '@/components/error-text'
 
 // Underwrite outside the app (Claude.ai, covered by a subscription) and
 // bring the written result back in. Only the small structuring step here
@@ -129,7 +130,11 @@ export function ManualUnderwriting({
           </div>
         </li>
       </ol>
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {error && (
+        <p className="mt-3 text-sm text-red-600">
+          <ErrorText message={error} />
+        </p>
+      )}
     </details>
   )
 }

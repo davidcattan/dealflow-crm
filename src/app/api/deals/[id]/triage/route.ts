@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { friendlyAiError } from '@/lib/ai-errors'
 import { createClient } from '@/lib/supabase/server'
 import { triageDealDocuments } from '@/lib/documents/triage'
 
@@ -20,7 +21,7 @@ export async function POST(
   } catch (err) {
     console.error('Triage failed', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Triage failed' },
+      { error: friendlyAiError(err, 'Triage failed') },
       { status: 500 }
     )
   }

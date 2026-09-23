@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { friendlyAiError } from '@/lib/ai-errors'
 import { createClient } from '@/lib/supabase/server'
 import { runMatching } from '@/lib/matching/run'
 import { draftSubmissionEmail, DRAFT_SCORE_THRESHOLD } from '@/lib/matching/draft'
@@ -94,7 +95,7 @@ export async function POST(
     return NextResponse.json({ count: saved.length, notes })
   } catch (err) {
     console.error('Matching failed', err)
-    const message = err instanceof Error ? err.message : 'Matching failed'
+    const message = friendlyAiError(err, 'Matching failed')
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

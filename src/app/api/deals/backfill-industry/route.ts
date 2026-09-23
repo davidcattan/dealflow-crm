@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { friendlyAiError } from '@/lib/ai-errors'
 import { createClient } from '@/lib/supabase/server'
 import { backfillIndustries } from '@/lib/deals/backfill-industry'
 
@@ -19,7 +20,7 @@ export async function POST() {
     return NextResponse.json(result)
   } catch (err) {
     console.error('Industry backfill failed', err)
-    const message = err instanceof Error ? err.message : 'Backfill failed'
+    const message = friendlyAiError(err, 'Backfill failed')
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

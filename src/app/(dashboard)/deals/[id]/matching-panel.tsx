@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { matchScoreColor } from '@/lib/types'
 import { toggleMatchSelected } from './actions'
 import { readJsonResponse } from '@/lib/fetch-json'
+import { ErrorText } from '@/components/error-text'
 
 export type MatchWithLender = {
   id: string
@@ -127,7 +128,11 @@ function LoanTypeRecommender({
               : 'Recommend loan type'}
         </button>
       </div>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && (
+        <p className="mt-2 text-sm text-red-600">
+          <ErrorText message={error} />
+        </p>
+      )}
       {reasoning && <p className="mt-2 text-sm text-slate-600">{reasoning}</p>}
     </div>
   )
@@ -243,7 +248,11 @@ export function MatchingPanel({
         <LoanTypeRecommender dealId={dealId} currentLoanType={currentLoanType} />
       )}
 
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {error && (
+        <p className="mt-3 text-sm text-red-600">
+          <ErrorText message={error} />
+        </p>
+      )}
       {infoNote && <p className="mt-3 text-sm text-slate-500">{infoNote}</p>}
 
       {hasUnderwriting && matches.length === 0 && !loading && !infoNote && (
@@ -314,7 +323,9 @@ export function MatchingPanel({
                 <p className="mt-3 text-xs text-slate-500">Drafting submission email…</p>
               )}
               {draftError?.id === m.id && (
-                <p className="mt-3 text-xs text-red-600">{draftError.message}</p>
+                <p className="mt-3 text-xs text-red-600">
+                  <ErrorText message={draftError.message} />
+                </p>
               )}
               {m.selected && m.draftStatus !== 'drafted' && draftingId !== m.id && (
                 <button

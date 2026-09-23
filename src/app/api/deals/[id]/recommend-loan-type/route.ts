@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { friendlyAiError } from '@/lib/ai-errors'
 import { createClient } from '@/lib/supabase/server'
 import { recommendLoanType } from '@/lib/deals/recommend-loan-type'
 
@@ -24,7 +25,7 @@ export async function POST(
     return NextResponse.json(result)
   } catch (err) {
     console.error('Loan type recommendation failed', err)
-    const message = err instanceof Error ? err.message : 'Recommendation failed'
+    const message = friendlyAiError(err, 'Recommendation failed')
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

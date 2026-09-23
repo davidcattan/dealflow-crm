@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { friendlyAiError } from '@/lib/ai-errors'
 import { createClient } from '@/lib/supabase/server'
 import { draftSubmissionEmail } from '@/lib/matching/draft'
 
@@ -40,7 +41,7 @@ export async function POST(
     if (error) return NextResponse.json({ error: 'Failed to save draft' }, { status: 500 })
     return NextResponse.json({ ok: true })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not draft the email'
+    const message = friendlyAiError(err, 'Could not draft the email')
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
