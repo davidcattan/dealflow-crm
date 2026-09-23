@@ -190,11 +190,15 @@ export default async function DealsPage({
       {!showPast && <BulkDeadBar />}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full table-fixed text-left text-sm">
+        <table
+          id="deals-table"
+          data-select="off"
+          className="w-full table-fixed text-left text-sm [&_.sel-col]:hidden data-[select=on]:[&_.sel-col]:table-cell"
+        >
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
               {!showPast && (
-                <th className="w-[4%] px-4 py-3">
+                <th className="sel-col w-[4%] px-4 py-3">
                   <SelectAllCheckbox />
                 </th>
               )}
@@ -212,7 +216,7 @@ export default async function DealsPage({
               deals.map((b) => (
                 <tr key={b.id} className="hover:bg-slate-50">
                   {!showPast && (
-                    <td className="px-4 py-3">
+                    <td className="sel-col px-4 py-3">
                       <input
                         type="checkbox"
                         name="deal_ids"
