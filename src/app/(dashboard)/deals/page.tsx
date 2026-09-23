@@ -192,7 +192,7 @@ export default async function DealsPage({
         <DealSortBar />
       </div>
 
-      {!showPast && <BulkDeadBar />}
+      <BulkDeadBar />
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table
@@ -202,11 +202,9 @@ export default async function DealsPage({
         >
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              {!showPast && (
-                <th className="sel-col w-[4%] px-4 py-3">
-                  <SelectAllCheckbox />
-                </th>
-              )}
+              <th className="sel-col w-[4%] px-4 py-3">
+                <SelectAllCheckbox />
+              </th>
               <th className="w-[22%] truncate px-4 py-3">Company</th>
               <th className="w-[16%] truncate px-4 py-3">Industry</th>
               <th className="w-[14%] truncate px-4 py-3">Contact</th>
@@ -220,18 +218,16 @@ export default async function DealsPage({
             {deals.length > 0 ? (
               deals.map((b) => (
                 <tr key={b.id} className="hover:bg-slate-50 has-[input:checked]:bg-blue-50">
-                  {!showPast && (
-                    <td className="sel-col px-4 py-3">
-                      <input
-                        type="checkbox"
-                        name="deal_ids"
-                        value={b.id}
-                        form="bulk-form"
-                        aria-label={`Select ${b.company_name}`}
-                        className="rounded border-slate-300"
-                      />
-                    </td>
-                  )}
+                  <td className="sel-col px-4 py-3">
+                    <input
+                      type="checkbox"
+                      name="deal_ids"
+                      value={b.id}
+                      form="bulk-form"
+                      aria-label={`Select ${b.company_name}`}
+                      className="rounded border-slate-300"
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <Link
                       href={`/deals/${b.id}`}
@@ -300,7 +296,7 @@ export default async function DealsPage({
             ) : (
               <tr>
                 <td
-                  colSpan={showPast ? 7 : 8}
+                  colSpan={8}
                   className="px-4 py-10 text-center text-slate-400"
                 >
                   {q
