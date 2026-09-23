@@ -16,9 +16,9 @@ export default async function DashboardLayout({
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-6 py-3">
           <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
-            <span className="whitespace-nowrap text-sm font-semibold text-slate-900">
+            <Link href="/" className="whitespace-nowrap text-sm font-semibold text-slate-900 hover:text-slate-600">
               Dealflow CRM
-            </span>
+            </Link>
             <nav className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
               <Link href="/" className="whitespace-nowrap hover:text-slate-900">
                 Dashboard

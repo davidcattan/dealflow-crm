@@ -26,6 +26,25 @@ const DAY = 24 * 60 * 60 * 1000
 // Read the clock outside the component body (server-rendered, per request).
 const currentTime = () => Date.now()
 
+function Item({ d, right }: { d: Row; right: (d: Row) => React.ReactNode }) {
+  return (
+    <li>
+      <Link
+        href={`/deals/${d.id}`}
+        className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm hover:bg-slate-50"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span
+            className={`h-2 w-2 shrink-0 rounded-full ${activityScoreColor(d.activity_score)}`}
+          />
+          <span className="truncate font-medium text-slate-800">{d.company_name}</span>
+        </span>
+        <span className="shrink-0 text-xs text-slate-500">{right(d)}</span>
+      </Link>
+    </li>
+  )
+}
+
 function DealList({
   title,
   hint,
@@ -51,23 +70,22 @@ function DealList({
       {rows.length > 0 ? (
         <ul className="divide-y divide-slate-100">
           {rows.slice(0, 8).map((d) => (
-            <li key={d.id}>
-              <Link
-                href={`/deals/${d.id}`}
-                className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm hover:bg-slate-50"
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span
-                    className={`h-2 w-2 shrink-0 rounded-full ${activityScoreColor(d.activity_score)}`}
-                  />
-                  <span className="truncate font-medium text-slate-800">{d.company_name}</span>
-                </span>
-                <span className="shrink-0 text-xs text-slate-500">{right(d)}</span>
-              </Link>
-            </li>
+            <Item key={d.id} d={d} right={right} />
           ))}
           {rows.length > 8 && (
-            <li className="px-5 py-2 text-xs text-slate-400">+ {rows.length - 8} more</li>
+            <li>
+              <details className="group">
+                <summary className="cursor-pointer list-none px-5 py-2 text-xs text-slate-500 hover:bg-slate-50 hover:text-slate-800">
+                  <span className="group-open:hidden">+ {rows.length - 8} more</span>
+                  <span className="hidden group-open:inline">Show fewer</span>
+                </summary>
+                <ul className="divide-y divide-slate-100 border-t border-slate-100">
+                  {rows.slice(8).map((d) => (
+                    <Item key={d.id} d={d} right={right} />
+                  ))}
+                </ul>
+              </details>
+            </li>
           )}
         </ul>
       ) : (
