@@ -18,6 +18,7 @@ type Row = {
   activity_score: number | null
   updated_at: string
   underwriting_generated_at: string | null
+  underwriting_requested_at: string | null
   deal_matches: { score: number; draft_status: string }[]
 }
 
@@ -106,7 +107,7 @@ export default async function DashboardHome() {
     supabase
       .from('deals')
       .select(
-        'id, company_name, status, activity_score, updated_at, underwriting_generated_at, deal_matches(score, draft_status)'
+        'id, company_name, status, activity_score, updated_at, underwriting_generated_at, underwriting_requested_at, deal_matches(score, draft_status)'
       )
       .in('status', PIPELINE_QUERY_STATUSES),
     supabase.from('ai_usage').select('cost_usd').gte('created_at', monthStart.toISOString()),
@@ -116,6 +117,8 @@ export default async function DashboardHome() {
   const monthSpend = (usage ?? []).reduce((n, r) => n + Number(r.cost_usd), 0)
   const now = currentTime()
   const byActivity = (a: Row, b: Row) => (b.activity_score ?? 0) - (a.activity_score ?? 0)
+
+  const queued = deals.filter((d) => d.underwriting_requested_at && !d.underwriting_generated_at)
 
   const readyToUnderwrite = deals
     .filter(
@@ -161,6 +164,23 @@ export default async function DashboardHome() {
           </Link>
         ))}
       </div>
+
+      {queued.length > 0 && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-slate-800">
+          <span className="font-medium">
+            {queued.length} deal{queued.length === 1 ? '' : 's'} queued for Claude Code underwriting:
+          </span>{' '}
+          {queued.map((d, i) => (
+            <span key={d.id}>
+              {i > 0 && ', '}
+              <Link href={`/deals/${d.id}`} className="underline">
+                {d.company_name}
+              </Link>
+            </span>
+          ))}
+          . Tell Claude Code &ldquo;process the underwriting queue.&rdquo;
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <DealList

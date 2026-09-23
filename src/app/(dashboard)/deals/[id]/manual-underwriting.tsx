@@ -2,7 +2,9 @@
 
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { zipSync } from 'fflate'
 import { readJsonResponse } from '@/lib/fetch-json'
+import { setUnderwritingQueued } from './actions'
 import { ErrorText } from '@/components/error-text'
 
 // Underwrite outside the app (Claude.ai, covered by a subscription) and
@@ -19,16 +21,62 @@ export function ManualUnderwriting({
   dealId,
   prompt,
   docs,
+  queuedAt,
+  hasUnderwriting,
 }: {
   dealId: string
   prompt: string
   docs: ManualDoc[]
+  queuedAt: string | null
+  hasUnderwriting: boolean
 }) {
   const router = useRouter()
   const [copied, setCopied] = useState(false)
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const [zipping, setZipping] = useState<null | 'all' | 'key'>(null)
+  const [queueing, setQueueing] = useState(false)
+
+  async function toggleQueue() {
+    setQueueing(true)
+    try {
+      await setUnderwritingQueued(dealId, !queuedAt)
+      router.refresh()
+    } finally {
+      setQueueing(false)
+    }
+  }
+
+  // Bundles the deal's documents into one zip in the browser (Claude.ai
+  // accepts a zip, or you can drag the individual files instead).
+  async function downloadZip(mode: 'all' | 'key') {
+    setZipping(mode)
+    setError(null)
+    try {
+      const files: Record<string, Uint8Array> = {}
+      for (const d of docs) {
+        const url = mode === 'key' && d.trimmedUrl ? d.trimmedUrl : d.downloadUrl
+        if (!url) continue
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`Could not download ${d.name}`)
+        let name = d.name
+        for (let n = 2; files[name]; n++) name = `${n}-${d.name}`
+        files[name] = new Uint8Array(await res.arrayBuffer())
+      }
+      const blob = new Blob([zipSync(files, { level: 0 }) as BlobPart], { type: 'application/zip' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = mode === 'key' ? 'deal-documents-key-pages.zip' : 'deal-documents.zip'
+      a.click()
+      URL.revokeObjectURL(a.href)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not build the zip')
+    } finally {
+      setZipping(null)
+    }
+  }
 
   async function copy() {
     try {
@@ -61,10 +109,25 @@ export function ManualUnderwriting({
   }
 
   return (
-    <details className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
-      <summary className="cursor-pointer font-medium text-slate-700">
-        Underwrite for free in Claude.ai instead
+    <details open={!hasUnderwriting} className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/40 p-4 text-sm">
+      <summary className="cursor-pointer font-medium text-slate-800">
+        Underwrite for free (no API charge)
       </summary>
+      <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">
+        <p className="font-medium text-slate-800">Option A — have Claude Code do it</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Queue this deal, then tell Claude Code &ldquo;process the underwriting queue.&rdquo; It
+          reads the documents itself and saves the result here. Runs on your Claude plan, $0 API.
+        </p>
+        <button
+          onClick={toggleQueue}
+          disabled={queueing}
+          className="mt-2 rounded-md border border-slate-300 bg-white px-3 py-1 text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+        >
+          {queuedAt ? 'Queued ✓ — click to cancel' : 'Queue for Claude Code'}
+        </button>
+      </div>
+      <p className="mt-3 font-medium text-slate-800">Option B — do it yourself in Claude.ai</p>
       <ol className="mt-3 list-decimal space-y-3 pl-5 text-slate-600">
         <li>
           <button
@@ -97,6 +160,22 @@ export function ManualUnderwriting({
           ) : (
             <span> no documents uploaded for this deal.</span>
           )}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              onClick={() => downloadZip('all')}
+              disabled={zipping !== null || docs.length === 0}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+            >
+              {zipping === 'all' ? 'Building zip…' : 'Download all as one zip'}
+            </button>
+            <button
+              onClick={() => downloadZip('key')}
+              disabled={zipping !== null || docs.length === 0}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+            >
+              {zipping === 'key' ? 'Building zip…' : 'Zip with key pages only'}
+            </button>
+          </div>
           <p className="mt-1 text-xs text-slate-500">
             &quot;Key pages only&quot; is the version the app itself would read — smaller, and better if
             Claude.ai complains a file is too long or too big.

@@ -15,6 +15,7 @@ export function UnderwritingPanel({
   lastRunCost,
   manualPrompt,
   manualDocs,
+  queuedAt,
   underwriting,
   generatedAt,
 }: {
@@ -24,6 +25,7 @@ export function UnderwritingPanel({
   lastRunCost: number | null
   manualPrompt: string
   manualDocs: ManualDoc[]
+  queuedAt: string | null
   underwriting: Underwriting | null
   generatedAt: string | null
 }) {
@@ -57,12 +59,18 @@ export function UnderwritingPanel({
             : busyElsewhere
               ? 'Another deal is underwriting…'
             : underwriting
-              ? 'Re-run underwriting'
-              : 'Run underwriting'}
+              ? 'Re-run underwriting (paid)'
+              : 'Run underwriting (paid)'}
         </button>
       </div>
 
-      <ManualUnderwriting dealId={dealId} prompt={manualPrompt} docs={manualDocs} />
+      <ManualUnderwriting
+        dealId={dealId}
+        prompt={manualPrompt}
+        docs={manualDocs}
+        queuedAt={queuedAt}
+        hasUnderwriting={Boolean(underwriting)}
+      />
 
       {confirming && (
         <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-slate-800">

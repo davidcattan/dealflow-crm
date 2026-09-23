@@ -14,6 +14,7 @@
     "@supabase/supabase-js": "^2.116.0",
     "@types/mailparser": "^3.4.6",
     "exceljs": "^4.4.0",
+    "fflate": "^0.8.3",
     "mailparser": "^3.9.28",
     "mupdf": "^1.28.1",
     "next": "16.3.5",

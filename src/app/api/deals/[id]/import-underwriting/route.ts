@@ -32,7 +32,7 @@ export async function POST(
 
     const { data: saved, error } = await supabase
       .from('deals')
-      .update({ underwriting, underwriting_generated_at: new Date().toISOString() })
+      .update({ underwriting, underwriting_generated_at: new Date().toISOString(), underwriting_requested_at: null })
       .eq('id', id)
       .select('id')
       .single()

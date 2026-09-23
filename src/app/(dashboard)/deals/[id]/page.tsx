@@ -301,6 +301,7 @@ export default async function DealDetailPage({
         dealName={deal.company_name}
         estimate={estimateUnderwriting((documents ?? []) as DocumentRecord[])}
         lastRunCost={lastRunCost}
+        queuedAt={(deal as { underwriting_requested_at?: string | null }).underwriting_requested_at ?? null}
         manualDocs={docsWithUrls.map((d) => ({
           id: d.id,
           name: d.file_name,

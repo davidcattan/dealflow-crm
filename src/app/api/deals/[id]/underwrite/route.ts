@@ -29,6 +29,7 @@ export async function POST(
       .update({
         underwriting,
         underwriting_generated_at: new Date().toISOString(),
+        underwriting_requested_at: null,
       })
       .eq('id', id)
       .select('id')
