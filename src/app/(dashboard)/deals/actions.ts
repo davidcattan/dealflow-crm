@@ -75,31 +75,38 @@ async function setStatus(
   status: DealStatus
 ) {
   for (let i = 0; i < ids.length; i += 50) {
-    await supabase.from('deals').update({ status }).in('id', ids.slice(i, i + 50))
+    const { error } = await supabase
+      .from('deals')
+      .update({ status })
+      .in('id', ids.slice(i, i + 50))
+    if (error) return error.message
   }
+  return null
 }
 
 // Bulk "mark as dead" from the Deals list checkboxes.
 export async function markDealsDead(formData: FormData) {
   const ids = formData.getAll('deal_ids').map(String).filter(Boolean)
-  if (ids.length === 0) return
+  if (ids.length === 0) return null
 
   const supabase = await createClient()
-  await setStatus(supabase, ids, 'dead')
+  const error = await setStatus(supabase, ids, 'dead')
 
   revalidatePath('/deals')
   revalidatePath('/pipeline')
+  return error
 }
 
 // Bulk status change from the Deals list checkboxes.
 export async function updateDealsStatus(formData: FormData) {
   const ids = formData.getAll('deal_ids').map(String).filter(Boolean)
   const status = String(formData.get('status') ?? '') as DealStatus
-  if (ids.length === 0 || !DEAL_STATUSES.includes(status)) return
+  if (ids.length === 0 || !DEAL_STATUSES.includes(status)) return null
 
   const supabase = await createClient()
-  await setStatus(supabase, ids, status)
+  const error = await setStatus(supabase, ids, status)
 
   revalidatePath('/deals')
   revalidatePath('/pipeline')
+  return error
 }

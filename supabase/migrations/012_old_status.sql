@@ -1,6 +1,7 @@
 -- Adds an "old" deal status: deals that are stale / not being worked but
 -- aren't really "dead". Run once in Supabase (SQL Editor -> New query -> paste -> Run).
 
+alter table public.deals drop constraint if exists borrowers_status_check; -- original name from before the borrowers->deals rename
 alter table public.deals drop constraint if exists deals_status_check;
 alter table public.deals
   add constraint deals_status_check

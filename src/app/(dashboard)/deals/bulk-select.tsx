@@ -30,6 +30,7 @@ export function BulkDeadBar() {
   const [selecting, setSelecting] = useState(false)
   const [count, setCount] = useState(0)
   const [viewOnly, setViewOnly] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [newStatus, setNewStatus] = useState<DealStatus | ''>('')
 
   useEffect(() => {
@@ -190,8 +191,9 @@ export function BulkDeadBar() {
             <button
               type="submit"
               formAction={async (formData) => {
-                await updateDealsStatus(formData)
-                done()
+                const err = await updateDealsStatus(formData)
+                if (err) setSaveError(err)
+                else done()
               }}
               onClick={(e) => {
                 if (!confirm(`Change ${count} deal${count === 1 ? '' : 's'} to "${STATUS_LABELS[newStatus]}"?`))
@@ -205,8 +207,9 @@ export function BulkDeadBar() {
           <button
             type="submit"
             formAction={async (formData) => {
-              await markDealsDead(formData)
-              done()
+              const err = await markDealsDead(formData)
+              if (err) setSaveError(err)
+              else done()
             }}
             onClick={(e) => {
               if (!confirm(`Mark ${count} deal${count === 1 ? '' : 's'} as dead?`)) e.preventDefault()
@@ -216,6 +219,9 @@ export function BulkDeadBar() {
             Mark as dead
           </button>
         </>
+      )}
+      {saveError && (
+        <span className="w-full text-red-600">Couldn&apos;t save: {saveError}</span>
       )}
       <button
         type="button"
