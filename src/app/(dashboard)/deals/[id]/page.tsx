@@ -11,6 +11,7 @@ import {
 import { ConfirmButton } from '@/components/confirm-button'
 import { UnderwritingPanel } from './underwriting-panel'
 import { estimateUnderwriting } from '@/lib/underwriting/estimate'
+import { buildManualPrompt } from '@/lib/underwriting/prompt'
 import { MatchingPanel, type MatchWithLender } from './matching-panel'
 import { DocumentUploader } from './document-uploader'
 import type { Underwriting } from '@/lib/underwriting/schema'
@@ -297,6 +298,7 @@ export default async function DealDetailPage({
         dealName={deal.company_name}
         estimate={estimateUnderwriting((documents ?? []) as DocumentRecord[])}
         lastRunCost={lastRunCost}
+        manualPrompt={buildManualPrompt(deal, ((documents ?? []) as DocumentRecord[]).map((d) => d.file_name))}
         underwriting={deal.underwriting as Underwriting | null}
         generatedAt={deal.underwriting_generated_at}
       />
