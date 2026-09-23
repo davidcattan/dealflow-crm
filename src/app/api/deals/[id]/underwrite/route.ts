@@ -37,6 +37,14 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to save underwriting' }, { status: 500 })
     }
 
+    // Advance the pipeline stage automatically, but only from the early
+    // stages — never regress a deal that's already matched/submitted/etc.
+    await supabase
+      .from('deals')
+      .update({ status: 'underwritten' })
+      .eq('id', id)
+      .in('status', ['new', 'in_review'])
+
     return NextResponse.json({ underwriting })
   } catch (err) {
     console.error('Underwriting failed', err)

@@ -288,6 +288,7 @@ export default async function DealDetailPage({
 
       <UnderwritingPanel
         dealId={deal.id}
+        dealName={deal.company_name}
         underwriting={deal.underwriting as Underwriting | null}
         generatedAt={deal.underwriting_generated_at}
       />

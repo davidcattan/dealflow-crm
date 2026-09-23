@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createDeal } from './actions'
-import { DEAL_STATUSES, STATUS_LABELS } from '@/lib/types'
+import { STATUS_OPTIONS, STATUS_LABELS } from '@/lib/types'
 import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 import { FileDropzone } from '@/components/file-dropzone'
 import { uploadDealDocuments } from '@/lib/upload-documents'
@@ -163,7 +163,7 @@ export function NewDealForm() {
           defaultValue="new"
           className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         >
-          {DEAL_STATUSES.map((s) => (
+          {STATUS_OPTIONS.map((s) => (
             <option key={s} value={s}>
               {STATUS_LABELS[s]}
             </option>

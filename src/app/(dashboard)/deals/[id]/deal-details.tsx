@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { updateDeal } from './actions'
-import { DEAL_STATUSES, STATUS_LABELS, activityScoreColor, type Deal } from '@/lib/types'
+import { STATUS_OPTIONS, STATUS_LABELS, displayStatus, activityScoreColor, type Deal } from '@/lib/types'
 import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {
@@ -103,10 +103,10 @@ export function DealDetails({ deal }: { deal: Deal }) {
             </label>
             <select
               name="status"
-              defaultValue={deal.status}
+              defaultValue={displayStatus(deal.status)}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             >
-              {DEAL_STATUSES.map((s) => (
+              {STATUS_OPTIONS.map((s) => (
                 <option key={s} value={s}>
                   {STATUS_LABELS[s]}
                 </option>

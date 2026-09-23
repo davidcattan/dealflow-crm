@@ -117,8 +117,11 @@ export const DEAL_STATUSES: DealStatus[] = [
 export const STATUS_LABELS: Record<DealStatus, string> = {
   new: 'New',
   in_review: 'In review',
-  underwritten: 'Underwritten',
-  matched: 'Matched',
+  // Underwritten and matched are one combined stage in the UI — deals are
+  // almost always matched right after underwriting. Both DB values still
+  // exist; they just display (and filter) as the same thing.
+  underwritten: 'Underwritten / Matched',
+  matched: 'Underwritten / Matched',
   submitted: 'Submitted',
   closed: 'Closed',
   dead: 'Dead',
@@ -140,10 +143,29 @@ export const STATUS_COLORS: Record<DealStatus, string> = {
 export const PIPELINE_STATUSES: DealStatus[] = [
   'new',
   'in_review',
+  'matched',
+  'submitted',
+]
+
+// Every DB status that counts as active (includes the legacy 'underwritten'
+// value, which displays as part of the combined stage).
+export const PIPELINE_QUERY_STATUSES: DealStatus[] = [
+  'new',
+  'in_review',
   'underwritten',
   'matched',
   'submitted',
 ]
+
+// Fold 'underwritten' into the combined 'matched' stage for display/filtering.
+export function displayStatus(status: DealStatus): DealStatus {
+  return status === 'underwritten' ? 'matched' : status
+}
+
+// Statuses offered in dropdowns (no separate 'underwritten' option).
+export const STATUS_OPTIONS: DealStatus[] = DEAL_STATUSES.filter(
+  (s) => s !== 'underwritten'
+)
 
 // Color for the 0-10 "how actively is this being worked" score — red (cold)
 // through green (hot). Full class strings, not built dynamically, so

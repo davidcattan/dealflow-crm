@@ -9,6 +9,7 @@ import { matchesSearch } from '@/lib/search'
 import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 import {
   STATUS_LABELS,
+  displayStatus,
   DEAL_STATUSES,
   activityScoreColor,
   matchScoreColor,
@@ -55,7 +56,7 @@ function sortDeals(deals: DealRow[], sort: string): DealRow[] {
       sorted.sort((a, b) => b.company_name.localeCompare(a.company_name))
       break
     case 'status':
-      sorted.sort((a, b) => DEAL_STATUSES.indexOf(a.status) - DEAL_STATUSES.indexOf(b.status))
+      sorted.sort((a, b) => DEAL_STATUSES.indexOf(displayStatus(a.status)) - DEAL_STATUSES.indexOf(displayStatus(b.status)))
       break
     case 'match_desc':
       sorted.sort((a, b) => (topMatchScore(b) ?? -1) - (topMatchScore(a) ?? -1))

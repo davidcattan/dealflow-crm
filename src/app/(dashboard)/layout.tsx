@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { requireUser } from '@/lib/dal'
 import { logout } from '@/app/login/actions'
+import { UnderwritingRunnerProvider } from '@/components/underwriting-runner'
 
 export default async function DashboardLayout({
   children,
@@ -10,6 +11,7 @@ export default async function DashboardLayout({
   const user = await requireUser()
 
   return (
+    <UnderwritingRunnerProvider>
     <div className="flex min-h-screen flex-col bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-6 py-3">
@@ -54,5 +56,6 @@ export default async function DashboardLayout({
         {children}
       </main>
     </div>
+    </UnderwritingRunnerProvider>
   )
 }

@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import {
   PIPELINE_STATUSES,
+  PIPELINE_QUERY_STATUSES,
+  displayStatus,
   STATUS_LABELS,
   STATUS_COLORS,
   matchScoreColor,
@@ -118,7 +120,7 @@ export default async function PipelinePage({
       .select(
         'id, company_name, industry, loan_type, status, updated_at, created_at, contact_name, rep_name, notes, activity_score, deal_matches(score)'
       )
-      .in('status', PIPELINE_STATUSES)
+      .in('status', PIPELINE_QUERY_STATUSES)
       .order('updated_at', { ascending: false }),
     supabase
       .from('deals')
@@ -129,8 +131,8 @@ export default async function PipelinePage({
   const deals = (rawDeals ?? []) as PipelineDeal[]
   const defaultOrdered = deals.slice().sort((a, b) => {
     const stageDiff =
-      PIPELINE_STATUSES.indexOf(a.status as DealStatus) -
-      PIPELINE_STATUSES.indexOf(b.status as DealStatus)
+      PIPELINE_STATUSES.indexOf(displayStatus(a.status as DealStatus)) -
+      PIPELINE_STATUSES.indexOf(displayStatus(b.status as DealStatus))
     if (stageDiff !== 0) return stageDiff
     return (
       new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
@@ -139,7 +141,7 @@ export default async function PipelinePage({
 
   const counts = PIPELINE_STATUSES.map((status) => ({
     status,
-    count: deals.filter((d) => d.status === status).length,
+    count: deals.filter((d) => displayStatus(d.status as DealStatus) === status).length,
   }))
 
   // The full fixed taxonomies, not just values currently in use — so a
@@ -157,7 +159,7 @@ export default async function PipelinePage({
   }))
 
   const filtered = defaultOrdered
-    .filter((d) => !activeStage || d.status === activeStage)
+    .filter((d) => !activeStage || displayStatus(d.status as DealStatus) === activeStage)
     .filter((d) => !industryParam || d.industry === industryParam)
     .filter((d) => !loanTypeParam || d.loan_type === loanTypeParam)
     .filter(

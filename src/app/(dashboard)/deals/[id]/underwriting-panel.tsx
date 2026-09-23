@@ -1,81 +1,28 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
+import { useUnderwritingRunner } from '@/components/underwriting-runner'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatCurrency } from '@/lib/format'
-import { readJsonResponse } from '@/lib/fetch-json'
 
 export function UnderwritingPanel({
   dealId,
+  dealName,
   underwriting,
   generatedAt,
 }: {
   dealId: string
+  dealName: string
   underwriting: Underwriting | null
   generatedAt: string | null
 }) {
-  const router = useRouter()
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [elapsed, setElapsed] = useState(0)
-  const abortRef = useRef<AbortController | null>(null)
-
-  useEffect(() => {
-    if (!loading) return
-    const start = Date.now()
-    const t = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000)
-    return () => clearInterval(t)
-  }, [loading])
-
-  function stop() {
-    abortRef.current?.abort()
-  }
-
-  async function run() {
-    setLoading(true)
-    setElapsed(0)
-    setError(null)
-    const controller = new AbortController()
-    abortRef.current = controller
-    try {
-      const res = await fetch(`/api/deals/${dealId}/underwrite`, {
-        method: 'POST',
-        signal: controller.signal,
-      })
-      const result = await readJsonResponse(res)
-      if (!result.ok) {
-        throw new Error(result.message)
-      }
-      router.refresh()
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        setError('Underwriting stopped. Nothing was saved and the AI run was cancelled.')
-      } else {
-        setError(err instanceof Error ? err.message : 'Underwriting failed')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { run, result, start } = useUnderwritingRunner()
+  // The run itself lives in the layout, so it survives navigating away.
+  const loading = run?.dealId === dealId
+  const busyElsewhere = !!run && !loading
+  const error = result?.dealId === dealId ? result.error : null
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      {loading && (
-        <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-4 bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow">
-          <span>
-            Underwriting in progress — {Math.floor(elapsed / 60)}:
-            {String(elapsed % 60).padStart(2, '0')}. This can take several
-            minutes; please give it time and stay on this page.
-          </span>
-          <button
-            onClick={stop}
-            className="rounded-md bg-white px-3 py-1 text-amber-700 hover:bg-amber-50"
-          >
-            Stop
-          </button>
-        </div>
-      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">
@@ -88,12 +35,14 @@ export function UnderwritingPanel({
           )}
         </div>
         <button
-          onClick={run}
-          disabled={loading}
+          onClick={() => start(dealId, dealName)}
+          disabled={loading || busyElsewhere}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
         >
           {loading
             ? 'Analyzing… (see banner above)'
+            : busyElsewhere
+              ? 'Another deal is underwriting…'
             : underwriting
               ? 'Re-run underwriting'
               : 'Run underwriting'}
