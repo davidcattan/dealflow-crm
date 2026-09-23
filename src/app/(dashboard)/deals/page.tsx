@@ -17,7 +17,7 @@ import {
 } from '@/lib/types'
 import { formatDateOnly } from '@/lib/format'
 
-const RESOLVED_STATUSES = ['closed', 'dead']
+const RESOLVED_STATUSES = ['closed', 'dead', 'old']
 
 type DealRow = {
   id: string
@@ -175,7 +175,7 @@ export default async function DealsPage({
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
         >
-          Past / Dead
+          Past / Dead / Old
         </Link>
       </div>
 
@@ -301,7 +301,7 @@ export default async function DealsPage({
                   {q
                     ? 'No deals match your search.'
                     : showPast
-                      ? 'No closed or dead deals yet.'
+                      ? 'No closed, dead or old deals yet.'
                       : 'No active deals yet. Add your first one above.'}
                 </td>
               </tr>

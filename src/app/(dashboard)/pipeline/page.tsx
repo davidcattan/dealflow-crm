@@ -125,7 +125,7 @@ export default async function PipelinePage({
     supabase
       .from('deals')
       .select('*', { count: 'exact', head: true })
-      .in('status', ['closed', 'dead']),
+      .in('status', ['closed', 'dead', 'old']),
   ])
 
   const deals = (rawDeals ?? []) as PipelineDeal[]
@@ -208,7 +208,7 @@ export default async function PipelinePage({
             href="/deals"
             className="text-sm text-slate-500 hover:underline"
           >
-            {resolvedCount} closed / dead — view all deals
+            {resolvedCount} closed / dead / old — view all deals
           </Link>
         ) : null}
       </div>

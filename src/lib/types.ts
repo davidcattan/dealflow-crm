@@ -6,6 +6,7 @@ export type DealStatus =
   | 'submitted'
   | 'closed'
   | 'dead'
+  | 'old'
 
 export type Deal = {
   id: string
@@ -113,6 +114,7 @@ export const DEAL_STATUSES: DealStatus[] = [
   'submitted',
   'closed',
   'dead',
+  'old',
 ]
 
 export const STATUS_LABELS: Record<DealStatus, string> = {
@@ -126,6 +128,7 @@ export const STATUS_LABELS: Record<DealStatus, string> = {
   submitted: 'Submitted',
   closed: 'Closed',
   dead: 'Dead',
+  old: 'Old',
 }
 
 // Dot/badge color per stage, for quick visual scanning on the pipeline tracker.
@@ -137,6 +140,7 @@ export const STATUS_COLORS: Record<DealStatus, string> = {
   submitted: 'bg-emerald-400',
   closed: 'bg-emerald-600',
   dead: 'bg-red-400',
+  old: 'bg-slate-300',
 }
 
 // Stages shown on the active pipeline tracker, in order. Closed and dead

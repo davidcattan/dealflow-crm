@@ -50,7 +50,7 @@ create table if not exists public.deals (
   industry text,
   website text,
   status text not null default 'new'
-    check (status in ('new', 'in_review', 'underwritten', 'matched', 'submitted', 'closed', 'dead')),
+    check (status in ('new', 'in_review', 'underwritten', 'matched', 'submitted', 'closed', 'dead', 'old')),
   notes text,
   -- How actively this deal is being worked right now (0 = completely
   -- dormant, 10 = actively working it today) — separate from pipeline
