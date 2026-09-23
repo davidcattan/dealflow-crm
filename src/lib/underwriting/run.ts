@@ -2,7 +2,7 @@ import 'server-only'
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { createClient } from '@/lib/supabase/server'
-import { logUsage, addUsage, emptyUsage } from '@/lib/usage'
+import { logUsage } from '@/lib/usage'
 import { buildDocumentContent, fetchWebsiteText } from './build-content'
 import { UnderwritingSchema, type Underwriting } from './schema'
 import type { DocumentRecord } from '@/lib/types'
@@ -75,9 +75,10 @@ export async function runUnderwriting(
     messages: [{ role: 'user', content: researchContent }],
   }, { signal })
 
-  const researchUsage = emptyUsage()
+  // Each step's usage is logged the moment it arrives, so a run that gets
+  // stopped or times out is still counted — Anthropic bills for it anyway.
   for await (const message of runner) {
-    addUsage(researchUsage, message.usage as never)
+    await logUsage({ feature: 'underwriting', model: 'claude-opus-5', dealId, usage: message.usage as never })
     if (message.stop_reason === 'pause_turn') {
       runner.pushMessages({ role: 'assistant', content: message.content })
     }
@@ -105,7 +106,6 @@ export async function runUnderwriting(
     output_config: { format: zodOutputFormat(UnderwritingSchema) },
   }, { signal })
 
-  await logUsage({ feature: 'underwriting', model: 'claude-opus-5', dealId, usage: researchUsage })
   await logUsage({ feature: 'underwriting', model: 'claude-opus-5', dealId, usage: structured.usage })
 
   if (!structured.parsed_output) {
