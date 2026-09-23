@@ -46,6 +46,61 @@ export function BulkDeadBar() {
       ?.setAttribute('data-select', selecting ? 'on' : 'off')
   }, [selecting])
 
+  // Drag-to-select: press on a row and drag over others to tick them all
+  // (or untick, if the first row you pressed was already ticked). Each drag
+  // adds to what's already selected, so you can drag several times.
+  useEffect(() => {
+    if (!selecting) return
+    const rowBox = (el: EventTarget | null) => {
+      const row = (el as HTMLElement | null)?.closest?.('tbody tr')
+      return row?.querySelector<HTMLInputElement>('input[name="deal_ids"]') ?? null
+    }
+    let startBox: HTMLInputElement | null = null
+    let target = true
+    let startApplied = false
+
+    const apply = (box: HTMLInputElement) => {
+      if (box.checked !== target) {
+        box.checked = target
+        document.dispatchEvent(new Event('bulk-select-change'))
+      }
+    }
+    const onDown = (e: MouseEvent) => {
+      if (e.button !== 0) return
+      const box = rowBox(e.target)
+      if (!box || e.target === box) return // the checkbox itself works normally
+      startBox = box
+      target = !box.checked
+      const onLink = (e.target as HTMLElement).closest('a')
+      // Pressing a company link and releasing without dragging should still
+      // just open the deal, so its row is only ticked once a drag begins.
+      startApplied = !onLink
+      if (!onLink) apply(box)
+      e.preventDefault() // no text selection while dragging
+    }
+    const onOver = (e: MouseEvent) => {
+      if (!startBox) return
+      const box = rowBox(e.target)
+      if (!box) return
+      if (!startApplied && box !== startBox) {
+        apply(startBox)
+        startApplied = true
+      }
+      if (startApplied) apply(box)
+    }
+    const onUp = () => {
+      startBox = null
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('mouseover', onOver)
+    document.addEventListener('mouseup', onUp)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('mouseover', onOver)
+      document.removeEventListener('mouseup', onUp)
+    }
+  }, [selecting])
+
   // "View selected" hides every unchecked row. Re-applied whenever the
   // selection changes; rows are plain server-rendered <tr>s, so this
   // toggles their hidden attribute directly.
@@ -97,7 +152,7 @@ export function BulkDeadBar() {
       className="flex flex-wrap items-center gap-3 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm"
     >
       <span className="text-slate-700">
-        {count === 0 ? 'Tick the deals you want' : `${count} selected`}
+        {count === 0 ? 'Tick deals, or click and drag across rows' : `${count} selected`}
       </span>
       <button
         type="button"

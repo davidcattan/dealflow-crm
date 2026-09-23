@@ -214,7 +214,7 @@ export default async function DealsPage({
           <tbody className="divide-y divide-slate-100">
             {deals.length > 0 ? (
               deals.map((b) => (
-                <tr key={b.id} className="hover:bg-slate-50">
+                <tr key={b.id} className="hover:bg-slate-50 has-[input:checked]:bg-blue-50">
                   {!showPast && (
                     <td className="sel-col px-4 py-3">
                       <input
