@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { DEAL_STATUSES } from '@/lib/types'
+import { DEAL_STATUSES, type DealStatus } from '@/lib/types'
 
 export type FormState = { error?: string; dealId?: string } | undefined
 
@@ -66,13 +66,38 @@ function emptyToNull(value: FormDataEntryValue | null): string | null {
   return str.length > 0 ? str : null
 }
 
+// Updates in chunks so selecting hundreds of deals never builds a
+// request URL that's too long.
+async function setStatus(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ids: string[],
+  status: DealStatus
+) {
+  for (let i = 0; i < ids.length; i += 50) {
+    await supabase.from('deals').update({ status }).in('id', ids.slice(i, i + 50))
+  }
+}
+
 // Bulk "mark as dead" from the Deals list checkboxes.
 export async function markDealsDead(formData: FormData) {
   const ids = formData.getAll('deal_ids').map(String).filter(Boolean)
   if (ids.length === 0) return
 
   const supabase = await createClient()
-  await supabase.from('deals').update({ status: 'dead' }).in('id', ids)
+  await setStatus(supabase, ids, 'dead')
+
+  revalidatePath('/deals')
+  revalidatePath('/pipeline')
+}
+
+// Bulk status change from the Deals list checkboxes.
+export async function updateDealsStatus(formData: FormData) {
+  const ids = formData.getAll('deal_ids').map(String).filter(Boolean)
+  const status = String(formData.get('status') ?? '') as DealStatus
+  if (ids.length === 0 || !DEAL_STATUSES.includes(status)) return
+
+  const supabase = await createClient()
+  await setStatus(supabase, ids, status)
 
   revalidatePath('/deals')
   revalidatePath('/pipeline')

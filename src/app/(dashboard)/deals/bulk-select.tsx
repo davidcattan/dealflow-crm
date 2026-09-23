@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { markDealsDead } from './actions'
+import { markDealsDead, updateDealsStatus } from './actions'
+import { STATUS_OPTIONS, STATUS_LABELS, type DealStatus } from '@/lib/types'
 
 const boxes = () =>
   Array.from(document.querySelectorAll<HTMLInputElement>('input[name="deal_ids"]'))
@@ -29,6 +30,7 @@ export function BulkDeadBar() {
   const [selecting, setSelecting] = useState(false)
   const [count, setCount] = useState(0)
   const [viewOnly, setViewOnly] = useState(false)
+  const [newStatus, setNewStatus] = useState<DealStatus | ''>('')
 
   useEffect(() => {
     const update = () => setCount(boxes().filter((b) => b.checked).length)
@@ -121,6 +123,7 @@ export function BulkDeadBar() {
   function done() {
     setAll(false)
     setViewOnly(false)
+    setNewStatus('')
     setSelecting(false)
   }
 
@@ -142,13 +145,6 @@ export function BulkDeadBar() {
   return (
     <form
       id="bulk-form"
-      action={async (formData) => {
-        await markDealsDead(formData)
-        done()
-      }}
-      onSubmit={(e) => {
-        if (!confirm(`Mark ${count} deal${count === 1 ? '' : 's'} as dead?`)) e.preventDefault()
-      }}
       className="flex flex-wrap items-center gap-3 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm"
     >
       <span className="text-slate-700">
@@ -177,8 +173,44 @@ export function BulkDeadBar() {
           >
             {viewOnly ? 'View all' : 'View selected'}
           </button>
+          <select
+            name="status"
+            value={newStatus}
+            onChange={(e) => setNewStatus(e.target.value as DealStatus | '')}
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700"
+          >
+            <option value="">Change status to…</option>
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
+          {newStatus && (
+            <button
+              type="submit"
+              formAction={async (formData) => {
+                await updateDealsStatus(formData)
+                done()
+              }}
+              onClick={(e) => {
+                if (!confirm(`Change ${count} deal${count === 1 ? '' : 's'} to "${STATUS_LABELS[newStatus]}"?`))
+                  e.preventDefault()
+              }}
+              className="rounded-md bg-slate-900 px-3 py-1 text-white hover:bg-slate-800"
+            >
+              Apply to {count}
+            </button>
+          )}
           <button
             type="submit"
+            formAction={async (formData) => {
+              await markDealsDead(formData)
+              done()
+            }}
+            onClick={(e) => {
+              if (!confirm(`Mark ${count} deal${count === 1 ? '' : 's'} as dead?`)) e.preventDefault()
+            }}
             className="rounded-md border border-red-200 bg-white px-3 py-1 text-red-600 hover:bg-red-50"
           >
             Mark as dead
