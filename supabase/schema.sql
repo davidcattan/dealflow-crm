@@ -240,3 +240,5 @@ create policy "ai_usage: full access" on public.ai_usage
 alter table public.deals add column if not exists description text;
 
 alter table public.deals add column if not exists underwriting_requested_at timestamptz;
+
+alter table public.deals add column if not exists snapshot jsonb, add column if not exists snapshot_generated_at timestamptz, add column if not exists underwriting_requested_kind text;

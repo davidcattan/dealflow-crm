@@ -10,6 +10,9 @@ import {
 } from './actions'
 import { ConfirmButton } from '@/components/confirm-button'
 import { UnderwritingPanel } from './underwriting-panel'
+import { SnapshotPanel } from './snapshot-panel'
+import { buildSnapshotPrompt } from '@/lib/snapshot/prompt'
+import type { Snapshot } from '@/lib/snapshot/schema'
 import { estimateUnderwriting } from '@/lib/underwriting/estimate'
 import { buildManualPrompt } from '@/lib/underwriting/prompt'
 import { MatchingPanel, type MatchWithLender } from './matching-panel'
@@ -296,6 +299,12 @@ export default async function DealDetailPage({
         )}
       </section>
 
+      <SnapshotPanel
+        dealId={deal.id}
+        snapshot={(deal.snapshot as Snapshot | null) ?? null}
+        generatedAt={(deal.snapshot_generated_at as string | null) ?? null}
+      />
+
       <UnderwritingPanel
         dealId={deal.id}
         dealName={deal.company_name}
@@ -312,6 +321,8 @@ export default async function DealDetailPage({
               : null,
         }))}
         manualPrompt={buildManualPrompt(deal, ((documents ?? []) as DocumentRecord[]).map((d) => d.file_name))}
+        snapshotPrompt={buildSnapshotPrompt(deal, ((documents ?? []) as DocumentRecord[]).map((d) => d.file_name))}
+        hasSnapshot={Boolean(deal.snapshot)}
         underwriting={deal.underwriting as Underwriting | null}
         generatedAt={deal.underwriting_generated_at}
       />
@@ -320,7 +331,7 @@ export default async function DealDetailPage({
         dealId={deal.id}
         matches={matchesWithLender}
         lastRunAt={lastMatchRunAt}
-        hasUnderwriting={Boolean(deal.underwriting)}
+        hasUnderwriting={Boolean(deal.underwriting || deal.snapshot)}
         currentLoanType={deal.loan_type}
       />
     </div>

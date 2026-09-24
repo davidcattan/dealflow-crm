@@ -159,12 +159,19 @@ export async function getDocumentUrl(storagePath: string) {
 
 // Queue (or unqueue) a deal for underwriting by Claude Code — runs on the
 // Claude subscription, not the paid API.
-export async function setUnderwritingQueued(dealId: string, queued: boolean) {
+export async function setUnderwritingQueued(
+  dealId: string,
+  queued: boolean,
+  kind: 'snapshot' | 'report' = 'snapshot'
+) {
   if (!dealId) return
   const supabase = await createClient()
   await supabase
     .from('deals')
-    .update({ underwriting_requested_at: queued ? new Date().toISOString() : null })
+    .update({
+      underwriting_requested_at: queued ? new Date().toISOString() : null,
+      underwriting_requested_kind: queued ? kind : null,
+    })
     .eq('id', dealId)
   revalidatePath(`/deals/${dealId}`)
   revalidatePath('/')

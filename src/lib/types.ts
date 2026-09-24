@@ -29,6 +29,9 @@ export type Deal = {
   underwriting: unknown
   underwriting_generated_at: string | null
   underwriting_requested_at?: string | null
+  underwriting_requested_kind?: string | null
+  snapshot?: unknown
+  snapshot_generated_at?: string | null
 }
 
 export type DealUpdate = {

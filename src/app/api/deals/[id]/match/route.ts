@@ -23,11 +23,11 @@ export async function POST(
 
   const { data: deal } = await supabase
     .from('deals')
-    .select('underwriting')
+    .select('underwriting, snapshot')
     .eq('id', id)
     .single()
 
-  if (!deal?.underwriting) {
+  if (!deal?.underwriting && !deal?.snapshot) {
     return NextResponse.json(
       { error: 'Run underwriting on this deal before matching lenders.' },
       { status: 400 }

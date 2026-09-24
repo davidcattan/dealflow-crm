@@ -1,6 +1,8 @@
 import 'server-only'
 import type { Deal, DealUpdate } from '@/lib/types'
 import type { Underwriting } from '@/lib/underwriting/schema'
+import type { Snapshot } from '@/lib/snapshot/schema'
+import { snapshotToText } from '@/lib/snapshot/text'
 
 // Shared plain-text summary of a deal — used both when matching it against
 // lenders and when drafting a submission email for it, so the two stay
@@ -39,7 +41,7 @@ export function buildDealProfile(
       `Data gaps: ${underwriting.data_gaps.join('; ') || 'none noted'}`
     )
   } else {
-    parts.push('', '(No AI underwriting has been run on this deal yet.)')
+    parts.push('', '(No AI research-report underwriting has been run on this deal.)')
   }
 
   if (updates && updates.length > 0) {
@@ -48,6 +50,11 @@ export function buildDealProfile(
       '--- Recent activity log ---',
       ...updates.map((u) => `${u.entry_date ?? '(no date)'}: ${u.note}`)
     )
+  }
+
+  const snapshot = (deal as { snapshot?: unknown }).snapshot as Snapshot | null | undefined
+  if (snapshot) {
+    parts.push('', '--- Lender snapshot (financials spread from the diligence package) ---', snapshotToText(snapshot))
   }
 
   return parts.join('\n')

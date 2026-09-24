@@ -14,7 +14,7 @@ export async function GET() {
 
   const { data: deals } = await supabase
     .from('deals')
-    .select('id, company_name, industry, loan_type, website, description, notes, deal_type, underwriting_requested_at')
+    .select('id, company_name, industry, loan_type, website, description, notes, deal_type, underwriting_requested_at, underwriting_requested_kind')
     .not('underwriting_requested_at', 'is', null)
     .order('underwriting_requested_at', { ascending: true })
 

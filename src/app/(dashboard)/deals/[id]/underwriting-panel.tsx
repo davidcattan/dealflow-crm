@@ -14,6 +14,8 @@ export function UnderwritingPanel({
   estimate,
   lastRunCost,
   manualPrompt,
+  snapshotPrompt,
+  hasSnapshot,
   manualDocs,
   queuedAt,
   underwriting,
@@ -24,6 +26,8 @@ export function UnderwritingPanel({
   estimate: UnderwritingEstimate
   lastRunCost: number | null
   manualPrompt: string
+  snapshotPrompt: string
+  hasSnapshot: boolean
   manualDocs: ManualDoc[]
   queuedAt: string | null
   underwriting: Underwriting | null
@@ -67,6 +71,8 @@ export function UnderwritingPanel({
       <ManualUnderwriting
         dealId={dealId}
         prompt={manualPrompt}
+        snapshotPrompt={snapshotPrompt}
+        hasSnapshot={hasSnapshot}
         docs={manualDocs}
         queuedAt={queuedAt}
         hasUnderwriting={Boolean(underwriting)}

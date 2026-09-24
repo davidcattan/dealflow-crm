@@ -19,6 +19,7 @@ type Row = {
   updated_at: string
   underwriting_generated_at: string | null
   underwriting_requested_at: string | null
+  snapshot_generated_at: string | null
   deal_matches: { score: number; draft_status: string }[]
 }
 
@@ -107,7 +108,7 @@ export default async function DashboardHome() {
     supabase
       .from('deals')
       .select(
-        'id, company_name, status, activity_score, updated_at, underwriting_generated_at, underwriting_requested_at, deal_matches(score, draft_status)'
+        'id, company_name, status, activity_score, updated_at, underwriting_generated_at, underwriting_requested_at, snapshot_generated_at, deal_matches(score, draft_status)'
       )
       .in('status', PIPELINE_QUERY_STATUSES),
     supabase.from('ai_usage').select('cost_usd').gte('created_at', monthStart.toISOString()),
@@ -118,12 +119,13 @@ export default async function DashboardHome() {
   const now = currentTime()
   const byActivity = (a: Row, b: Row) => (b.activity_score ?? 0) - (a.activity_score ?? 0)
 
-  const queued = deals.filter((d) => d.underwriting_requested_at && !d.underwriting_generated_at)
+  const queued = deals.filter((d) => d.underwriting_requested_at && !d.underwriting_generated_at && !d.snapshot_generated_at)
 
   const readyToUnderwrite = deals
     .filter(
       (d) =>
         !d.underwriting_generated_at &&
+        !d.snapshot_generated_at &&
         (d.activity_score ?? 0) >= 7 &&
         ['new', 'in_review'].includes(d.status)
     )

@@ -19,18 +19,26 @@ export type ManualDoc = {
 
 export function ManualUnderwriting({
   dealId,
-  prompt,
+  prompt: reportPrompt,
+  snapshotPrompt,
   docs,
   queuedAt,
   hasUnderwriting,
+  hasSnapshot,
 }: {
   dealId: string
   prompt: string
+  snapshotPrompt: string
   docs: ManualDoc[]
   queuedAt: string | null
   hasUnderwriting: boolean
+  hasSnapshot: boolean
 }) {
   const router = useRouter()
+  // Which kind of result to produce: the short lender snapshot (default) or
+  // the older long research report.
+  const [kind, setKind] = useState<'snapshot' | 'report'>('snapshot')
+  const prompt = kind === 'snapshot' ? snapshotPrompt : reportPrompt
   const [copied, setCopied] = useState(false)
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
@@ -42,7 +50,7 @@ export function ManualUnderwriting({
   async function toggleQueue() {
     setQueueing(true)
     try {
-      await setUnderwritingQueued(dealId, !queuedAt)
+      await setUnderwritingQueued(dealId, !queuedAt, kind)
       router.refresh()
     } finally {
       setQueueing(false)
@@ -92,7 +100,7 @@ export function ManualUnderwriting({
     setSaving(true)
     setError(null)
     try {
-      const res = await fetch(`/api/deals/${dealId}/import-underwriting`, {
+      const res = await fetch(`/api/deals/${dealId}/${kind === 'snapshot' ? 'import-snapshot' : 'import-underwriting'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
@@ -109,10 +117,34 @@ export function ManualUnderwriting({
   }
 
   return (
-    <details open={!hasUnderwriting} className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/40 p-4 text-sm">
+    <details
+      open={!hasUnderwriting && !hasSnapshot}
+      className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/40 p-4 text-sm"
+    >
       <summary className="cursor-pointer font-medium text-slate-800">
         Underwrite for free (no API charge)
       </summary>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-slate-600">What do you want?</span>
+        {(
+          [
+            ['snapshot', 'Lender snapshot (short, for sending to lenders)'],
+            ['report', 'Research report (long, the older format)'],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            onClick={() => setKind(value)}
+            className={`rounded-full border px-3 py-1 text-xs ${
+              kind === value
+                ? 'border-slate-900 bg-slate-900 text-white'
+                : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">
         <p className="font-medium text-slate-800">Option A — have Claude Code do it</p>
         <p className="mt-1 text-xs text-slate-500">
@@ -201,7 +233,7 @@ export function ManualUnderwriting({
               disabled={saving || text.trim().length < 200}
               className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
             >
-              {saving ? 'Saving…' : 'Save as underwriting'}
+              {saving ? 'Saving…' : kind === 'snapshot' ? 'Save as lender snapshot' : 'Save as underwriting'}
             </button>
             <span className="text-xs text-slate-500">
               Costs a few cents (one short formatting step). Replaces any existing underwriting.
