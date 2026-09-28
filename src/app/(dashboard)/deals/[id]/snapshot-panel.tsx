@@ -118,12 +118,22 @@ export function SnapshotPanel({
         </div>
         <div className="flex flex-wrap gap-2">
           {snapshot && (
-            <button
-              onClick={copy}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-            >
-              {copied ? 'Copied ✓' : 'Copy as text'}
-            </button>
+            <>
+              <a
+                href={`/deals/${dealId}/snapshot-print`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                Open printable one-pager
+              </a>
+              <button
+                onClick={copy}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                {copied ? 'Copied ✓' : 'Copy as text'}
+              </button>
+            </>
           )}
           <button
             onClick={() => setConfirming(true)}
