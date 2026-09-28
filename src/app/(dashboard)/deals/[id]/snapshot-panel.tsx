@@ -6,6 +6,7 @@ import type { Snapshot } from '@/lib/snapshot/schema'
 import { snapshotToText } from '@/lib/snapshot/text'
 import { readJsonResponse } from '@/lib/fetch-json'
 import { ErrorText } from '@/components/error-text'
+import { SnapshotEditor } from './snapshot-editor'
 
 const money = (n: number | null | undefined) =>
   n === null || n === undefined
@@ -77,6 +78,7 @@ export function SnapshotPanel({
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [editing, setEditing] = useState(false)
 
   async function build() {
     setConfirming(false)
@@ -133,6 +135,12 @@ export function SnapshotPanel({
               >
                 {copied ? 'Copied ✓' : 'Copy as text'}
               </button>
+              <button
+                onClick={() => setEditing((v) => !v)}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                {editing ? 'Close editor' : 'Edit'}
+              </button>
             </>
           )}
           <button
@@ -165,13 +173,17 @@ export function SnapshotPanel({
         </div>
       )}
 
+      {editing && snapshot && (
+        <SnapshotEditor dealId={dealId} snapshot={snapshot} onDone={() => setEditing(false)} />
+      )}
+
       {error && (
         <p className="mt-3 text-sm text-red-600">
           <ErrorText message={error} />
         </p>
       )}
 
-      {snapshot && (
+      {snapshot && !editing && (
         <div className="mt-5 space-y-6">
           {snapshot.entities.map((e) => (
             <div key={e.name} className="space-y-2 rounded-lg border border-slate-200 p-4">
