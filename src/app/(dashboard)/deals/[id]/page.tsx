@@ -54,7 +54,7 @@ export default async function DealDetailPage({
       supabase
         .from('deal_matches')
         .select(
-          'id, lender_id, score, reasoning, selected, created_at, draft_subject, draft_body, draft_status, lenders(name)'
+          'id, lender_id, score, reasoning, selected, created_at, draft_subject, draft_body, draft_status, outlook_draft_created_at, lenders(name)'
         )
         .eq('deal_id', id)
         .order('score', { ascending: false }),
@@ -85,6 +85,7 @@ export default async function DealDetailPage({
       draftSubject: m.draft_subject,
       draftBody: m.draft_body,
       draftStatus: m.draft_status as 'none' | 'drafted' | 'sent',
+      outlookDraftCreatedAt: m.outlook_draft_created_at,
     }
   })
   const lastMatchRunAt =

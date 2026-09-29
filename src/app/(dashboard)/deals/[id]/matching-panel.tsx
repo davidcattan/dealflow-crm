@@ -18,11 +18,28 @@ export type MatchWithLender = {
   draftSubject: string | null
   draftBody: string | null
   draftStatus: 'none' | 'drafted' | 'sent'
+  outlookDraftCreatedAt: string | null
 }
 
-function DraftEmail({ subject, body }: { subject: string; body: string }) {
+function DraftEmail({
+  dealId,
+  matchId,
+  subject,
+  body,
+  outlookDraftCreatedAt,
+  onCreated,
+}: {
+  dealId: string
+  matchId: string
+  subject: string
+  body: string
+  outlookDraftCreatedAt: string | null
+  onCreated: () => void
+}) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [outlookError, setOutlookError] = useState<string | null>(null)
 
   async function copy() {
     try {
@@ -35,9 +52,25 @@ function DraftEmail({ subject, body }: { subject: string; body: string }) {
     }
   }
 
+  async function createInOutlook() {
+    setCreating(true)
+    setOutlookError(null)
+    try {
+      const res = await fetch(`/api/deals/${dealId}/matches/${matchId}/create-outlook-draft`, { method: 'POST' })
+      const result = await readJsonResponse<{ webLink: string; skippedAttachments: string[] }>(res)
+      if (!result.ok) throw new Error(result.message)
+      onCreated()
+      if (result.body.webLink) window.open(result.body.webLink, '_blank')
+    } catch (err) {
+      setOutlookError(err instanceof Error ? err.message : 'Could not create the Outlook draft')
+    } finally {
+      setCreating(false)
+    }
+  }
+
   return (
     <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -45,16 +78,36 @@ function DraftEmail({ subject, body }: { subject: string; body: string }) {
         >
           {open ? 'Hide' : 'View'} auto-drafted submission email
         </button>
-        {open && (
+        <div className="flex items-center gap-2">
+          {open && (
+            <button
+              type="button"
+              onClick={copy}
+              className="rounded border border-amber-300 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100"
+            >
+              {copied ? 'Copied ✓' : 'Copy'}
+            </button>
+          )}
           <button
             type="button"
-            onClick={copy}
-            className="rounded border border-amber-300 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100"
+            onClick={createInOutlook}
+            disabled={creating}
+            className="rounded border border-amber-300 bg-white px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100 disabled:opacity-50"
           >
-            {copied ? 'Copied ✓' : 'Copy'}
+            {creating
+              ? 'Creating…'
+              : outlookDraftCreatedAt
+                ? 'Re-create in Outlook'
+                : 'Create draft in Outlook'}
           </button>
-        )}
+        </div>
       </div>
+      {outlookDraftCreatedAt && (
+        <p className="mt-1 text-xs text-amber-700">
+          Created in Outlook {new Date(outlookDraftCreatedAt).toLocaleString()}
+        </p>
+      )}
+      {outlookError && <ErrorText message={outlookError} className="mt-1 block text-xs text-red-600" />}
       {open && (
         <div className="mt-2 space-y-2 text-sm text-slate-700">
           <p>
@@ -62,8 +115,7 @@ function DraftEmail({ subject, body }: { subject: string; body: string }) {
           </p>
           <p className="whitespace-pre-wrap">{body}</p>
           <p className="text-xs text-amber-700">
-            Draft only — not sent. Paste into Outlook until direct sending
-            is wired up.
+            Draft only — nothing is sent automatically. Review and send it yourself in Outlook.
           </p>
         </div>
       )}
@@ -317,7 +369,14 @@ export function MatchingPanel({
               </div>
               <p className="mt-2 text-sm text-slate-600">{m.reasoning}</p>
               {m.draftStatus === 'drafted' && m.draftSubject && m.draftBody && (
-                <DraftEmail subject={m.draftSubject} body={m.draftBody} />
+                <DraftEmail
+                  dealId={dealId}
+                  matchId={m.id}
+                  subject={m.draftSubject}
+                  body={m.draftBody}
+                  outlookDraftCreatedAt={m.outlookDraftCreatedAt}
+                  onCreated={() => router.refresh()}
+                />
               )}
               {draftingId === m.id && (
                 <p className="mt-3 text-xs text-slate-500">Drafting submission email…</p>

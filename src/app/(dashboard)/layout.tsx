@@ -35,6 +35,9 @@ export default async function DashboardLayout({
               <Link href="/usage" className="whitespace-nowrap hover:text-slate-900">
                 Usage
               </Link>
+              <Link href="/settings" className="whitespace-nowrap hover:text-slate-900">
+                Settings
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm text-slate-500">
