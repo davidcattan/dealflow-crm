@@ -303,13 +303,6 @@ export default async function DealDetailPage({
         dealId={deal.id}
         snapshot={(deal.snapshot as Snapshot | null) ?? null}
         generatedAt={(deal.snapshot_generated_at as string | null) ?? null}
-      />
-
-      <UnderwritingPanel
-        dealId={deal.id}
-        dealName={deal.company_name}
-        estimate={estimateUnderwriting((documents ?? []) as DocumentRecord[])}
-        lastRunCost={lastRunCost}
         queuedAt={(deal as { underwriting_requested_at?: string | null }).underwriting_requested_at ?? null}
         manualDocs={docsWithUrls.map((d) => ({
           id: d.id,
@@ -322,7 +315,14 @@ export default async function DealDetailPage({
         }))}
         manualPrompt={buildManualPrompt(deal, ((documents ?? []) as DocumentRecord[]).map((d) => d.file_name))}
         snapshotPrompt={buildSnapshotPrompt(deal, ((documents ?? []) as DocumentRecord[]).map((d) => d.file_name))}
-        hasSnapshot={Boolean(deal.snapshot)}
+        hasReportUnderwriting={Boolean(deal.underwriting)}
+      />
+
+      <UnderwritingPanel
+        dealId={deal.id}
+        dealName={deal.company_name}
+        estimate={estimateUnderwriting((documents ?? []) as DocumentRecord[])}
+        lastRunCost={lastRunCost}
         underwriting={deal.underwriting as Underwriting | null}
         generatedAt={deal.underwriting_generated_at}
       />

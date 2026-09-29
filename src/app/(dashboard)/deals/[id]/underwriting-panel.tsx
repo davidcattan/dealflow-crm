@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import type { UnderwritingEstimate } from '@/lib/underwriting/estimate'
-import { ManualUnderwriting, type ManualDoc } from './manual-underwriting'
 import { useUnderwritingRunner } from '@/components/underwriting-runner'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatCurrency } from '@/lib/format'
@@ -13,11 +12,6 @@ export function UnderwritingPanel({
   dealName,
   estimate,
   lastRunCost,
-  manualPrompt,
-  snapshotPrompt,
-  hasSnapshot,
-  manualDocs,
-  queuedAt,
   underwriting,
   generatedAt,
 }: {
@@ -25,11 +19,6 @@ export function UnderwritingPanel({
   dealName: string
   estimate: UnderwritingEstimate
   lastRunCost: number | null
-  manualPrompt: string
-  snapshotPrompt: string
-  hasSnapshot: boolean
-  manualDocs: ManualDoc[]
-  queuedAt: string | null
   underwriting: Underwriting | null
   generatedAt: string | null
 }) {
@@ -41,18 +30,24 @@ export function UnderwritingPanel({
   const error = result?.dealId === dealId ? result.error : null
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-900">
-            AI underwriting
-          </h2>
-          {generatedAt && (
-            <p className="mt-0.5 text-xs text-slate-400">
-              Last run {new Date(generatedAt).toLocaleString()}
-            </p>
-          )}
-        </div>
+    <details open={Boolean(underwriting)} className="group rounded-xl border border-slate-200 bg-white shadow-sm">
+      <summary className="cursor-pointer list-none px-6 py-4">
+        <span className="flex flex-wrap items-center justify-between gap-3">
+          <span>
+            <span className="text-sm font-semibold text-slate-900">
+              Advanced: full research report
+            </span>
+            <span className="ml-2 text-xs text-slate-400 group-open:hidden">(longer, paid — click to expand)</span>
+            {generatedAt && (
+              <span className="mt-0.5 block text-xs text-slate-400">
+                Last run {new Date(generatedAt).toLocaleString()}
+              </span>
+            )}
+          </span>
+        </span>
+      </summary>
+      <div className="px-6 pb-6">
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <button
           onClick={() => setConfirming(true)}
           disabled={loading || busyElsewhere || confirming}
@@ -63,20 +58,10 @@ export function UnderwritingPanel({
             : busyElsewhere
               ? 'Another deal is underwriting…'
             : underwriting
-              ? 'Re-run underwriting (paid)'
-              : 'Run underwriting (paid)'}
+              ? 'Re-run full research report (paid)'
+              : 'Run full research report (paid)'}
         </button>
       </div>
-
-      <ManualUnderwriting
-        dealId={dealId}
-        prompt={manualPrompt}
-        snapshotPrompt={snapshotPrompt}
-        hasSnapshot={hasSnapshot}
-        docs={manualDocs}
-        queuedAt={queuedAt}
-        hasUnderwriting={Boolean(underwriting)}
-      />
 
       {confirming && (
         <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-slate-800">
@@ -307,6 +292,7 @@ export function UnderwritingPanel({
           </div>
         </div>
       )}
-    </section>
+      </div>
+    </details>
   )
 }

@@ -7,6 +7,7 @@ import { snapshotToText } from '@/lib/snapshot/text'
 import { readJsonResponse } from '@/lib/fetch-json'
 import { ErrorText } from '@/components/error-text'
 import { SnapshotEditor } from './snapshot-editor'
+import { ManualUnderwriting, type ManualDoc } from './manual-underwriting'
 
 const money = (n: number | null | undefined) =>
   n === null || n === undefined
@@ -68,10 +69,20 @@ export function SnapshotPanel({
   dealId,
   snapshot,
   generatedAt,
+  queuedAt,
+  manualDocs,
+  manualPrompt,
+  snapshotPrompt,
+  hasReportUnderwriting,
 }: {
   dealId: string
   snapshot: Snapshot | null
   generatedAt: string | null
+  queuedAt: string | null
+  manualDocs: ManualDoc[]
+  manualPrompt: string
+  snapshotPrompt: string
+  hasReportUnderwriting: boolean
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -111,11 +122,11 @@ export function SnapshotPanel({
     <section id="lender-snapshot" className="scroll-mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Lender snapshot</h2>
+          <h2 className="text-sm font-semibold text-slate-900">AI underwriting</h2>
           <p className="mt-0.5 text-xs text-slate-400">
             {generatedAt
               ? `Built ${new Date(generatedAt).toLocaleString()}`
-              : 'The short summary you send to lenders: financials, assets, debt, flags and a request list.'}
+              : 'Produces the lender-ready snapshot: financials, assets, debt, flags and a request list.'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -148,7 +159,7 @@ export function SnapshotPanel({
             disabled={busy || confirming}
             className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
-            {busy ? 'Building… (a few minutes)' : snapshot ? 'Rebuild (paid)' : 'Build snapshot (paid)'}
+            {busy ? 'Analyzing…' : snapshot ? 'Re-run underwriting (paid)' : 'Run underwriting (paid)'}
           </button>
         </div>
       </div>
@@ -176,6 +187,16 @@ export function SnapshotPanel({
       {editing && snapshot && (
         <SnapshotEditor dealId={dealId} snapshot={snapshot} onDone={() => setEditing(false)} />
       )}
+
+      <ManualUnderwriting
+        dealId={dealId}
+        prompt={manualPrompt}
+        snapshotPrompt={snapshotPrompt}
+        docs={manualDocs}
+        queuedAt={queuedAt}
+        hasUnderwriting={hasReportUnderwriting}
+        hasSnapshot={Boolean(snapshot)}
+      />
 
       {error && (
         <p className="mt-3 text-sm text-red-600">
