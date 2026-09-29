@@ -1,4 +1,19 @@
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { InboxControls } from './inbox-controls'
+
+const KIND_STYLES: Record<string, string> = {
+  new_deal: 'bg-emerald-100 text-emerald-800',
+  lender_reply: 'bg-violet-100 text-violet-800',
+  other: 'bg-slate-100 text-slate-600',
+  error: 'bg-red-100 text-red-700',
+}
+const KIND_LABELS: Record<string, string> = {
+  new_deal: 'Deal',
+  lender_reply: 'Lender reply',
+  other: 'Other',
+  error: 'Error',
+}
 
 export default async function SettingsPage({
   searchParams,
@@ -7,12 +22,20 @@ export default async function SettingsPage({
 }) {
   const { outlook_connected, outlook_error } = await searchParams
   const supabase = await createClient()
-  const { data: connection } = await supabase
-    .from('outlook_connections')
-    .select('account_email, created_at, updated_at')
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .single()
+  const [{ data: connection }, { data: syncState }, { data: recent }] = await Promise.all([
+    supabase
+      .from('outlook_connections')
+      .select('account_email, created_at, updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase.from('inbox_sync_state').select('*').eq('id', 1).maybeSingle(),
+    supabase
+      .from('inbox_messages')
+      .select('id, from_email, subject, received_at, classification, deal_id, summary, action_taken, deals(company_name)')
+      .order('received_at', { ascending: false })
+      .limit(30),
+  ])
 
   return (
     <div className="space-y-6">
@@ -57,6 +80,77 @@ export default async function SettingsPage({
         >
           {connection ? 'Reconnect Outlook' : 'Connect Outlook'}
         </a>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">Inbox</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Reads new mail in the connected inbox. New deal submissions become deals (attachments
+          included), follow-ups are logged on the existing deal, and lender replies are logged on
+          the deal they answer.
+        </p>
+        {syncState?.last_run_at && (
+          <p className="mt-2 text-xs text-slate-500">
+            Last check {new Date(syncState.last_run_at).toLocaleString()} — {syncState.last_run_status}
+            {syncState.last_error && <span className="text-red-600"> ({syncState.last_error})</span>}
+          </p>
+        )}
+        <InboxControls
+          connected={Boolean(connection)}
+          autoSyncEnabled={Boolean(syncState?.auto_sync_enabled)}
+          hasRunBefore={Boolean(syncState?.last_synced_at)}
+        />
+
+        {recent && recent.length > 0 && (
+          <div className="mt-5 overflow-hidden rounded-lg border border-slate-200">
+            <table className="w-full table-fixed text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="w-[12%] px-3 py-2">Type</th>
+                  <th className="w-[30%] px-3 py-2">Email</th>
+                  <th className="w-[40%] px-3 py-2">What happened</th>
+                  <th className="w-[18%] px-3 py-2">Deal</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {recent.map((m) => {
+                  const deal = Array.isArray(m.deals) ? m.deals[0] : m.deals
+                  return (
+                    <tr key={m.id} className="align-top">
+                      <td className="px-3 py-2">
+                        <span className={`rounded-full px-2 py-0.5 text-xs ${KIND_STYLES[m.classification] ?? ''}`}>
+                          {KIND_LABELS[m.classification] ?? m.classification}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <p className="truncate font-medium text-slate-800" title={m.subject ?? ''}>
+                          {m.subject || '(no subject)'}
+                        </p>
+                        <p className="truncate text-xs text-slate-500" title={m.from_email ?? ''}>
+                          {m.from_email}
+                          {m.received_at && ` · ${new Date(m.received_at).toLocaleDateString()}`}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-600">
+                        <p className="font-medium text-slate-700">{m.action_taken}</p>
+                        {m.summary && <p className="mt-0.5 line-clamp-2">{m.summary}</p>}
+                      </td>
+                      <td className="truncate px-3 py-2">
+                        {m.deal_id ? (
+                          <Link href={`/deals/${m.deal_id}`} className="text-slate-800 hover:underline">
+                            {deal?.company_name ?? 'Open deal'}
+                          </Link>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </div>
   )

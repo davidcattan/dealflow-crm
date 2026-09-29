@@ -1,4 +1,5 @@
 import 'server-only'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 
 const TENANT = process.env.MICROSOFT_TENANT_ID!
@@ -70,8 +71,10 @@ async function refreshTokens(refreshToken: string) {
 // Reads the single stored connection, refreshes it, and persists whatever
 // new refresh token Microsoft hands back (they rotate it on each use).
 // Throws a clear error if nothing is connected yet.
-export async function getValidAccessToken(): Promise<{ accessToken: string; accountEmail: string; connectionId: string }> {
-  const supabase = await createClient()
+export async function getValidAccessToken(
+  client?: SupabaseClient
+): Promise<{ accessToken: string; accountEmail: string; connectionId: string }> {
+  const supabase = client ?? (await createClient())
   const { data: connection } = await supabase
     .from('outlook_connections')
     .select('*')
@@ -149,7 +152,28 @@ export async function createOutlookDraft({
     }),
   })
 
-  return { messageId: message.id as string, webLink: message.webLink as string, skipped }
+  return {
+    messageId: message.id as string,
+    conversationId: message.conversationId as string,
+    webLink: message.webLink as string,
+    skipped,
+  }
+}
+
+export type MessageAttachment = { name: string; contentType: string; size: number; contentBytes: string }
+
+// Real file attachments on a message (inline images like signature logos
+// are skipped). Graph returns small attachments' bytes inline.
+export async function getMessageAttachments(accessToken: string, messageId: string): Promise<MessageAttachment[]> {
+  const json = await graphFetch(`/me/messages/${messageId}/attachments`, accessToken)
+  return (json.value as Array<Record<string, unknown>>)
+    .filter((a) => a['@odata.type'] === '#microsoft.graph.fileAttachment' && !a.isInline && a.contentBytes)
+    .map((a) => ({
+      name: a.name as string,
+      contentType: (a.contentType as string) || 'application/octet-stream',
+      size: Number(a.size ?? 0),
+      contentBytes: a.contentBytes as string,
+    }))
 }
 
 export type InboxMessage = {
@@ -157,33 +181,45 @@ export type InboxMessage = {
   conversationId: string
   subject: string
   from: string
+  fromName: string
   receivedDateTime: string
+  hasAttachments: boolean
   bodyPreview: string
   bodyText: string
 }
 
-// Lists recent inbox messages (newest first). `sinceIso` limits to messages
-// received after that time — pass null on the very first run to just grab
-// a recent batch instead of the whole history.
-export async function listRecentInboxMessages(accessToken: string, sinceIso: string | null, top = 25): Promise<InboxMessage[]> {
-  const filter = sinceIso ? `&$filter=receivedDateTime ge ${sinceIso}` : ''
-  const select = '$select=id,conversationId,subject,from,receivedDateTime,bodyPreview,body'
+// Inbox messages received after `sinceIso`, OLDEST first, capped at `top`.
+// Oldest-first matters: if more mail arrived than one run handles, the
+// next run picks up exactly where this one stopped instead of skipping
+// the backlog. Bodies are converted to plain text and truncated.
+export async function listInboxMessagesSince(accessToken: string, sinceIso: string, top = 25): Promise<InboxMessage[]> {
+  const filter = `$filter=${encodeURIComponent(`receivedDateTime gt ${sinceIso}`)}`
+  const select = '$select=id,conversationId,subject,from,receivedDateTime,hasAttachments,bodyPreview,body'
   const json = await graphFetch(
-    `/me/mailFolders/inbox/messages?${select}${filter}&$orderby=receivedDateTime desc&$top=${top}`,
-    accessToken
+    `/me/mailFolders/inbox/messages?${filter}&${select}&$orderby=receivedDateTime asc&$top=${top}`,
+    accessToken,
+    // Plain-text bodies are far smaller than HTML for the AI to read.
+    { headers: { Prefer: 'outlook.body-content-type="text"' } }
   )
   return (json.value as Array<Record<string, unknown>>).map((m) => {
     const body = m.body as { content?: string } | undefined
-    const text = (body?.content ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+    const text = (body?.content ?? '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/<?https?:\/\/\S{60,}>?/g, '[link]')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
     const from = m.from as { emailAddress?: { address?: string; name?: string } } | undefined
     return {
       id: m.id as string,
       conversationId: m.conversationId as string,
       subject: (m.subject as string) ?? '',
-      from: from?.emailAddress?.address ?? '',
+      from: (from?.emailAddress?.address ?? '').toLowerCase(),
+      fromName: from?.emailAddress?.name ?? '',
       receivedDateTime: m.receivedDateTime as string,
+      hasAttachments: Boolean(m.hasAttachments),
       bodyPreview: (m.bodyPreview as string) ?? '',
-      bodyText: text.slice(0, 5000),
+      bodyText: text.slice(0, 8000),
     }
   })
 }

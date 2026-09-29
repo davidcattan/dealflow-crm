@@ -69,7 +69,11 @@ export async function POST(_request: Request, ctx: RouteContext<'/api/deals/[id]
 
     await supabase
       .from('deal_matches')
-      .update({ outlook_draft_created_at: new Date().toISOString() })
+      .update({
+        outlook_draft_created_at: new Date().toISOString(),
+        // Replies keep this id, so the inbox sync can tie them back here.
+        outlook_conversation_id: result.conversationId,
+      })
       .eq('id', matchId)
 
     return NextResponse.json({ ok: true, webLink: result.webLink, skippedAttachments: result.skipped })

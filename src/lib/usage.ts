@@ -1,4 +1,5 @@
 import 'server-only'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 
 // USD per million tokens. Cache reads bill at 0.1x input, cache writes at
@@ -37,6 +38,9 @@ export async function logUsage(opts: {
   model: string
   dealId?: string | null
   usage: UsageLike | (ReturnType<typeof emptyUsage>) | undefined
+  // Background jobs (the inbox sync) have no signed-in user, so they pass
+  // their own admin client; everything else uses the request's session.
+  supabase?: SupabaseClient
 }) {
   try {
     const u = opts.usage as Record<string, unknown> | undefined
@@ -53,7 +57,7 @@ export async function logUsage(opts: {
       (input * p.in + output * p.out + cacheRead * p.in * 0.1 + cacheWrite * p.in * 1.25) / 1_000_000 +
       searches * WEB_SEARCH_USD
 
-    const supabase = await createClient()
+    const supabase = opts.supabase ?? (await createClient())
     await supabase.from('ai_usage').insert({
       deal_id: opts.dealId ?? null,
       feature: opts.feature,
