@@ -4,11 +4,43 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { logUsage } from '@/lib/usage'
 import type { InboxMessage } from '@/lib/outlook/graph'
-import { EmailClassificationSchema, type EmailClassification } from './classify-schema'
+import { EmailClassificationSchema, TriageSchema, type EmailClassification } from './classify-schema'
 
-// One place to change the model for inbox reading. This runs on every
-// incoming email, so it's the single biggest lever on the sync's cost.
+// Two-stage reading, agreed with David to keep inbox cost down:
+// a cheap model sorts every email; only ones that might be a deal or a
+// lender reply (usually a small share of an inbox) are re-read by the top
+// model, which does the extraction that actually changes the CRM.
+export const TRIAGE_MODEL = 'claude-haiku-4-5-20251001'
 export const INBOX_MODEL = 'claude-opus-5'
+
+const TRIAGE_INSTRUCTIONS = `You are doing a quick first-pass sort of a debt broker's inbox. Decide whether this email could be:
+- new_deal: someone presenting a financing request for a specific business, or sending more info/documents about one
+- lender_reply: a lender or funder responding about a deal submitted to them
+- other: clearly neither (newsletters, marketing, notifications, scheduling, personal mail)
+
+When in doubt between other and one of the first two, choose the first two — a second, more careful reader checks everything you flag. Only choose other when you are confident.`
+
+async function triageEmail(emailText: string, contextHint: string, supabase: SupabaseClient) {
+  const client = new Anthropic()
+  const structured = await client.messages.parse({
+    model: TRIAGE_MODEL,
+    max_tokens: 300,
+    messages: [
+      {
+        role: 'user',
+        content: ['--- Email ---', emailText.slice(0, 4000), '', contextHint, '', TRIAGE_INSTRUCTIONS].join('\n'),
+      },
+    ],
+    output_config: { format: zodOutputFormat(TriageSchema) },
+  })
+  await logUsage({ feature: 'inbox-triage', model: TRIAGE_MODEL, usage: structured.usage, supabase })
+  return structured.parsed_output
+}
+
+function isBillingError(err: unknown) {
+  const text = err instanceof Error ? err.message.toLowerCase() : ''
+  return text.includes('credit balance') || text.includes('usage limit') || text.includes('spend limit')
+}
 
 const INSTRUCTIONS = `You are sorting the inbox of an asset-based lending debt broker. For the email above, decide what it is and extract what the CRM needs.
 
@@ -53,6 +85,23 @@ export async function classifyEmail(
     '',
     message.bodyText.slice(0, 6000),
   ].join('\n')
+
+  // Replies inside a thread the CRM started always get the full read. For
+  // everything else the cheap pass decides first. If that pass fails for
+  // any reason other than billing, fall through to the full read rather
+  // than risk dropping a real deal.
+  if (!context.threadDealCompany) {
+    const hint = context.senderLenderName ? `The sender is a known lender: ${context.senderLenderName}.` : ''
+    try {
+      const triage = await triageEmail(emailText, hint, supabase)
+      if (triage?.kind === 'other') {
+        return { kind: 'other', reason: triage.reason, new_deal: null, lender_reply: null }
+      }
+    } catch (err) {
+      if (isBillingError(err)) throw err
+      console.error('Inbox triage failed, using full read', err)
+    }
+  }
 
   const structured = await client.messages.parse({
     model: INBOX_MODEL,

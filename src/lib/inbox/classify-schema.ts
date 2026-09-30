@@ -11,6 +11,12 @@ export const OUTCOME_LABELS: Record<(typeof LENDER_OUTCOMES)[number], string> = 
   other: 'Replied',
 }
 
+// First-pass sort by the cheap model: just "could this matter?"
+export const TriageSchema = z.object({
+  kind: z.enum(['new_deal', 'lender_reply', 'other']),
+  reason: z.string().describe('One short line.'),
+})
+
 export const EmailClassificationSchema = z.object({
   kind: z
     .enum(['new_deal', 'lender_reply', 'other'])

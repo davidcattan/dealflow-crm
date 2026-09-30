@@ -8,6 +8,7 @@ const PRICES: Record<string, { in: number; out: number }> = {
   'claude-opus-5': { in: 5, out: 25 },
   'claude-sonnet-5': { in: 2, out: 10 },
   'claude-haiku-4-5': { in: 1, out: 5 },
+  'claude-haiku-4-5-20251001': { in: 1, out: 5 },
 }
 const WEB_SEARCH_USD = 0.01
 

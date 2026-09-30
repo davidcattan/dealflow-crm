@@ -83,9 +83,10 @@ export function InboxControls({
       {confirming && (
         <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-slate-800">
           <p>
-            This reads up to 25 new emails{hasRunBefore ? ' since the last check' : ' from the last 3 days'} and has
-            Claude sort each one — roughly $0.02–0.05 per email, so up to about $1 for a full batch. Automated
-            senders (no-reply, notifications) are skipped for free.
+            This reads up to 25 new emails{hasRunBefore ? ' since the last check' : ' from the last 3 days'}. A
+            cheap model sorts each one (well under 1¢); only emails that look like a deal or a lender reply get a
+            full read (about 3–5¢ each). A typical batch costs a few cents to about 50¢. Automated senders
+            (no-reply, notifications) are skipped for free.
           </p>
           <div className="mt-2 flex gap-2">
             <button onClick={run} className="rounded-md bg-slate-900 px-3 py-1.5 text-white hover:bg-slate-800">
