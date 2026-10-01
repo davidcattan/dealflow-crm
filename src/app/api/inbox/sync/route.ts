@@ -3,7 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { friendlyAiError } from '@/lib/ai-errors'
 import { runInboxSync } from '@/lib/inbox/sync'
 
-export const maxDuration = 300
+// Needs Fluid Compute on Vercel Pro (max 800s).
+export const maxDuration = 800
 
 // Manual "Check inbox now" from Settings, run as the signed-in user.
 export async function POST() {

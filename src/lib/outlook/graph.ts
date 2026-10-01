@@ -188,38 +188,48 @@ export type InboxMessage = {
   bodyText: string
 }
 
+const MESSAGE_SELECT = '$select=id,conversationId,subject,from,receivedDateTime,hasAttachments,bodyPreview,body'
+// Plain-text bodies are far smaller than HTML for the AI to read.
+const TEXT_BODY = { headers: { Prefer: 'outlook.body-content-type="text"' } }
+
+function toInboxMessage(m: Record<string, unknown>): InboxMessage {
+  const body = m.body as { content?: string } | undefined
+  const text = (body?.content ?? '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/<?https?:\/\/\S{60,}>?/g, '[link]')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+  const from = m.from as { emailAddress?: { address?: string; name?: string } } | undefined
+  return {
+    id: m.id as string,
+    conversationId: m.conversationId as string,
+    subject: (m.subject as string) ?? '',
+    from: (from?.emailAddress?.address ?? '').toLowerCase(),
+    fromName: from?.emailAddress?.name ?? '',
+    receivedDateTime: m.receivedDateTime as string,
+    hasAttachments: Boolean(m.hasAttachments),
+    bodyPreview: (m.bodyPreview as string) ?? '',
+    bodyText: text.slice(0, 8000),
+  }
+}
+
 // Inbox messages received after `sinceIso`, OLDEST first, capped at `top`.
 // Oldest-first matters: if more mail arrived than one run handles, the
 // next run picks up exactly where this one stopped instead of skipping
 // the backlog. Bodies are converted to plain text and truncated.
 export async function listInboxMessagesSince(accessToken: string, sinceIso: string, top = 25): Promise<InboxMessage[]> {
   const filter = `$filter=${encodeURIComponent(`receivedDateTime gt ${sinceIso}`)}`
-  const select = '$select=id,conversationId,subject,from,receivedDateTime,hasAttachments,bodyPreview,body'
   const json = await graphFetch(
-    `/me/mailFolders/inbox/messages?${filter}&${select}&$orderby=receivedDateTime asc&$top=${top}`,
+    `/me/mailFolders/inbox/messages?${filter}&${MESSAGE_SELECT}&$orderby=receivedDateTime asc&$top=${top}`,
     accessToken,
-    // Plain-text bodies are far smaller than HTML for the AI to read.
-    { headers: { Prefer: 'outlook.body-content-type="text"' } }
+    TEXT_BODY
   )
-  return (json.value as Array<Record<string, unknown>>).map((m) => {
-    const body = m.body as { content?: string } | undefined
-    const text = (body?.content ?? '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/<?https?:\/\/\S{60,}>?/g, '[link]')
-      .replace(/[ \t]+/g, ' ')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim()
-    const from = m.from as { emailAddress?: { address?: string; name?: string } } | undefined
-    return {
-      id: m.id as string,
-      conversationId: m.conversationId as string,
-      subject: (m.subject as string) ?? '',
-      from: (from?.emailAddress?.address ?? '').toLowerCase(),
-      fromName: from?.emailAddress?.name ?? '',
-      receivedDateTime: m.receivedDateTime as string,
-      hasAttachments: Boolean(m.hasAttachments),
-      bodyPreview: (m.bodyPreview as string) ?? '',
-      bodyText: text.slice(0, 8000),
-    }
-  })
+  return (json.value as Array<Record<string, unknown>>).map(toInboxMessage)
+}
+
+// One message by id (used to retry an email that was already recorded).
+export async function getInboxMessage(accessToken: string, messageId: string): Promise<InboxMessage> {
+  const json = await graphFetch(`/me/messages/${messageId}?${MESSAGE_SELECT}`, accessToken, TEXT_BODY)
+  return toInboxMessage(json)
 }

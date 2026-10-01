@@ -44,14 +44,14 @@ function isBillingError(err: unknown) {
 
 const INSTRUCTIONS = `You are sorting the inbox of an asset-based lending debt broker. For the email above, decide what it is and extract what the CRM needs.
 
-- new_deal: a borrower, another broker, or a referral partner presenting a financing request for a specific business (often with financials, tax returns or a loan package attached), or sending more information about one. If the company is already in the active deal list, set existing_deal_ref to its D#.
+- new_deal: a borrower, another broker, or a referral partner presenting a financing request for a specific business (often with financials, tax returns or a loan package attached), or sending more information about one. If the company is already in the deal list (any status, including old), set existing_deal_ref to its D#.
 - lender_reply: a lender or funder responding about a deal that was submitted to them (interest, questions, document requests, term sheet, or a pass).
 - other: anything else — newsletters, a lender's marketing blast about its own programs, notifications, scheduling, internal or personal mail.
 
 Only use facts stated in the email. Never invent a company, amount or contact. If it is ambiguous whether this is a real deal, choose other.`
 
 export type ClassifyContext = {
-  activeDeals: { ref: string; company_name: string; contact_name: string | null }[]
+  deals: { ref: string; company_name: string; contact_name: string | null; status: string }[]
   senderLenderName: string | null
   threadDealCompany: string | null
   threadLenderName: string | null
@@ -70,11 +70,11 @@ export async function classifyEmail(
       ? `This email is in the thread where deal "${context.threadDealCompany}" was submitted to lender "${context.threadLenderName ?? 'unknown'}".`
       : null,
     context.senderLenderName ? `The sender is a known lender in the CRM: ${context.senderLenderName}.` : null,
-    context.activeDeals.length > 0
-      ? `Active deals in the CRM:\n${context.activeDeals
-          .map((d) => `${d.ref}: ${d.company_name}${d.contact_name ? ` (contact: ${d.contact_name})` : ''}`)
+    context.deals.length > 0
+      ? `Deals in the CRM (status in brackets; "old" deals may still be live):\n${context.deals
+          .map((d) => `${d.ref}: ${d.company_name}${d.contact_name ? ` (contact: ${d.contact_name})` : ''} [${d.status}]`)
           .join('\n')}`
-      : 'There are no active deals in the CRM.',
+      : 'There are no deals in the CRM.',
   ].filter(Boolean)
 
   const emailText = [

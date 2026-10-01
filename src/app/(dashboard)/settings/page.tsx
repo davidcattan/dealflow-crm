@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { InboxControls } from './inbox-controls'
+import { RetryButton } from './retry-button'
 
 const KIND_STYLES: Record<string, string> = {
   new_deal: 'bg-emerald-100 text-emerald-800',
@@ -134,6 +135,8 @@ export default async function SettingsPage({
                       <td className="px-3 py-2 text-xs text-slate-600">
                         <p className="font-medium text-slate-700">{m.action_taken}</p>
                         {m.summary && <p className="mt-0.5 line-clamp-2">{m.summary}</p>}
+                        {(m.classification === 'error' ||
+                          (m.classification === 'lender_reply' && !m.deal_id)) && <RetryButton messageId={m.id} />}
                       </td>
                       <td className="truncate px-3 py-2">
                         {m.deal_id ? (

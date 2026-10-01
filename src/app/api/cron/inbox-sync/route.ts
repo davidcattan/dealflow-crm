@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runInboxSync } from '@/lib/inbox/sync'
 
-export const maxDuration = 300
+// Needs Fluid Compute on Vercel Pro (max 800s).
+export const maxDuration = 800
 
 // Called by Vercel Cron on a schedule (see vercel.json). Vercel sends
 // "Authorization: Bearer $CRON_SECRET" automatically once CRON_SECRET is

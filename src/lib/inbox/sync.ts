@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   getValidAccessToken,
   listInboxMessagesSince,
+  getInboxMessage,
   getMessageAttachments,
   type InboxMessage,
 } from '@/lib/outlook/graph'
@@ -14,7 +15,9 @@ import { OUTCOME_LABELS, type EmailClassification } from './classify-schema'
 const KEEP_EXT = /\.(pdf|xlsx|xls|csv|docx|doc|png|jpe?g|txt|eml)$/i
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
 const FIRST_RUN_LOOKBACK_DAYS = 3
-const EARLY_STAGES = ['new', 'in_review', 'underwritten', 'matched']
+// A lender replying means the deal went out — including deals that had been
+// shelved as Old (the first real run showed lenders still working those).
+const ADVANCE_ON_LENDER_REPLY = ['new', 'in_review', 'underwritten', 'matched', 'old']
 
 export type SyncSummary = {
   processed: number
@@ -26,6 +29,21 @@ export type SyncSummary = {
   moreWaiting: boolean
 }
 
+type Counter = 'newDeals' | 'dealUpdates' | 'lenderReplies' | 'other' | 'errors'
+type Deal = { id: string; company_name: string; contact_name: string | null; status: string }
+type Lender = { id: string; name: string; contact_email: string | null; mandate_notes: string | null }
+
+type Context = {
+  accessToken: string
+  accountEmail: string
+  deals: (Deal & { ref: string })[]
+  dealByRef: Map<string, Deal & { ref: string }>
+  dealById: Map<string, Deal>
+  lenderById: Map<string, Lender>
+  lenderByEmail: Map<string, string>
+  threadByConversation: Map<string, { dealId: string; lenderId: string }>
+}
+
 function isBillingError(err: unknown) {
   const text = err instanceof Error ? err.message.toLowerCase() : ''
   return text.includes('credit balance') || text.includes('usage limit') || text.includes('spend limit')
@@ -35,12 +53,104 @@ function today() {
   return new Date().toISOString().slice(0, 10)
 }
 
+// Everything the classifier and the actions need, loaded once per run.
+// Includes every deal (not just active ones), so replies and follow-ups on
+// deals marked Old still land on the right deal.
+async function loadContext(supabase: SupabaseClient): Promise<Context> {
+  const { accessToken, accountEmail } = await getValidAccessToken(supabase)
+  const [{ data: deals }, { data: lenders }, { data: contacts }, { data: threads }] = await Promise.all([
+    supabase.from('deals').select('id, company_name, contact_name, status').order('created_at', { ascending: false }),
+    supabase.from('lenders').select('id, name, contact_email, mandate_notes'),
+    supabase.from('lender_contacts').select('lender_id, email'),
+    supabase
+      .from('deal_matches')
+      .select('deal_id, lender_id, outlook_conversation_id')
+      .not('outlook_conversation_id', 'is', null),
+  ])
+
+  const refDeals = (deals ?? []).map((d, i) => ({ ...d, ref: `D${i + 1}` }))
+  const lenderByEmail = new Map<string, string>()
+  for (const l of lenders ?? []) if (l.contact_email) lenderByEmail.set(l.contact_email.toLowerCase(), l.id)
+  for (const c of contacts ?? []) if (c.email) lenderByEmail.set(c.email.toLowerCase(), c.lender_id)
+
+  return {
+    accessToken,
+    accountEmail: accountEmail.toLowerCase(),
+    deals: refDeals,
+    dealByRef: new Map(refDeals.map((d) => [d.ref, d])),
+    dealById: new Map(refDeals.map((d) => [d.id, d])),
+    lenderById: new Map((lenders ?? []).map((l) => [l.id, l])),
+    lenderByEmail,
+    threadByConversation: new Map(
+      (threads ?? []).map((t) => [t.outlook_conversation_id as string, { dealId: t.deal_id, lenderId: t.lender_id }])
+    ),
+  }
+}
+
+// Classifies one email and acts on it. Returns what to record; throws only
+// on billing errors (so the caller stops instead of losing emails).
+async function processMessage(
+  supabase: SupabaseClient,
+  ctx: Context,
+  message: InboxMessage
+): Promise<{ counter: Counter; record: Record<string, unknown> }> {
+  // The mailbox's own messages and obvious robots never cost an AI call.
+  if (message.from === ctx.accountEmail || isAutomatedSender(message.from)) {
+    return { counter: 'other', record: { classification: 'other', action_taken: 'Skipped (automated or own message)' } }
+  }
+
+  try {
+    const thread = ctx.threadByConversation.get(message.conversationId) ?? null
+    const senderLenderId = ctx.lenderByEmail.get(message.from) ?? null
+    const attachments = message.hasAttachments ? await getMessageAttachments(ctx.accessToken, message.id) : []
+
+    const classification = await classifyEmail(
+      message,
+      attachments.map((a) => a.name),
+      {
+        deals: ctx.deals.map((d) => ({
+          ref: d.ref,
+          company_name: d.company_name,
+          contact_name: d.contact_name,
+          status: d.status,
+        })),
+        senderLenderName: senderLenderId ? (ctx.lenderById.get(senderLenderId)?.name ?? null) : null,
+        threadDealCompany: thread ? (ctx.dealById.get(thread.dealId)?.company_name ?? null) : null,
+        threadLenderName: thread ? (ctx.lenderById.get(thread.lenderId)?.name ?? null) : null,
+      },
+      supabase
+    )
+
+    return await act({ supabase, ctx, message, classification, attachments, thread, senderLenderId })
+  } catch (err) {
+    if (isBillingError(err)) throw err
+    return {
+      counter: 'errors',
+      record: {
+        classification: 'error',
+        action_taken: err instanceof Error ? err.message.slice(0, 500) : 'Processing failed',
+      },
+    }
+  }
+}
+
+function baseRecord(message: InboxMessage) {
+  return {
+    graph_message_id: message.id,
+    conversation_id: message.conversationId,
+    from_email: message.from,
+    subject: message.subject,
+    received_at: message.receivedDateTime,
+  }
+}
+
 // Reads new inbox mail since the last run, has Claude decide what each
 // email is, and acts on it: new deals are created (with their attachments
 // uploaded), follow-ups are logged on the existing deal, and lender replies
 // are logged on the deal they answer. Every email is recorded once in
-// inbox_messages so nothing is processed twice. Works with either a
-// signed-in client (manual run) or the admin client (scheduled run).
+// inbox_messages, and progress is saved after each one, so a run that hits
+// the time limit simply continues next time. Works with either a signed-in
+// client (manual run) or the admin client (scheduled run).
 export async function runInboxSync(supabase: SupabaseClient, maxMessages = 25): Promise<SyncSummary> {
   const summary: SyncSummary = {
     processed: 0,
@@ -63,119 +173,29 @@ export async function runInboxSync(supabase: SupabaseClient, maxMessages = 25): 
     .eq('id', 1)
 
   try {
-    const { accessToken, accountEmail } = await getValidAccessToken(supabase)
-    const messages = await listInboxMessagesSince(accessToken, since, maxMessages)
+    const ctx = await loadContext(supabase)
+    const messages = await listInboxMessagesSince(ctx.accessToken, since, maxMessages)
     summary.moreWaiting = messages.length === maxMessages
 
-    // Context the classifier and the actions need, loaded once per run.
-    const [{ data: already }, { data: deals }, { data: lenders }, { data: contacts }, { data: threads }] =
-      await Promise.all([
-        supabase
-          .from('inbox_messages')
-          .select('graph_message_id')
-          .in('graph_message_id', messages.map((m) => m.id).concat('none')),
-        supabase
-          .from('deals')
-          .select('id, company_name, contact_name, status')
-          .not('status', 'in', '(closed,dead,old)'),
-        supabase.from('lenders').select('id, name, contact_email, mandate_notes'),
-        supabase.from('lender_contacts').select('lender_id, email'),
-        supabase
-          .from('deal_matches')
-          .select('deal_id, lender_id, outlook_conversation_id')
-          .not('outlook_conversation_id', 'is', null),
-      ])
-
+    const { data: already } = await supabase
+      .from('inbox_messages')
+      .select('graph_message_id')
+      .in('graph_message_id', messages.map((m) => m.id).concat('none'))
     const seen = new Set((already ?? []).map((r) => r.graph_message_id))
-    const activeDeals = (deals ?? []).map((d, i) => ({ ...d, ref: `D${i + 1}` }))
-    const dealByRef = new Map(activeDeals.map((d) => [d.ref, d]))
-    const dealById = new Map((deals ?? []).map((d) => [d.id, d]))
-    const lenderById = new Map((lenders ?? []).map((l) => [l.id, l]))
-
-    const lenderByEmail = new Map<string, string>()
-    for (const l of lenders ?? []) if (l.contact_email) lenderByEmail.set(l.contact_email.toLowerCase(), l.id)
-    for (const c of contacts ?? []) if (c.email) lenderByEmail.set(c.email.toLowerCase(), c.lender_id)
-
-    const threadByConversation = new Map(
-      (threads ?? []).map((t) => [t.outlook_conversation_id as string, { dealId: t.deal_id, lenderId: t.lender_id }])
-    )
-
-    let lastReceived: string | null = null
 
     for (const message of messages) {
-      lastReceived = message.receivedDateTime
-      if (seen.has(message.id)) continue
-
-      const record = {
-        graph_message_id: message.id,
-        conversation_id: message.conversationId,
-        from_email: message.from,
-        subject: message.subject,
-        received_at: message.receivedDateTime,
-      }
-
-      // The mailbox's own messages and obvious robots never cost an AI call.
-      if (message.from === accountEmail.toLowerCase() || isAutomatedSender(message.from)) {
-        await supabase.from('inbox_messages').insert({
-          ...record,
-          classification: 'other',
-          action_taken: 'Skipped (automated or own message)',
-        })
-        summary.other++
-        summary.processed++
-        continue
-      }
-
-      try {
-        const thread = threadByConversation.get(message.conversationId) ?? null
-        const senderLenderId = lenderByEmail.get(message.from) ?? null
-        const attachments = message.hasAttachments ? await getMessageAttachments(accessToken, message.id) : []
-
-        const classification = await classifyEmail(
-          message,
-          attachments.map((a) => a.name),
-          {
-            activeDeals: activeDeals.map((d) => ({ ref: d.ref, company_name: d.company_name, contact_name: d.contact_name })),
-            senderLenderName: senderLenderId ? (lenderById.get(senderLenderId)?.name ?? null) : null,
-            threadDealCompany: thread ? (dealById.get(thread.dealId)?.company_name ?? null) : null,
-            threadLenderName: thread ? (lenderById.get(thread.lenderId)?.name ?? null) : null,
-          },
-          supabase
-        )
-
-        const outcome = await act({
-          supabase,
-          message,
-          classification,
-          attachments,
-          thread,
-          senderLenderId,
-          dealByRef,
-          dealById,
-          lenderById,
-        })
-
-        await supabase.from('inbox_messages').insert({ ...record, ...outcome.record })
+      if (!seen.has(message.id)) {
+        const outcome = await processMessage(supabase, ctx, message)
+        await supabase.from('inbox_messages').insert({ ...baseRecord(message), ...outcome.record })
         summary[outcome.counter]++
         summary.processed++
-      } catch (err) {
-        // Out of credit / over the spend limit: stop without recording, so
-        // these emails are retried on the next run instead of lost.
-        if (isBillingError(err)) throw err
-        await supabase.from('inbox_messages').insert({
-          ...record,
-          classification: 'error',
-          action_taken: err instanceof Error ? err.message.slice(0, 500) : 'Processing failed',
-        })
-        summary.errors++
-        summary.processed++
       }
+      await supabase.from('inbox_sync_state').update({ last_synced_at: message.receivedDateTime }).eq('id', 1)
     }
 
     await supabase
       .from('inbox_sync_state')
       .update({
-        last_synced_at: lastReceived ?? state?.last_synced_at ?? since,
         last_run_status: `Processed ${summary.processed}: ${summary.newDeals} new deals, ${summary.dealUpdates} deal follow-ups, ${summary.lenderReplies} lender replies, ${summary.other} other${summary.errors ? `, ${summary.errors} errors` : ''}${summary.moreWaiting ? ' (more waiting)' : ''}`,
       })
       .eq('id', 1)
@@ -190,30 +210,79 @@ export async function runInboxSync(supabase: SupabaseClient, maxMessages = 25): 
   }
 }
 
-type Deal = { id: string; company_name: string; contact_name: string | null; status: string }
-type Lender = { id: string; name: string; contact_email: string | null; mandate_notes: string | null }
-type Counter = 'newDeals' | 'dealUpdates' | 'lenderReplies' | 'other'
+// Re-reads one already-recorded email (e.g. a lender reply that couldn't
+// be matched to a deal before) and replaces its record with the new result.
+export async function reprocessInboxMessage(supabase: SupabaseClient, inboxMessageId: string) {
+  const { data: row } = await supabase
+    .from('inbox_messages')
+    .select('id, graph_message_id')
+    .eq('id', inboxMessageId)
+    .single()
+  if (!row) throw new Error('Email record not found')
+
+  const ctx = await loadContext(supabase)
+  const message = await getInboxMessage(ctx.accessToken, row.graph_message_id)
+  const outcome = await processMessage(supabase, ctx, message)
+
+  await supabase
+    .from('inbox_messages')
+    .update({ deal_id: null, lender_id: null, summary: null, ...baseRecord(message), ...outcome.record })
+    .eq('id', row.id)
+
+  return outcome.record
+}
+
+async function saveAttachments(
+  supabase: SupabaseClient,
+  dealId: string,
+  attachments: Awaited<ReturnType<typeof getMessageAttachments>>
+) {
+  // Threads often repeat the same files in every reply; skip anything this
+  // deal already has (same name and size).
+  const { data: existingDocs } = await supabase.from('documents').select('file_name, file_size').eq('deal_id', dealId)
+  const have = new Set((existingDocs ?? []).map((d) => `${d.file_name}|${d.file_size}`))
+
+  let saved = 0
+  for (const a of attachments) {
+    if (!KEEP_EXT.test(a.name) || a.size > MAX_ATTACHMENT_BYTES) continue
+    const bytes = Buffer.from(a.contentBytes, 'base64')
+    const key = `${a.name}|${bytes.byteLength}`
+    if (have.has(key)) continue
+
+    const storagePath = `${dealId}/${Date.now()}-${a.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+    const { error: uploadError } = await supabase.storage
+      .from('borrower-documents')
+      .upload(storagePath, bytes, { contentType: a.contentType })
+    if (uploadError) continue
+    await supabase.from('documents').insert({
+      deal_id: dealId,
+      file_name: a.name,
+      storage_path: storagePath,
+      file_size: bytes.byteLength,
+      content_type: a.contentType,
+    })
+    have.add(key)
+    saved++
+  }
+  return saved
+}
 
 async function act({
   supabase,
+  ctx,
   message,
   classification,
   attachments,
   thread,
   senderLenderId,
-  dealByRef,
-  dealById,
-  lenderById,
 }: {
   supabase: SupabaseClient
+  ctx: Context
   message: InboxMessage
   classification: EmailClassification
   attachments: Awaited<ReturnType<typeof getMessageAttachments>>
   thread: { dealId: string; lenderId: string } | null
   senderLenderId: string | null
-  dealByRef: Map<string, Deal & { ref: string }>
-  dealById: Map<string, Deal>
-  lenderById: Map<string, Lender>
 }): Promise<{ counter: Counter; record: Record<string, unknown> }> {
   const sender = message.fromName || message.from
 
@@ -223,9 +292,9 @@ async function act({
 
   if (kind === 'lender_reply') {
     const reply = classification.lender_reply
-    const dealId = thread?.dealId ?? (reply?.deal_ref ? dealByRef.get(reply.deal_ref)?.id : undefined) ?? null
+    const dealId = thread?.dealId ?? (reply?.deal_ref ? ctx.dealByRef.get(reply.deal_ref)?.id : undefined) ?? null
     const lenderId = thread?.lenderId ?? senderLenderId
-    const lender = lenderId ? lenderById.get(lenderId) : undefined
+    const lender = lenderId ? ctx.lenderById.get(lenderId) : undefined
     const outcomeLabel = reply ? OUTCOME_LABELS[reply.outcome] : 'Replied'
     const summaryText = reply?.summary ?? classification.reason
 
@@ -249,19 +318,18 @@ async function act({
       .join(' ')
     await supabase.from('deal_updates').insert({ deal_id: dealId, entry_date: today(), note, source: 'email' })
 
-    // A lender answering means the deal went out.
-    const deal = dealById.get(dealId)
-    if (deal && EARLY_STAGES.includes(deal.status)) {
+    const actions = ['Logged on deal']
+    const deal = ctx.dealById.get(dealId)
+    if (deal && ADVANCE_ON_LENDER_REPLY.includes(deal.status)) {
       await supabase.from('deals').update({ status: 'submitted' }).eq('id', dealId)
+      actions.push(deal.status === 'old' ? 'moved from Old back to Submitted' : 'moved to Submitted')
+      deal.status = 'submitted'
     }
 
-    const actions = ['Logged on deal']
     if (reply?.mandate_notes && lender) {
       const stamped = `[${today()} from email] ${reply.mandate_notes}`
-      await supabase
-        .from('lenders')
-        .update({ mandate_notes: lender.mandate_notes ? `${lender.mandate_notes}\n${stamped}` : stamped })
-        .eq('id', lender.id)
+      lender.mandate_notes = lender.mandate_notes ? `${lender.mandate_notes}\n${stamped}` : stamped
+      await supabase.from('lenders').update({ mandate_notes: lender.mandate_notes }).eq('id', lender.id)
       actions.push('added to lender mandate notes')
     }
 
@@ -279,13 +347,21 @@ async function act({
 
   if (kind === 'new_deal' && classification.new_deal) {
     const d = classification.new_deal
-    const existing = d.existing_deal_ref ? dealByRef.get(d.existing_deal_ref) : undefined
+    const existing = d.existing_deal_ref ? ctx.dealByRef.get(d.existing_deal_ref) : undefined
 
     let dealId: string
     let counter: Counter
+    const actions: string[] = []
     if (existing) {
       dealId = existing.id
       counter = 'dealUpdates'
+      actions.push('Added to existing deal')
+      // The borrower is still engaged, so an Old deal is active again.
+      if (existing.status === 'old') {
+        await supabase.from('deals').update({ status: 'in_review' }).eq('id', dealId)
+        existing.status = 'in_review'
+        actions.push('moved from Old back to In review')
+      }
     } else {
       const { data: created, error } = await supabase
         .from('deals')
@@ -306,28 +382,16 @@ async function act({
       if (error || !created) throw new Error(`Could not create deal: ${error?.message ?? 'unknown error'}`)
       dealId = created.id
       counter = 'newDeals'
+      actions.push(`Created deal "${d.company_name}"`)
+      // Later emails in the same run can then match it instead of duplicating.
+      const newDeal = { id: dealId, company_name: d.company_name, contact_name: d.contact_name, status: 'new', ref: `D${ctx.deals.length + 1}` }
+      ctx.deals.push(newDeal)
+      ctx.dealByRef.set(newDeal.ref, newDeal)
+      ctx.dealById.set(dealId, newDeal)
     }
 
-    let saved = 0
-    for (const a of attachments) {
-      if (!KEEP_EXT.test(a.name) || a.size > MAX_ATTACHMENT_BYTES) continue
-      const storagePath = `${dealId}/${Date.now()}-${a.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
-      const bytes = Buffer.from(a.contentBytes, 'base64')
-      const { error: uploadError } = await supabase.storage
-        .from('borrower-documents')
-        .upload(storagePath, bytes, { contentType: a.contentType })
-      if (uploadError) continue
-      await supabase.from('documents').insert({
-        deal_id: dealId,
-        file_name: a.name,
-        storage_path: storagePath,
-        file_size: bytes.byteLength,
-        content_type: a.contentType,
-      })
-      saved++
-    }
-
-    const docsText = saved ? ` ${saved} document${saved === 1 ? '' : 's'} attached.` : ''
+    const saved = await saveAttachments(supabase, dealId, attachments)
+    const docsText = saved ? ` ${saved} new document${saved === 1 ? '' : 's'} attached.` : ''
     await supabase.from('deal_updates').insert({
       deal_id: dealId,
       entry_date: today(),
@@ -343,9 +407,7 @@ async function act({
         classification: 'new_deal',
         deal_id: dealId,
         summary: d.description,
-        action_taken: existing
-          ? `Added to existing deal${docsText}`
-          : `Created deal "${d.company_name}"${docsText}`,
+        action_taken: `${actions.join(', ')}.${docsText}`,
       },
     }
   }
