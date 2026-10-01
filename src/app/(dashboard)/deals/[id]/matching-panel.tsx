@@ -126,14 +126,21 @@ function DraftEmail({
 function LoanTypeRecommender({
   dealId,
   currentLoanType,
+  savedRecommendation,
 }: {
   dealId: string
   currentLoanType: string | null
+  savedRecommendation: LoanTypeRecommendation | null
 }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [reasoning, setReasoning] = useState<string | null>(null)
+  const [freshReasoning, setReasoning] = useState<string | null>(null)
+  // Only show the saved explanation while it still matches the deal's loan
+  // type — if someone changed the type by hand since, it no longer applies.
+  const reasoning =
+    freshReasoning ??
+    (savedRecommendation && savedRecommendation.loan_type === currentLoanType ? savedRecommendation.reasoning : null)
 
   async function run() {
     setLoading(true)
@@ -190,18 +197,22 @@ function LoanTypeRecommender({
   )
 }
 
+export type LoanTypeRecommendation = { loan_type: string | null; reasoning: string; at?: string }
+
 export function MatchingPanel({
   dealId,
   matches,
   lastRunAt,
   hasUnderwriting,
   currentLoanType,
+  loanTypeRecommendation,
 }: {
   dealId: string
   matches: MatchWithLender[]
   lastRunAt: string | null
   hasUnderwriting: boolean
   currentLoanType: string | null
+  loanTypeRecommendation: LoanTypeRecommendation | null
 }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -297,7 +308,11 @@ export function MatchingPanel({
       )}
 
       {hasUnderwriting && (
-        <LoanTypeRecommender dealId={dealId} currentLoanType={currentLoanType} />
+        <LoanTypeRecommender
+          dealId={dealId}
+          currentLoanType={currentLoanType}
+          savedRecommendation={loanTypeRecommendation}
+        />
       )}
 
       {error && (

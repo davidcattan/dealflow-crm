@@ -67,6 +67,12 @@ export async function recommendLoanType(dealId: string) {
   if (loan_type) {
     await supabase.from('deals').update({ loan_type }).eq('id', dealId)
   }
+  // Saved separately so a missing column (migration 017 not run yet) can't
+  // block the loan type itself from saving.
+  await supabase
+    .from('deals')
+    .update({ loan_type_recommendation: { loan_type, reasoning, at: new Date().toISOString() } })
+    .eq('id', dealId)
 
   return { loanType: loan_type, reasoning }
 }

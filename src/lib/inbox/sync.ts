@@ -4,6 +4,7 @@ import {
   getValidAccessToken,
   listInboxMessagesSince,
   getInboxMessage,
+  getInboxStatus,
   getMessageAttachments,
   type InboxMessage,
 } from '@/lib/outlook/graph'
@@ -151,6 +152,23 @@ function baseRecord(message: InboxMessage) {
 // inbox_messages, and progress is saved after each one, so a run that hits
 // the time limit simply continues next time. Works with either a signed-in
 // client (manual run) or the admin client (scheduled run).
+// Everything received after this point hasn't been read by the CRM yet.
+function readThrough(state: { last_synced_at: string | null } | null) {
+  return (
+    state?.last_synced_at ??
+    new Date(Date.now() - FIRST_RUN_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  )
+}
+
+// Free (no AI): newest email in the inbox vs. how far the CRM has read.
+export async function getSyncStatus(supabase: SupabaseClient) {
+  const { data: state } = await supabase.from('inbox_sync_state').select('last_synced_at').eq('id', 1).single()
+  const since = readThrough(state)
+  const { accessToken } = await getValidAccessToken(supabase)
+  const status = await getInboxStatus(accessToken, since)
+  return { readThrough: since, hasRunBefore: Boolean(state?.last_synced_at), ...status }
+}
+
 export async function runInboxSync(supabase: SupabaseClient, maxMessages = 25): Promise<SyncSummary> {
   const summary: SyncSummary = {
     processed: 0,
@@ -163,9 +181,7 @@ export async function runInboxSync(supabase: SupabaseClient, maxMessages = 25): 
   }
 
   const { data: state } = await supabase.from('inbox_sync_state').select('*').eq('id', 1).single()
-  const since =
-    state?.last_synced_at ??
-    new Date(Date.now() - FIRST_RUN_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const since = readThrough(state)
 
   await supabase
     .from('inbox_sync_state')

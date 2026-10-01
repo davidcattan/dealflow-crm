@@ -15,7 +15,7 @@ import { buildSnapshotPrompt } from '@/lib/snapshot/prompt'
 import type { Snapshot } from '@/lib/snapshot/schema'
 import { estimateUnderwriting } from '@/lib/underwriting/estimate'
 import { buildManualPrompt } from '@/lib/underwriting/prompt'
-import { MatchingPanel, type MatchWithLender } from './matching-panel'
+import { MatchingPanel, type MatchWithLender, type LoanTypeRecommendation } from './matching-panel'
 import { DocumentUploader } from './document-uploader'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
@@ -334,6 +334,9 @@ export default async function DealDetailPage({
         lastRunAt={lastMatchRunAt}
         hasUnderwriting={Boolean(deal.underwriting || deal.snapshot)}
         currentLoanType={deal.loan_type}
+        loanTypeRecommendation={
+          (deal as { loan_type_recommendation?: LoanTypeRecommendation | null }).loan_type_recommendation ?? null
+        }
       />
     </div>
   )

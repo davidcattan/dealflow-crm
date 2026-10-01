@@ -233,3 +233,37 @@ export async function getInboxMessage(accessToken: string, messageId: string): P
   const json = await graphFetch(`/me/messages/${messageId}?${MESSAGE_SELECT}`, accessToken, TEXT_BODY)
   return toInboxMessage(json)
 }
+
+export type InboxStatus = {
+  newest: { receivedDateTime: string; subject: string; from: string } | null
+  // Emails received after `sinceIso` — i.e. not read by the CRM yet.
+  waiting: number
+  waitingCapped: boolean
+}
+
+// Newest email in the inbox and how many arrived after `sinceIso`.
+// Metadata only, no AI — free to call as often as needed.
+export async function getInboxStatus(accessToken: string, sinceIso: string, cap = 500): Promise<InboxStatus> {
+  const filter = `$filter=${encodeURIComponent(`receivedDateTime gt ${sinceIso}`)}`
+  const [newestJson, waitingJson] = await Promise.all([
+    graphFetch(
+      '/me/mailFolders/inbox/messages?$select=subject,from,receivedDateTime&$orderby=receivedDateTime desc&$top=1',
+      accessToken
+    ),
+    graphFetch(`/me/mailFolders/inbox/messages?${filter}&$select=id&$top=${cap}`, accessToken),
+  ])
+  const n = (newestJson.value as Array<Record<string, unknown>>)[0]
+  const from = n?.from as { emailAddress?: { address?: string; name?: string } } | undefined
+  return {
+    newest: n
+      ? {
+          receivedDateTime: n.receivedDateTime as string,
+          subject: (n.subject as string) ?? '',
+          from: from?.emailAddress?.name || from?.emailAddress?.address || '',
+        }
+      : null,
+    waiting: (waitingJson.value as unknown[]).length,
+    waitingCapped: Boolean(waitingJson['@odata.nextLink']),
+  }
+}
+
