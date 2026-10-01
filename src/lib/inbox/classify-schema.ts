@@ -31,9 +31,25 @@ export const EmailClassificationSchema = z.object({
         .nullable()
         .describe('The D# of a deal in the provided list if this email is clearly about that same company (more info, more documents). Null if it is a new company.'),
       company_name: z.string().describe('The borrower company name.'),
-      contact_name: z.string().nullable(),
-      contact_email: z.string().nullable(),
-      contact_phone: z.string().nullable(),
+      sender_role: z
+        .enum(['borrower', 'broker_or_referral'])
+        .describe('borrower = the sender owns/runs the borrowing business. broker_or_referral = the sender is another broker, advisor, banker or referral partner sending the deal on the borrower\'s behalf.'),
+      contact_name: z
+        .string()
+        .nullable()
+        .describe('The BORROWER\'s contact person (owner/officer of the business) — never the broker or referral sender. Null if not given.'),
+      contact_email: z
+        .string()
+        .nullable()
+        .describe('The BORROWER\'s email if it appears in the email body or signature. Never the broker\'s email. Null if not given.'),
+      contact_phone: z
+        .string()
+        .nullable()
+        .describe('The BORROWER\'s phone if it appears anywhere in the email (often listed by the broker). Never the broker\'s phone. Null if not given.'),
+      referred_by: z
+        .string()
+        .nullable()
+        .describe('When sender_role is broker_or_referral: the sender\'s name, firm, email and phone in one line, e.g. "Nathaniel Price, ABC Capital — nprice@abc.com, 555-123-4567". Null when the borrower sent it directly.'),
       industry: z.enum(INDUSTRY_CATEGORIES).nullable(),
       loan_type: z.enum(LOAN_TYPE_CATEGORIES).nullable(),
       ask: z.string().nullable().describe('Short: amount and type of financing requested, if stated.'),

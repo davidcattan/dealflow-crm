@@ -368,8 +368,11 @@ async function act({
         .insert({
           company_name: d.company_name,
           contact_name: d.contact_name,
-          contact_email: d.contact_email ?? message.from,
+          // Only fall back to the sender when the sender IS the borrower —
+          // a broker's email/phone must never become the deal contact.
+          contact_email: d.contact_email ?? (d.sender_role === 'borrower' ? message.from : null),
           contact_phone: d.contact_phone,
+          notes: d.referred_by ? `Referred by ${d.referred_by}` : null,
           industry: d.industry,
           loan_type: d.loan_type,
           deal_type: d.ask,
@@ -397,7 +400,7 @@ async function act({
       entry_date: today(),
       note: existing
         ? `Follow-up email from ${sender}: "${message.subject}".${docsText} ${d.description}`
-        : `Auto-imported from email from ${sender}: "${message.subject}".${docsText}`,
+        : `Auto-imported from email from ${sender}${d.referred_by ? ` (broker/referral: ${d.referred_by})` : ''}: "${message.subject}".${docsText}`,
       source: 'email',
     })
 

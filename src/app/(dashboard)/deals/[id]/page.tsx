@@ -130,13 +130,13 @@ export default async function DealDetailPage({
             <input
               type="hidden"
               name="status"
-              value={deal.status === 'dead' ? 'in_review' : 'dead'}
+              value={['dead', 'old', 'closed'].includes(deal.status) ? 'in_review' : 'dead'}
             />
             <button
               type="submit"
               className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
             >
-              {deal.status === 'dead' ? 'Reopen deal' : 'Mark as dead'}
+              {['dead', 'old', 'closed'].includes(deal.status) ? 'Mark as active' : 'Mark as dead'}
             </button>
           </form>
           <form action={deleteDeal}>

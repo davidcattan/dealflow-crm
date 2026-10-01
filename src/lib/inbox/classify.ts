@@ -45,6 +45,7 @@ function isBillingError(err: unknown) {
 const INSTRUCTIONS = `You are sorting the inbox of an asset-based lending debt broker. For the email above, decide what it is and extract what the CRM needs.
 
 - new_deal: a borrower, another broker, or a referral partner presenting a financing request for a specific business (often with financials, tax returns or a loan package attached), or sending more information about one. If the company is already in the deal list (any status, including old), set existing_deal_ref to its D#.
+  The deal's contact fields are always the BORROWER (the business owner/officer), never the person who sent the email if they are a broker or referral partner. Brokers often list the borrower's name and phone in the body — use those. Put the broker's own name, firm, email and phone in referred_by instead.
 - lender_reply: a lender or funder responding about a deal that was submitted to them (interest, questions, document requests, term sheet, or a pass).
 - other: anything else — newsletters, a lender's marketing blast about its own programs, notifications, scheduling, internal or personal mail.
 

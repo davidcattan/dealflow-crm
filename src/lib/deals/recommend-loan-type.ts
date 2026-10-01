@@ -31,7 +31,9 @@ export async function recommendLoanType(dealId: string) {
   if (dealError || !deal) {
     throw new Error('Deal not found')
   }
-  if (!deal.underwriting) {
+  // Either kind of underwriting is enough: the lender snapshot (now the
+  // main flow) or the older research report.
+  if (!deal.underwriting && !deal.snapshot) {
     throw new Error('Run underwriting on this deal before recommending a loan type.')
   }
 
