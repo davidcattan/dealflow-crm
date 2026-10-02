@@ -20,6 +20,8 @@ import { DocumentUploader } from './document-uploader'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
+import { SubmissionsPanel, type SubmissionRow, type TimelineItem } from './submissions-panel'
+import type { SubmissionStatus } from '@/lib/deals/submission-status'
 
 function formatBytes(bytes: number | null) {
   if (!bytes) return ''
@@ -61,6 +63,54 @@ export default async function DealDetailPage({
     ])
 
   if (!deal) notFound()
+
+  const [{ data: submissionRows }, { data: lenderRows }, { data: lenderEmails }] = await Promise.all([
+    supabase
+      .from('deal_submissions')
+      .select('id, lender_id, status, sent_on, last_activity_at, lenders(name)')
+      .eq('deal_id', id)
+      .order('last_activity_at', { ascending: false }),
+    supabase.from('lenders').select('id, name').order('name'),
+    supabase
+      .from('inbox_messages')
+      .select('id, lender_id, subject, summary, received_at')
+      .eq('deal_id', id)
+      .not('lender_id', 'is', null)
+      .order('received_at', { ascending: false }),
+  ])
+  const lenderNameById = new Map((lenderRows ?? []).map((l) => [l.id as string, l.name as string]))
+  const submissions: SubmissionRow[] = (submissionRows ?? []).map((r) => {
+    const lender = Array.isArray(r.lenders) ? r.lenders[0] : r.lenders
+    return {
+      id: r.id,
+      lender_id: r.lender_id,
+      lender_name: lender?.name ?? 'Unknown lender',
+      status: r.status as SubmissionStatus,
+      sent_on: r.sent_on,
+      last_activity_at: r.last_activity_at,
+    }
+  })
+  // Per-lender timeline: received emails (from the inbox log) plus notes.
+  // Email-sourced updates are skipped — the email itself is the entry.
+  const lenderTimeline: TimelineItem[] = [
+    ...(lenderEmails ?? []).map((m) => ({
+      id: `email-${m.id}`,
+      lender_id: m.lender_id as string,
+      kind: 'email' as const,
+      at: m.received_at as string,
+      text: (m.summary as string | null) ?? '',
+      subject: m.subject as string | null,
+    })),
+    ...((updates ?? []) as (DealUpdate & { lender_id?: string | null })[])
+      .filter((u) => u.lender_id && u.source !== 'email')
+      .map((u) => ({
+        id: `note-${u.id}`,
+        lender_id: u.lender_id as string,
+        kind: 'note' as const,
+        at: u.created_at,
+        text: u.note,
+      })),
+  ].sort((a, b) => (a.at < b.at ? 1 : -1))
 
   const { data: usageRows } = await supabase
     .from('ai_usage')
@@ -230,6 +280,13 @@ export default async function DealDetailPage({
         )}
       </section>
 
+      <SubmissionsPanel
+        dealId={deal.id}
+        submissions={submissions}
+        timeline={lenderTimeline}
+        lenders={(lenderRows ?? []) as { id: string; name: string }[]}
+      />
+
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold text-slate-900">Updates</h2>
 
@@ -278,6 +335,11 @@ export default async function DealDetailPage({
                       ? new Date(`${u.entry_date}T00:00:00`).toLocaleDateString()
                       : new Date(u.created_at).toLocaleDateString()}
                   </span>
+                  {(u as DealUpdate & { lender_id?: string | null }).lender_id && (
+                    <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
+                      {lenderNameById.get((u as DealUpdate & { lender_id?: string | null }).lender_id as string) ?? 'Lender'}
+                    </span>
+                  )}
                   <span className="text-slate-600">{u.note}</span>
                 </div>
                 <form action={deleteDealUpdate}>
@@ -334,6 +396,7 @@ export default async function DealDetailPage({
         lastRunAt={lastMatchRunAt}
         hasUnderwriting={Boolean(deal.underwriting || deal.snapshot)}
         currentLoanType={deal.loan_type}
+        sentLenderIds={submissions.map((x) => x.lender_id)}
         loanTypeRecommendation={
           (deal as { loan_type_recommendation?: LoanTypeRecommendation | null }).loan_type_recommendation ?? null
         }

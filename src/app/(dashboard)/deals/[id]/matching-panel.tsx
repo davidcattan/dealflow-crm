@@ -5,6 +5,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { matchScoreColor } from '@/lib/types'
 import { toggleMatchSelected } from './actions'
+import { addSubmissions } from './submission-actions'
 import { readJsonResponse } from '@/lib/fetch-json'
 import { ErrorText } from '@/components/error-text'
 
@@ -205,6 +206,7 @@ export function MatchingPanel({
   lastRunAt,
   hasUnderwriting,
   currentLoanType,
+  sentLenderIds,
   loanTypeRecommendation,
 }: {
   dealId: string
@@ -212,6 +214,7 @@ export function MatchingPanel({
   lastRunAt: string | null
   hasUnderwriting: boolean
   currentLoanType: string | null
+  sentLenderIds: string[]
   loanTypeRecommendation: LoanTypeRecommendation | null
 }) {
   const router = useRouter()
@@ -355,6 +358,21 @@ export function MatchingPanel({
                   </Link>
                   <span className="text-xs text-slate-500">{m.score}/100</span>
                 </div>
+                <div className="flex shrink-0 items-center gap-2">
+                {sentLenderIds.includes(m.lender_id) ? (
+                  <span className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">Sent ✓</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await addSubmissions(dealId, [m.lender_id])
+                      router.refresh()
+                    }}
+                    className="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    Mark as sent
+                  </button>
+                )}
                 <form
                   action={async (formData) => {
                     await toggleMatchSelected(formData)
@@ -381,6 +399,7 @@ export function MatchingPanel({
                     {m.selected ? 'Selected ✓' : 'Select'}
                   </button>
                 </form>
+                </div>
               </div>
               <p className="mt-2 text-sm text-slate-600">{m.reasoning}</p>
               {m.draftStatus === 'drafted' && m.draftSubject && m.draftBody && (

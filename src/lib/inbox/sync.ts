@@ -10,6 +10,8 @@ import {
 } from '@/lib/outlook/graph'
 import { classifyEmail, isAutomatedSender } from './classify'
 import { OUTCOME_LABELS, type EmailClassification } from './classify-schema'
+import { recordSubmission } from '@/lib/deals/submissions'
+import type { SubmissionStatus } from '@/lib/deals/submission-status'
 
 // Deal-worthy attachment types; everything else (calendar invites, vCards,
 // signature images that aren't marked inline) is ignored.
@@ -19,6 +21,14 @@ const FIRST_RUN_LOOKBACK_DAYS = 3
 // A lender replying means the deal went out — including deals that had been
 // shelved as Old (the first real run showed lenders still working those).
 const ADVANCE_ON_LENDER_REPLY = ['new', 'in_review', 'underwritten', 'matched', 'old']
+// What a lender's reply means for that lender's status on the deal.
+const OUTCOME_TO_SUBMISSION: Record<string, SubmissionStatus | undefined> = {
+  interested: 'interested',
+  needs_more_info: 'needs_more_info',
+  term_sheet: 'term_sheet',
+  declined: 'declined',
+  other: undefined,
+}
 
 export type SyncSummary = {
   processed: number
@@ -59,15 +69,21 @@ function today() {
 // deals marked Old still land on the right deal.
 async function loadContext(supabase: SupabaseClient): Promise<Context> {
   const { accessToken, accountEmail } = await getValidAccessToken(supabase)
-  const [{ data: deals }, { data: lenders }, { data: contacts }, { data: threads }] = await Promise.all([
-    supabase.from('deals').select('id, company_name, contact_name, status').order('created_at', { ascending: false }),
-    supabase.from('lenders').select('id, name, contact_email, mandate_notes'),
-    supabase.from('lender_contacts').select('lender_id, email'),
-    supabase
-      .from('deal_matches')
-      .select('deal_id, lender_id, outlook_conversation_id')
-      .not('outlook_conversation_id', 'is', null),
-  ])
+  const [{ data: deals }, { data: lenders }, { data: contacts }, { data: matchThreads }, { data: submissionThreads }] =
+    await Promise.all([
+      supabase.from('deals').select('id, company_name, contact_name, status').order('created_at', { ascending: false }),
+      supabase.from('lenders').select('id, name, contact_email, mandate_notes'),
+      supabase.from('lender_contacts').select('lender_id, email'),
+      supabase
+        .from('deal_matches')
+        .select('deal_id, lender_id, outlook_conversation_id')
+        .not('outlook_conversation_id', 'is', null),
+      supabase
+        .from('deal_submissions')
+        .select('deal_id, lender_id, outlook_conversation_id')
+        .not('outlook_conversation_id', 'is', null),
+    ])
+  const threads = [...(matchThreads ?? []), ...(submissionThreads ?? [])]
 
   const refDeals = (deals ?? []).map((d, i) => ({ ...d, ref: `D${i + 1}` }))
   const lenderByEmail = new Map<string, string>()
@@ -83,7 +99,7 @@ async function loadContext(supabase: SupabaseClient): Promise<Context> {
     lenderById: new Map((lenders ?? []).map((l) => [l.id, l])),
     lenderByEmail,
     threadByConversation: new Map(
-      (threads ?? []).map((t) => [t.outlook_conversation_id as string, { dealId: t.deal_id, lenderId: t.lender_id }])
+      threads.map((t) => [t.outlook_conversation_id as string, { dealId: t.deal_id, lenderId: t.lender_id }])
     ),
   }
 }
@@ -332,11 +348,28 @@ async function act({
     ]
       .filter(Boolean)
       .join(' ')
-    await supabase.from('deal_updates').insert({ deal_id: dealId, entry_date: today(), note, source: 'email' })
+    await supabase
+      .from('deal_updates')
+      .insert({ deal_id: dealId, lender_id: lenderId, entry_date: today(), note, source: 'email' })
 
     const actions = ['Logged on deal']
     const deal = ctx.dealById.get(dealId)
-    if (deal && ADVANCE_ON_LENDER_REPLY.includes(deal.status)) {
+    if (lenderId) {
+      // Puts the lender on the deal's "Lenders sent to" list (or updates its
+      // status there) and remembers this thread for future replies.
+      const { movedFrom } = await recordSubmission(supabase, {
+        dealId,
+        lenderId,
+        status: reply ? OUTCOME_TO_SUBMISSION[reply.outcome] : undefined,
+        conversationId: message.conversationId,
+      })
+      ctx.threadByConversation.set(message.conversationId, { dealId, lenderId })
+      actions.push(`lender status updated${reply && OUTCOME_TO_SUBMISSION[reply.outcome] ? ` to ${outcomeLabel}` : ''}`)
+      if (movedFrom && deal) {
+        actions.push(movedFrom === 'old' ? 'moved from Old back to Submitted' : 'moved to Submitted')
+        deal.status = 'submitted'
+      }
+    } else if (deal && ADVANCE_ON_LENDER_REPLY.includes(deal.status)) {
       await supabase.from('deals').update({ status: 'submitted' }).eq('id', dealId)
       actions.push(deal.status === 'old' ? 'moved from Old back to Submitted' : 'moved to Submitted')
       deal.status = 'submitted'

@@ -40,6 +40,7 @@ export type DealUpdate = {
   entry_date: string | null
   note: string
   source: string
+  lender_id?: string | null
   created_by: string | null
   created_at: string
 }

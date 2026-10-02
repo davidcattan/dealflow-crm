@@ -75,6 +75,13 @@ export async function POST(_request: Request, ctx: RouteContext<'/api/deals/[id]
         outlook_conversation_id: result.conversationId,
       })
       .eq('id', matchId)
+    // If this lender is already on the deal's "sent to" list, link the thread there too.
+    await supabase
+      .from('deal_submissions')
+      .update({ outlook_conversation_id: result.conversationId })
+      .eq('deal_id', dealId)
+      .eq('lender_id', match.lender_id)
+      .is('outlook_conversation_id', null)
 
     return NextResponse.json({ ok: true, webLink: result.webLink, skippedAttachments: result.skipped })
   } catch (err) {
