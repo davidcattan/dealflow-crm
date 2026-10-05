@@ -60,6 +60,15 @@ function isBillingError(err: unknown) {
   return text.includes('credit balance') || text.includes('usage limit') || text.includes('spend limit')
 }
 
+// Free-mail domains never mean "same firm".
+const GENERIC_DOMAINS = new Set(['gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'yahoo.com', 'icloud.com', 'me.com', 'aol.com', 'protonmail.com', 'proton.me'])
+
+function firmDomain(sender: string, accountEmail: string): string | null {
+  const domain = accountEmail.split('@')[1]
+  if (!domain || GENERIC_DOMAINS.has(domain)) return null
+  return sender.endsWith(`@${domain}`) ? domain : null
+}
+
 function today() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -117,6 +126,7 @@ async function processMessage(
   }
 
   try {
+    const internalDomain = firmDomain(message.from, ctx.accountEmail)
     const thread = ctx.threadByConversation.get(message.conversationId) ?? null
     const senderLenderId = ctx.lenderByEmail.get(message.from) ?? null
     const attachments = message.hasAttachments ? await getMessageAttachments(ctx.accessToken, message.id) : []
@@ -132,13 +142,14 @@ async function processMessage(
           status: d.status,
         })),
         senderLenderName: senderLenderId ? (ctx.lenderById.get(senderLenderId)?.name ?? null) : null,
+        internalFirmDomain: internalDomain,
         threadDealCompany: thread ? (ctx.dealById.get(thread.dealId)?.company_name ?? null) : null,
         threadLenderName: thread ? (ctx.lenderById.get(thread.lenderId)?.name ?? null) : null,
       },
       supabase
     )
 
-    return await act({ supabase, ctx, message, classification, attachments, thread, senderLenderId })
+    return await act({ supabase, ctx, message, classification, attachments, thread, senderLenderId, internal: Boolean(internalDomain) })
   } catch (err) {
     if (isBillingError(err)) throw err
     return {
@@ -307,6 +318,7 @@ async function act({
   attachments,
   thread,
   senderLenderId,
+  internal,
 }: {
   supabase: SupabaseClient
   ctx: Context
@@ -315,12 +327,39 @@ async function act({
   attachments: Awaited<ReturnType<typeof getMessageAttachments>>
   thread: { dealId: string; lenderId: string } | null
   senderLenderId: string | null
+  internal: boolean
 }): Promise<{ counter: Counter; record: Record<string, unknown> }> {
   const sender = message.fromName || message.from
 
   // A reply inside a thread the CRM itself started is a lender reply no
   // matter what the model thought.
   const kind = thread ? 'lender_reply' : classification.kind
+
+  // Safety net: a colleague's email is never a lender reply. Log it on the
+  // deal (if the model named one) as an internal note, with no status moves.
+  if (internal && kind === 'lender_reply') {
+    const ref = classification.lender_reply?.deal_ref
+    const dealId = ref ? (ctx.dealByRef.get(ref)?.id ?? null) : null
+    const summaryText = classification.lender_reply?.summary ?? classification.reason
+    if (dealId) {
+      await supabase.from('deal_updates').insert({
+        deal_id: dealId,
+        entry_date: today(),
+        note: `Internal email from ${sender}: ${summaryText}`,
+        source: 'email',
+      })
+    }
+    return {
+      counter: 'other',
+      record: {
+        classification: 'other',
+        deal_id: dealId,
+        body_text: dealId ? message.bodyText : null,
+        summary: summaryText,
+        action_taken: dealId ? 'Internal email — logged on deal' : 'Internal email — no action',
+      },
+    }
+  }
 
   if (kind === 'lender_reply') {
     const reply = classification.lender_reply

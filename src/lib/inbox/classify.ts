@@ -56,6 +56,9 @@ export type ClassifyContext = {
   senderLenderName: string | null
   threadDealCompany: string | null
   threadLenderName: string | null
+  // Set when the sender is a colleague (same email domain as the connected
+  // mailbox) — their emails are never lender replies.
+  internalFirmDomain?: string | null
 }
 
 export async function classifyEmail(
@@ -71,6 +74,9 @@ export async function classifyEmail(
       ? `This email is in the thread where deal "${context.threadDealCompany}" was submitted to lender "${context.threadLenderName ?? 'unknown'}".`
       : null,
     context.senderLenderName ? `The sender is a known lender in the CRM: ${context.senderLenderName}.` : null,
+    context.internalFirmDomain
+      ? `The sender is a colleague at the user's own brokerage firm (@${context.internalFirmDomain}) — NOT a lender. Never classify their email as lender_reply. If it is about a deal in the list (e.g. asking a borrower for documents), classify it as new_deal with existing_deal_ref set and describe what was asked or done; otherwise other.`
+      : null,
     context.deals.length > 0
       ? `Deals in the CRM (status in brackets; "old" deals may still be live):\n${context.deals
           .map((d) => `${d.ref}: ${d.company_name}${d.contact_name ? ` (contact: ${d.contact_name})` : ''} [${d.status}]`)
