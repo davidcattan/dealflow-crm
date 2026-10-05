@@ -2,6 +2,9 @@ import Link from 'next/link'
 import { requireUser } from '@/lib/dal'
 import { logout } from '@/app/login/actions'
 import { UnderwritingRunnerProvider } from '@/components/underwriting-runner'
+import { createClient } from '@/lib/supabase/server'
+import { getInboxHealth } from '@/lib/inbox/health'
+import { InboxHealthBadge } from '@/components/inbox-health-badge'
 
 export default async function DashboardLayout({
   children,
@@ -9,6 +12,7 @@ export default async function DashboardLayout({
   children: React.ReactNode
 }) {
   const user = await requireUser()
+  const health = await getInboxHealth(await createClient())
 
   return (
     <UnderwritingRunnerProvider>
@@ -41,6 +45,7 @@ export default async function DashboardLayout({
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm text-slate-500">
+            <InboxHealthBadge health={health} />
             <span className="hidden whitespace-nowrap sm:inline">
               {user.email}
             </span>

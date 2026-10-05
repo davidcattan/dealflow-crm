@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { runInboxSync } from '@/lib/inbox/sync'
+import { runInboxSync, type SyncSummary } from '@/lib/inbox/sync'
+import { startRun, finishRun } from '@/lib/inbox/run-log'
 
 // Needs Fluid Compute on Vercel Pro (max 800s).
 export const maxDuration = 800
@@ -30,14 +31,21 @@ export async function GET(request: Request) {
   // inside maxDuration; progress is saved per email, so the next run
   // continues exactly where this one stopped.
   const startedAt = Date.now()
+  const runId = await startRun(supabase, 'auto')
+  const total: SyncSummary = { processed: 0, newDeals: 0, dealUpdates: 0, lenderReplies: 0, other: 0, errors: 0, moreWaiting: false }
   try {
-    const batches = []
+    let batch: SyncSummary
     do {
-      batches.push(await runInboxSync(supabase))
-    } while (batches[batches.length - 1].moreWaiting && Date.now() - startedAt < 6 * 60 * 1000)
-    return NextResponse.json(batches)
+      batch = await runInboxSync(supabase)
+      for (const k of ['processed', 'newDeals', 'dealUpdates', 'lenderReplies', 'other', 'errors'] as const) total[k] += batch[k]
+      total.moreWaiting = batch.moreWaiting
+    } while (batch.moreWaiting && Date.now() - startedAt < 6 * 60 * 1000)
+    await finishRun(supabase, runId, { summary: total })
+    return NextResponse.json(total)
   } catch (err) {
     console.error('Scheduled inbox sync failed', err)
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Sync failed' }, { status: 500 })
+    const message = err instanceof Error ? err.message : 'Sync failed'
+    await finishRun(supabase, runId, { summary: total, error: message })
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

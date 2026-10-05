@@ -4,6 +4,8 @@ import { InboxControls } from './inbox-controls'
 import { RetryButton } from './retry-button'
 import { DisconnectButton } from './disconnect-button'
 import { EmailProfile } from './email-profile'
+import { getInboxHealth } from '@/lib/inbox/health'
+import { TimeAgo } from '@/components/time-ago'
 
 const KIND_STYLES: Record<string, string> = {
   new_deal: 'bg-emerald-100 text-emerald-800',
@@ -28,7 +30,7 @@ export default async function SettingsPage({
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  const [{ data: connections }, { data: syncState }, { data: recent }] = await Promise.all([
+  const [{ data: connections }, { data: syncState }, { data: recent }, health, { data: runs }] = await Promise.all([
     supabase
       .from('outlook_connections')
       .select('id, account_email, connected_by, created_at, updated_at, email_intro, email_signature')
@@ -39,6 +41,12 @@ export default async function SettingsPage({
       .select('id, from_email, subject, received_at, classification, deal_id, summary, action_taken, mailbox, deals(company_name)')
       .order('received_at', { ascending: false })
       .limit(30),
+    getInboxHealth(supabase),
+    supabase
+      .from('inbox_sync_runs')
+      .select('id, kind, started_at, finished_at, summary, error')
+      .order('started_at', { ascending: false })
+      .limit(12),
   ])
 
   return (
@@ -109,24 +117,84 @@ export default async function SettingsPage({
         </p>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section id="inbox" className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">Inbox</h2>
         <p className="mt-1 text-sm text-slate-600">
           Reads new mail in the connected inbox. New deal submissions become deals (attachments
           included), follow-ups are logged on the existing deal, and lender replies are logged on
           the deal they answer.
         </p>
-        {syncState?.last_run_at && (
-          <p className="mt-2 text-xs text-slate-500">
-            Last check {new Date(syncState.last_run_at).toLocaleString()} — {syncState.last_run_status}
-            {syncState.last_error && <span className="text-red-600"> ({syncState.last_error})</span>}
-          </p>
+        <div
+          className={`mt-4 flex items-start gap-3 rounded-lg border p-3 text-sm ${
+            health.level === 'ok'
+              ? 'border-emerald-200 bg-emerald-50'
+              : health.level === 'problem'
+                ? 'border-red-200 bg-red-50'
+                : health.level === 'waiting'
+                  ? 'border-amber-200 bg-amber-50'
+                  : 'border-slate-200 bg-slate-50'
+          }`}
+        >
+          <span
+            className={`mt-1 h-3 w-3 shrink-0 rounded-full ${
+              health.level === 'ok'
+                ? 'animate-pulse bg-emerald-500'
+                : health.level === 'problem'
+                  ? 'bg-red-500'
+                  : health.level === 'waiting'
+                    ? 'bg-amber-400'
+                    : 'bg-slate-300'
+            }`}
+          />
+          <div>
+            <p className="font-medium text-slate-900">{health.headline}</p>
+            <p className="text-slate-600">
+              {health.lastAutoAt && (
+                <>
+                  Last automatic check <TimeAgo iso={health.lastAutoAt} withTime />
+                  {health.detail ? ' — ' : ''}
+                </>
+              )}
+              {health.detail}
+            </p>
+            {health.level === 'ok' && <p className="mt-0.5 text-xs text-slate-500">Next one within 30 minutes.</p>}
+          </div>
+        </div>
+        {syncState?.last_error && health.level !== 'problem' && (
+          <p className="mt-2 text-xs text-red-600">Last check note: {syncState.last_error}</p>
         )}
         <InboxControls
           connected={Boolean(connections && connections.length > 0)}
           autoSyncEnabled={Boolean(syncState?.auto_sync_enabled)}
           hasRunBefore={Boolean(syncState?.last_synced_at)}
         />
+
+        {runs && runs.length > 0 && (
+          <div className="mt-5">
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Recent checks</p>
+            <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm">
+              {runs.map((r) => (
+                <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5">
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] ${
+                        r.kind === 'auto' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {r.kind === 'auto' ? 'Automatic' : 'Manual'}
+                    </span>
+                    <span className="text-slate-500">
+                      <TimeAgo iso={r.started_at} withTime />
+                    </span>
+                  </span>
+                  <span className={`text-xs ${r.error ? 'text-red-600' : 'text-slate-600'}`}>
+                    {r.error ?? r.summary ?? (r.finished_at ? 'Done' : 'Running…')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {recent && recent.length > 0 && (
           <div className="mt-5 overflow-hidden rounded-lg border border-slate-200">
