@@ -16,12 +16,21 @@ type Summary = {
   moreWaiting: boolean
 }
 
-type Status = {
+type MailboxStatus = {
+  id: string
+  account_email: string
   readThrough: string
-  hasRunBefore: boolean
+  error: string | null
   newest: { receivedDateTime: string; subject: string; from: string } | null
   waiting: number
   waitingCapped: boolean
+}
+
+type Status = {
+  hasRunBefore: boolean
+  waiting: number
+  waitingCapped: boolean
+  mailboxes: MailboxStatus[]
 }
 
 // Safety stop for "read everything": 40 batches = 1,000 emails.
@@ -157,33 +166,45 @@ export function InboxControls({
         ) : !status ? (
           <span className="text-slate-400">Checking the inbox…</span>
         ) : (
-          <div className="space-y-0.5">
-            <p>
-              <span className="text-slate-500">Latest email in the inbox:</span>{' '}
-              {status.newest ? (
-                <>
-                  <span className="font-medium">{when(status.newest.receivedDateTime)}</span>
-                  <span className="text-slate-500">
-                    {' '}
-                    — {status.newest.from}: {status.newest.subject || '(no subject)'}
-                  </span>
-                </>
-              ) : (
-                'none'
-              )}
-            </p>
-            <p>
-              <span className="text-slate-500">CRM has read through:</span>{' '}
-              <span className="font-medium">{when(status.readThrough)}</span>
-            </p>
-            {status.waiting === 0 ? (
-              <p className="font-medium text-emerald-700">✓ Up to date — every email has been read.</p>
-            ) : (
-              <p className="font-medium text-amber-700">
-                {status.waiting}
-                {status.waitingCapped ? '+' : ''} email{status.waiting === 1 ? '' : 's'} not read yet.
-              </p>
-            )}
+          <div className="space-y-2">
+            {status.mailboxes.map((m) => (
+              <div key={m.id} className="space-y-0.5">
+                <p className="font-medium text-slate-800">{m.account_email}</p>
+                {m.error ? (
+                  <p className="text-red-600">{m.error}</p>
+                ) : (
+                  <>
+                    <p>
+                      <span className="text-slate-500">Latest email:</span>{' '}
+                      {m.newest ? (
+                        <>
+                          <span className="font-medium">{when(m.newest.receivedDateTime)}</span>
+                          <span className="text-slate-500">
+                            {' '}
+                            — {m.newest.from}: {m.newest.subject || '(no subject)'}
+                          </span>
+                        </>
+                      ) : (
+                        'none'
+                      )}
+                    </p>
+                    <p>
+                      <span className="text-slate-500">CRM has read through:</span>{' '}
+                      <span className="font-medium">{when(m.readThrough)}</span>
+                      {' · '}
+                      {m.waiting === 0 ? (
+                        <span className="font-medium text-emerald-700">✓ up to date</span>
+                      ) : (
+                        <span className="font-medium text-amber-700">
+                          {m.waiting}
+                          {m.waitingCapped ? '+' : ''} not read yet
+                        </span>
+                      )}
+                    </p>
+                  </>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -226,7 +247,7 @@ export function InboxControls({
           <p>
             {status.waiting === 0
               ? 'No unread emails right now.'
-              : `${status.waiting}${status.waitingCapped ? '+' : ''} email${status.waiting === 1 ? '' : 's'} haven't been read yet (since ${when(status.readThrough)}).`}{' '}
+              : `${status.waiting}${status.waitingCapped ? '+' : ''} email${status.waiting === 1 ? '' : 's'} haven't been read yet across ${status.mailboxes.length} inbox${status.mailboxes.length === 1 ? '' : 'es'}.`}{' '}
             A cheap model sorts each one (well under 1¢); only emails that look like a deal or a lender reply get a
             full read (about 3–5¢ each). Automated senders (no-reply, notifications) are skipped for free.
           </p>

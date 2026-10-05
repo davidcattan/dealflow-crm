@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { InboxControls } from './inbox-controls'
 import { RetryButton } from './retry-button'
+import { DisconnectButton } from './disconnect-button'
 
 const KIND_STYLES: Record<string, string> = {
   new_deal: 'bg-emerald-100 text-emerald-800',
@@ -23,17 +24,18 @@ export default async function SettingsPage({
 }) {
   const { outlook_connected, outlook_error } = await searchParams
   const supabase = await createClient()
-  const [{ data: connection }, { data: syncState }, { data: recent }] = await Promise.all([
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const [{ data: connections }, { data: syncState }, { data: recent }] = await Promise.all([
     supabase
       .from('outlook_connections')
-      .select('account_email, created_at, updated_at')
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+      .select('id, account_email, connected_by, created_at, updated_at')
+      .order('created_at', { ascending: true }),
     supabase.from('inbox_sync_state').select('*').eq('id', 1).maybeSingle(),
     supabase
       .from('inbox_messages')
-      .select('id, from_email, subject, received_at, classification, deal_id, summary, action_taken, deals(company_name)')
+      .select('id, from_email, subject, received_at, classification, deal_id, summary, action_taken, mailbox, deals(company_name)')
       .order('received_at', { ascending: false })
       .limit(30),
   ])
@@ -59,28 +61,43 @@ export default async function SettingsPage({
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">Outlook</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Lets the CRM create draft emails directly in a mailbox, and read that mailbox&apos;s
-          inbox to log lender replies and pick up new deal submissions. Nothing sends
-          automatically — a person reviews and sends every draft.
+          Each person connects their own Outlook. The CRM creates lender drafts in the mailbox of whoever clicks
+          &ldquo;Create draft in Outlook&rdquo;, and reads every connected inbox to log lender replies and pick up new
+          deals. Nothing sends automatically — a person reviews and sends every draft.
         </p>
 
-        {connection ? (
-          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-            Connected as <span className="font-medium">{connection.account_email}</span>
-            {connection.updated_at && (
-              <span className="text-slate-400"> — last refreshed {new Date(connection.updated_at).toLocaleString()}</span>
-            )}
-          </div>
+        {connections && connections.length > 0 ? (
+          <ul className="mt-4 space-y-2">
+            {connections.map((c) => (
+              <li
+                key={c.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+              >
+                <span>
+                  <span className="font-medium">{c.account_email}</span>
+                  {c.connected_by === user?.id && <span className="ml-2 text-xs text-emerald-700">connected by you</span>}
+                  {c.updated_at && (
+                    <span className="text-xs text-slate-400"> — last refreshed {new Date(c.updated_at).toLocaleString()}</span>
+                  )}
+                </span>
+                <DisconnectButton connectionId={c.id} email={c.account_email} />
+              </li>
+            ))}
+          </ul>
         ) : (
-          <p className="mt-4 text-sm text-slate-400">Not connected yet.</p>
+          <p className="mt-4 text-sm text-slate-400">No mailboxes connected yet.</p>
         )}
 
         <a
           href="/api/auth/microsoft/connect"
           className="mt-4 inline-block rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
         >
-          {connection ? 'Reconnect Outlook' : 'Connect Outlook'}
+          Connect my Outlook
         </a>
+        <p className="mt-2 text-xs text-slate-500">
+          Sign in with your own work email. Connecting a mailbox that&apos;s already listed just refreshes it — it never
+          removes anyone else&apos;s.
+        </p>
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -97,7 +114,7 @@ export default async function SettingsPage({
           </p>
         )}
         <InboxControls
-          connected={Boolean(connection)}
+          connected={Boolean(connections && connections.length > 0)}
           autoSyncEnabled={Boolean(syncState?.auto_sync_enabled)}
           hasRunBefore={Boolean(syncState?.last_synced_at)}
         />
@@ -130,6 +147,7 @@ export default async function SettingsPage({
                         <p className="truncate text-xs text-slate-500" title={m.from_email ?? ''}>
                           {m.from_email}
                           {m.received_at && ` · ${new Date(m.received_at).toLocaleDateString()}`}
+                          {m.mailbox && ` · in ${String(m.mailbox).split('@')[0]}'s inbox`}
                         </p>
                       </td>
                       <td className="px-3 py-2 text-xs text-slate-600">

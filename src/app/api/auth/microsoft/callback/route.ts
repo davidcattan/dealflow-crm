@@ -31,13 +31,28 @@ export async function GET(request: Request) {
     const accountEmail = me.mail || me.userPrincipalName
 
     const supabase = await createClient()
-    // One connection for the whole team — replace whatever was there.
-    await supabase.from('outlook_connections').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-    await supabase.from('outlook_connections').insert({
-      account_email: accountEmail,
-      refresh_token: tokens.refresh_token,
-      connected_by: user.id,
-    })
+    // One connection per mailbox: reconnecting the same mailbox refreshes
+    // it; a different mailbox is added alongside the others.
+    const { data: existing } = await supabase
+      .from('outlook_connections')
+      .select('id')
+      .ilike('account_email', accountEmail)
+      .maybeSingle()
+    if (existing) {
+      await supabase
+        .from('outlook_connections')
+        .update({ refresh_token: tokens.refresh_token, connected_by: user.id, updated_at: new Date().toISOString() })
+        .eq('id', existing.id)
+    } else {
+      // A newly added inbox is read from now on — not its backlog, which
+      // could repeat emails the CRM already handled from another inbox.
+      await supabase.from('outlook_connections').insert({
+        account_email: accountEmail,
+        refresh_token: tokens.refresh_token,
+        connected_by: user.id,
+        last_synced_at: new Date().toISOString(),
+      })
+    }
 
     return NextResponse.redirect(new URL('/settings?outlook_connected=1', request.url))
   } catch (err) {

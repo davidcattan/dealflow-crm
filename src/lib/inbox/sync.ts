@@ -2,6 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   getValidAccessToken,
+  listConnections,
   listInboxMessagesSince,
   getInboxMessage,
   getInboxStatus,
@@ -76,8 +77,8 @@ function today() {
 // Everything the classifier and the actions need, loaded once per run.
 // Includes every deal (not just active ones), so replies and follow-ups on
 // deals marked Old still land on the right deal.
-async function loadContext(supabase: SupabaseClient): Promise<Context> {
-  const { accessToken, accountEmail } = await getValidAccessToken(supabase)
+async function loadContext(supabase: SupabaseClient, connectionId?: string | null): Promise<Context> {
+  const { accessToken, accountEmail } = await getValidAccessToken(supabase, connectionId)
   const [{ data: deals }, { data: lenders }, { data: contacts }, { data: matchThreads }, { data: submissionThreads }] =
     await Promise.all([
       supabase.from('deals').select('id, company_name, contact_name, status').order('created_at', { ascending: false }),
@@ -162,9 +163,11 @@ async function processMessage(
   }
 }
 
-function baseRecord(message: InboxMessage) {
+function baseRecord(message: InboxMessage, mailbox?: string) {
   return {
     graph_message_id: message.id,
+    internet_message_id: message.internetMessageId,
+    ...(mailbox ? { mailbox } : {}),
     conversation_id: message.conversationId,
     from_email: message.from,
     subject: message.subject,
@@ -187,15 +190,42 @@ function readThrough(state: { last_synced_at: string | null } | null) {
   )
 }
 
-// Free (no AI): newest email in the inbox vs. how far the CRM has read.
+// Free (no AI): for each connected mailbox, its newest email vs. how far
+// the CRM has read it.
 export async function getSyncStatus(supabase: SupabaseClient) {
-  const { data: state } = await supabase.from('inbox_sync_state').select('last_synced_at').eq('id', 1).single()
-  const since = readThrough(state)
-  const { accessToken } = await getValidAccessToken(supabase)
-  const status = await getInboxStatus(accessToken, since)
-  return { readThrough: since, hasRunBefore: Boolean(state?.last_synced_at), ...status }
+  const [{ data: state }, connections] = await Promise.all([
+    supabase.from('inbox_sync_state').select('last_synced_at').eq('id', 1).single(),
+    listConnections(supabase),
+  ])
+  const mailboxes = await Promise.all(
+    connections.map(async (c) => {
+      const since = readThrough({ last_synced_at: c.last_synced_at ?? null })
+      try {
+        const { accessToken } = await getValidAccessToken(supabase, c.id)
+        return { id: c.id, account_email: c.account_email, readThrough: since, error: null, ...(await getInboxStatus(accessToken, since)) }
+      } catch (err) {
+        return {
+          id: c.id,
+          account_email: c.account_email,
+          readThrough: since,
+          error: err instanceof Error ? err.message : 'Could not reach this mailbox',
+          newest: null,
+          waiting: 0,
+          waitingCapped: false,
+        }
+      }
+    })
+  )
+  return {
+    hasRunBefore: Boolean(state?.last_synced_at) || connections.some((c) => c.last_synced_at),
+    waiting: mailboxes.reduce((n, m) => n + m.waiting, 0),
+    waitingCapped: mailboxes.some((m) => m.waitingCapped),
+    mailboxes,
+  }
 }
 
+// Reads every connected mailbox. Each has its own progress; an email that
+// reached more than one mailbox (same Internet Message-ID) is processed once.
 export async function runInboxSync(supabase: SupabaseClient, maxMessages = 25): Promise<SyncSummary> {
   const summary: SyncSummary = {
     processed: 0,
@@ -207,39 +237,36 @@ export async function runInboxSync(supabase: SupabaseClient, maxMessages = 25): 
     moreWaiting: false,
   }
 
-  const { data: state } = await supabase.from('inbox_sync_state').select('*').eq('id', 1).single()
-  const since = readThrough(state)
-
   await supabase
     .from('inbox_sync_state')
     .update({ last_run_at: new Date().toISOString(), last_run_status: 'running', last_error: null })
     .eq('id', 1)
 
+  const failures: string[] = []
   try {
-    const ctx = await loadContext(supabase)
-    const messages = await listInboxMessagesSince(ctx.accessToken, since, maxMessages)
-    summary.moreWaiting = messages.length === maxMessages
+    const connections = await listConnections(supabase)
+    if (connections.length === 0) throw new Error('Outlook is not connected yet. Go to Settings and connect it first.')
 
-    const { data: already } = await supabase
-      .from('inbox_messages')
-      .select('graph_message_id')
-      .in('graph_message_id', messages.map((m) => m.id).concat('none'))
-    const seen = new Set((already ?? []).map((r) => r.graph_message_id))
-
-    for (const message of messages) {
-      if (!seen.has(message.id)) {
-        const outcome = await processMessage(supabase, ctx, message)
-        await supabase.from('inbox_messages').insert({ ...baseRecord(message), ...outcome.record })
-        summary[outcome.counter]++
-        summary.processed++
+    for (const connection of connections) {
+      try {
+        await syncMailbox(supabase, connection, maxMessages, summary)
+      } catch (err) {
+        if (isBillingError(err)) throw err
+        failures.push(`${connection.account_email}: ${err instanceof Error ? err.message : 'failed'}`)
       }
-      await supabase.from('inbox_sync_state').update({ last_synced_at: message.receivedDateTime }).eq('id', 1)
     }
 
+    const latest = connections
+      .map((c) => c.last_synced_at)
+      .filter(Boolean)
+      .sort()
+      .pop()
     await supabase
       .from('inbox_sync_state')
       .update({
+        ...(latest ? { last_synced_at: latest } : {}),
         last_run_status: `Processed ${summary.processed}: ${summary.newDeals} new deals, ${summary.dealUpdates} deal follow-ups, ${summary.lenderReplies} lender replies, ${summary.other} other${summary.errors ? `, ${summary.errors} errors` : ''}${summary.moreWaiting ? ' (more waiting)' : ''}`,
+        last_error: failures.length ? failures.join(' | ') : null,
       })
       .eq('id', 1)
 
@@ -253,23 +280,61 @@ export async function runInboxSync(supabase: SupabaseClient, maxMessages = 25): 
   }
 }
 
+async function syncMailbox(
+  supabase: SupabaseClient,
+  connection: { id: string; account_email: string; last_synced_at?: string | null },
+  maxMessages: number,
+  summary: SyncSummary
+) {
+  const since = readThrough({ last_synced_at: connection.last_synced_at ?? null })
+  const ctx = await loadContext(supabase, connection.id)
+  const messages = await listInboxMessagesSince(ctx.accessToken, since, maxMessages)
+  if (messages.length === maxMessages) summary.moreWaiting = true
+
+  const internetIds = messages.map((m) => m.internetMessageId).filter((x): x is string => Boolean(x))
+  const [{ data: byGraphId }, { data: byInternetId }] = await Promise.all([
+    supabase.from('inbox_messages').select('graph_message_id').in('graph_message_id', messages.map((m) => m.id).concat('none')),
+    supabase.from('inbox_messages').select('internet_message_id').in('internet_message_id', internetIds.concat('none')),
+  ])
+  const seen = new Set([
+    ...(byGraphId ?? []).map((r) => r.graph_message_id as string),
+    ...(byInternetId ?? []).map((r) => r.internet_message_id as string),
+  ])
+
+  for (const message of messages) {
+    const already = seen.has(message.id) || (message.internetMessageId ? seen.has(message.internetMessageId) : false)
+    if (!already) {
+      const outcome = await processMessage(supabase, ctx, message)
+      await supabase.from('inbox_messages').insert({ ...baseRecord(message, connection.account_email), ...outcome.record })
+      if (message.internetMessageId) seen.add(message.internetMessageId)
+      summary[outcome.counter]++
+      summary.processed++
+    }
+    await supabase.from('outlook_connections').update({ last_synced_at: message.receivedDateTime }).eq('id', connection.id)
+    connection.last_synced_at = message.receivedDateTime
+  }
+}
+
 // Re-reads one already-recorded email (e.g. a lender reply that couldn't
 // be matched to a deal before) and replaces its record with the new result.
 export async function reprocessInboxMessage(supabase: SupabaseClient, inboxMessageId: string) {
   const { data: row } = await supabase
     .from('inbox_messages')
-    .select('id, graph_message_id')
+    .select('id, graph_message_id, mailbox')
     .eq('id', inboxMessageId)
     .single()
   if (!row) throw new Error('Email record not found')
 
-  const ctx = await loadContext(supabase)
+  // Old records have no mailbox — they all came from the first one connected.
+  const connections = await listConnections(supabase)
+  const source = connections.find((c) => row.mailbox && c.account_email.toLowerCase() === String(row.mailbox).toLowerCase()) ?? connections[0]
+  const ctx = await loadContext(supabase, source?.id)
   const message = await getInboxMessage(ctx.accessToken, row.graph_message_id)
   const outcome = await processMessage(supabase, ctx, message)
 
   await supabase
     .from('inbox_messages')
-    .update({ deal_id: null, lender_id: null, summary: null, ...baseRecord(message), ...outcome.record })
+    .update({ deal_id: null, lender_id: null, summary: null, ...baseRecord(message, source?.account_email), ...outcome.record })
     .eq('id', row.id)
 
   return outcome.record

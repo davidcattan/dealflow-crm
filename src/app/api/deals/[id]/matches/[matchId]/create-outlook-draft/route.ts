@@ -18,7 +18,10 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id: dealId, matchId } = await ctx.params
-  const { documentIds } = (await request.json().catch(() => ({}))) as { documentIds?: string[] }
+  const { documentIds, connectionId } = (await request.json().catch(() => ({}))) as {
+    documentIds?: string[]
+    connectionId?: string
+  }
 
   const { data: match } = await supabase
     .from('deal_matches')
@@ -46,7 +49,8 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
   }
 
   try {
-    const { accessToken } = await getValidAccessToken()
+    // The mailbox the user picked (their own), else the most recent one.
+    const { accessToken, accountEmail } = await getValidAccessToken(supabase, connectionId)
 
     const attachments: DraftAttachment[] = []
     const chosen = ((documents ?? []) as DocumentRecord[]).filter(
@@ -87,7 +91,7 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
       .eq('lender_id', match.lender_id)
       .is('outlook_conversation_id', null)
 
-    return NextResponse.json({ ok: true, webLink: result.webLink, skippedAttachments: result.skipped })
+    return NextResponse.json({ ok: true, webLink: result.webLink, skippedAttachments: result.skipped, mailbox: accountEmail })
   } catch (err) {
     return NextResponse.json({ error: friendlyAiError(err, 'Could not create the Outlook draft') }, { status: 500 })
   }

@@ -68,22 +68,40 @@ async function refreshTokens(refreshToken: string) {
   })
 }
 
-// Reads the single stored connection, refreshes it, and persists whatever
-// new refresh token Microsoft hands back (they rotate it on each use).
+export type OutlookConnection = {
+  id: string
+  account_email: string
+  refresh_token: string
+  connected_by: string | null
+  last_synced_at?: string | null
+}
+
+// Every connected mailbox (one per team member who connected Outlook).
+export async function listConnections(client?: SupabaseClient): Promise<OutlookConnection[]> {
+  const supabase = client ?? (await createClient())
+  const { data } = await supabase.from('outlook_connections').select('*').order('created_at', { ascending: true })
+  return (data ?? []) as OutlookConnection[]
+}
+
+// Refreshes one mailbox's access and persists whatever new refresh token
+// Microsoft hands back (they rotate it on each use). Uses the given
+// connection, or the most recently connected one if none is specified.
 // Throws a clear error if nothing is connected yet.
 export async function getValidAccessToken(
-  client?: SupabaseClient
+  client?: SupabaseClient,
+  connectionId?: string | null
 ): Promise<{ accessToken: string; accountEmail: string; connectionId: string }> {
   const supabase = client ?? (await createClient())
-  const { data: connection } = await supabase
-    .from('outlook_connections')
-    .select('*')
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .single()
+  let query = supabase.from('outlook_connections').select('*')
+  query = connectionId ? query.eq('id', connectionId) : query.order('updated_at', { ascending: false }).limit(1)
+  const { data: connection } = await query.maybeSingle()
 
   if (!connection) {
-    throw new Error('Outlook is not connected yet. Go to Settings and connect it first.')
+    throw new Error(
+      connectionId
+        ? 'That Outlook mailbox is no longer connected. Reconnect it in Settings.'
+        : 'Outlook is not connected yet. Go to Settings and connect it first.'
+    )
   }
 
   const tokens = await refreshTokens(connection.refresh_token)
@@ -183,12 +201,13 @@ export type InboxMessage = {
   from: string
   fromName: string
   receivedDateTime: string
+  internetMessageId: string | null
   hasAttachments: boolean
   bodyPreview: string
   bodyText: string
 }
 
-const MESSAGE_SELECT = '$select=id,conversationId,subject,from,receivedDateTime,hasAttachments,bodyPreview,body'
+const MESSAGE_SELECT = '$select=id,internetMessageId,conversationId,subject,from,receivedDateTime,hasAttachments,bodyPreview,body'
 // Plain-text bodies are far smaller than HTML for the AI to read.
 const TEXT_BODY = { headers: { Prefer: 'outlook.body-content-type="text"' } }
 
@@ -203,6 +222,7 @@ function toInboxMessage(m: Record<string, unknown>): InboxMessage {
   const from = m.from as { emailAddress?: { address?: string; name?: string } } | undefined
   return {
     id: m.id as string,
+    internetMessageId: (m.internetMessageId as string | undefined) ?? null,
     conversationId: m.conversationId as string,
     subject: (m.subject as string) ?? '',
     from: (from?.emailAddress?.address ?? '').toLowerCase(),

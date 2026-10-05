@@ -23,6 +23,7 @@ export type MatchWithLender = {
 }
 
 export type DealDoc = { id: string; name: string; size: number | null }
+export type Mailbox = { id: string; account_email: string }
 
 function DraftEmail({
   dealId,
@@ -37,6 +38,9 @@ function DraftEmail({
   selectedDocIds,
   onToggleDoc,
   onSetAllDocs,
+  mailboxes,
+  mailboxId,
+  onPickMailbox,
 }: {
   dealId: string
   matchId: string
@@ -50,6 +54,9 @@ function DraftEmail({
   selectedDocIds: string[]
   onToggleDoc: (id: string) => void
   onSetAllDocs: (all: boolean) => void
+  mailboxes: Mailbox[]
+  mailboxId: string | null
+  onPickMailbox: (id: string) => void
 }) {
   const [showAttachments, setShowAttachments] = useState(false)
   const [open, setOpen] = useState(false)
@@ -75,7 +82,7 @@ function DraftEmail({
       const res = await fetch(`/api/deals/${dealId}/matches/${matchId}/create-outlook-draft`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentIds: selectedDocIds }),
+        body: JSON.stringify({ documentIds: selectedDocIds, connectionId: mailboxId }),
       })
       const result = await readJsonResponse<{ webLink: string; skippedAttachments: string[] }>(res)
       if (!result.ok) throw new Error(result.message)
@@ -128,6 +135,20 @@ function DraftEmail({
             >
               {copied ? 'Copied ✓' : 'Copy'}
             </button>
+          )}
+          {mailboxes.length > 1 && (
+            <select
+              value={mailboxId ?? ''}
+              onChange={(e) => onPickMailbox(e.target.value)}
+              title="Which Outlook the draft goes into"
+              className="rounded border border-amber-300 bg-white px-1 py-0.5 text-xs text-amber-800"
+            >
+              {mailboxes.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.account_email}
+                </option>
+              ))}
+            </select>
           )}
           <button
             type="button"
@@ -288,6 +309,8 @@ export function MatchingPanel({
   sentLenderIds,
   loanTypeRecommendation,
   documents,
+  mailboxes,
+  defaultMailboxId,
 }: {
   dealId: string
   matches: MatchWithLender[]
@@ -297,7 +320,29 @@ export function MatchingPanel({
   sentLenderIds: string[]
   loanTypeRecommendation: LoanTypeRecommendation | null
   documents: DealDoc[]
+  mailboxes: Mailbox[]
+  defaultMailboxId: string | null
 }) {
+  // Which Outlook gets the drafts: your own by default; a different pick is
+  // remembered in this browser.
+  const [mailboxId, setMailboxId] = useState<string | null>(defaultMailboxId)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('outlook-mailbox')
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring a saved browser preference
+      if (saved && mailboxes.some((m) => m.id === saved)) setMailboxId(saved)
+    } catch {
+      // No storage — keep the default.
+    }
+  }, [mailboxes])
+  function pickMailbox(id: string) {
+    setMailboxId(id)
+    try {
+      localStorage.setItem('outlook-mailbox', id)
+    } catch {
+      // Ignore.
+    }
+  }
   // Which documents go with the Outlook drafts — one choice for the whole
   // deal, remembered in this browser.
   const storageKey = `draft-attachments:${dealId}`
@@ -527,6 +572,9 @@ export function MatchingPanel({
                     saveSelection(selectedDocIds.includes(id) ? selectedDocIds.filter((x) => x !== id) : [...selectedDocIds, id])
                   }
                   onSetAllDocs={(all) => saveSelection(all ? documents.map((d) => d.id) : [])}
+                  mailboxes={mailboxes}
+                  mailboxId={mailboxId}
+                  onPickMailbox={pickMailbox}
                 />
               )}
               {draftingId === m.id && (

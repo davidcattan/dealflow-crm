@@ -71,7 +71,10 @@ export default async function DealDetailPage({
 
   if (!deal) notFound()
 
-  const [{ data: submissionRows }, { data: lenderRows }, { data: lenderEmails }, dealEmails, duplicates, { data: allDeals }] = await Promise.all([
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const [{ data: submissionRows }, { data: lenderRows }, { data: lenderEmails }, dealEmails, duplicates, { data: allDeals }, { data: mailboxRows }] = await Promise.all([
     supabase
       .from('deal_submissions')
       .select('id, lender_id, status, sent_on, last_activity_at, lenders(name)')
@@ -87,7 +90,16 @@ export default async function DealDetailPage({
     loadDealEmails(supabase, id),
     findPossibleDuplicates(supabase, id),
     supabase.from('deals').select('id, company_name, status').order('company_name'),
+    supabase.from('outlook_connections').select('id, account_email, connected_by, created_at').order('created_at'),
   ])
+  // Drafts go to the mailbox the signed-in user connected most recently,
+  // else the newest one. (created_at, not updated_at — updated_at changes on
+  // every token refresh.)
+  const mailboxes = (mailboxRows ?? []).map((m) => ({ id: m.id as string, account_email: m.account_email as string }))
+  const defaultMailboxId =
+    [...(mailboxRows ?? [])].filter((m) => m.connected_by === user?.id).sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0]?.id ??
+    [...(mailboxRows ?? [])].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0]?.id ??
+    null
   const lenderNameById = new Map((lenderRows ?? []).map((l) => [l.id as string, l.name as string]))
   const submissions: SubmissionRow[] = (submissionRows ?? []).map((r) => {
     const lender = Array.isArray(r.lenders) ? r.lenders[0] : r.lenders
@@ -469,6 +481,8 @@ export default async function DealDetailPage({
         currentLoanType={deal.loan_type}
         sentLenderIds={submissions.map((x) => x.lender_id)}
         documents={docsWithUrls.map((d) => ({ id: d.id, name: d.file_name, size: d.file_size }))}
+        mailboxes={mailboxes}
+        defaultMailboxId={defaultMailboxId}
         loanTypeRecommendation={
           (deal as { loan_type_recommendation?: LoanTypeRecommendation | null }).loan_type_recommendation ?? null
         }
