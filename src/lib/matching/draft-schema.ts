@@ -4,12 +4,12 @@ export const DraftEmailSchema = z.object({
   subject: z
     .string()
     .describe(
-      'A short, specific email subject line for a loan submission, e.g. "Deal Submission: Acme Fabrication LLC — $250k Bridge"'
+      'Short and specific: loan type, amount (if known), collateral/location, borrower. e.g. "$250K Land/ADC Loan — 5.4 ac, Flowery Branch GA". No "Deal Submission:" prefix.'
     ),
   body: z
     .string()
     .describe(
-      "The full email body as plain text, ready to paste into Outlook. Professional broker-to-lender tone, addressed to the lender contact by first name if known (otherwise a generic greeting), 3-5 short paragraphs: (1) brief intro of the deal and the ask, (2) the key facts that make it fit this specific lender's mandate, (3) financial highlights / notable strengths or caveats, (4) a clear ask for next steps (a call, term sheet, etc.). End with a sign-off using the broker's name if known, otherwise a generic placeholder like '[Your name]'. Do not invent facts not given to you — if financials are unknown, don't state numbers."
+      'Plain text, ready to send. UNDER 120 WORDS. Exactly this shape: "Hi <first name>," (or "Hi there,") / one sentence: what the deal is (borrower type, what they need, amount, collateral, location) / 2-4 short bullet lines ("- ") with the numbers that matter most to a lender (value, LTV, revenue/EBITDA, use of funds) — only numbers given to you / one sentence on why it fits THIS lender (their product, size or geography) / optional one line starting "Heads up:" only if there is a known issue that would stop most lenders / one closing line asking for a quick look or call, mentioning the package is attached if documents are attached / sign-off.'
     ),
 })
 

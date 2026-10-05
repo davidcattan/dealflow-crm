@@ -12,7 +12,27 @@ import type { Deal, DealUpdate } from '@/lib/types'
 // human should look over before any email gets written at all.
 export const DRAFT_SCORE_THRESHOLD = 70
 
-const DRAFT_INSTRUCTIONS = `You are an asset-based lending broker's assistant, drafting a deal submission email on the broker's behalf. The email introduces a specific borrower deal to a specific lender who is a strong, plausible fit for it. Write it exactly as the broker would send it to the lender's own contact.`
+const DRAFT_INSTRUCTIONS = `You are writing a deal submission email from a commercial debt broker to a lender. Lenders get dozens of these a day — the email must be short and get to the point: what the deal is, why it fits them, and a clear ask.
+
+Rules:
+- Under 120 words in the body. Short sentences. Bullets for numbers.
+- No filler: no "I hope this finds you well", no "I wanted to reach out", no restating the lender's own mandate back to them, no adjectives like "exciting" or "unique".
+- Lead with the deal in one sentence: who the borrower is (type, location), what they need, how much, secured by what.
+- Bullets: only the 2-4 facts a lender decides on (value, LTV, revenue/EBITDA, use of funds, exit). Use only numbers given to you; never invent or round in the borrower's favor.
+- Why them: one sentence tying the deal to this lender's product, size range or geography.
+- If there is a known problem most lenders would reject on (no income, owner-occupied, nonprofit borrower, etc.), say it in one honest line starting "Heads up:" — it saves everyone time.
+- Close with one line asking them to take a look or jump on a quick call. Mention the package is attached only if documents are attached.
+- Sign off with "Best," and the sender's name.
+- Use the borrower's company name, not the individual's personal details beyond what a lender needs.`
+
+// Sign-off name: the deal's rep, else the first name of the connected
+// Outlook mailbox (e.g. eli@… → "Eli"), else a placeholder.
+async function senderName(supabase: Awaited<ReturnType<typeof createClient>>, repName: string | null) {
+  if (repName) return repName
+  const { data } = await supabase.from('outlook_connections').select('account_email').order('updated_at', { ascending: false }).limit(1).maybeSingle()
+  const first = (data?.account_email ?? '').split('@')[0].split(/[._-]/)[0]
+  return /^[a-z]{2,}$/i.test(first) ? first[0].toUpperCase() + first.slice(1).toLowerCase() : '[Your name]'
+}
 
 export async function draftSubmissionEmail(dealId: string, lenderId: string, reasoning: string) {
   const supabase = await createClient()
@@ -51,12 +71,13 @@ export async function draftSubmissionEmail(dealId: string, lenderId: string, rea
   ].filter(Boolean)
 
   const documentNames = (documents ?? []).map((d) => d.file_name)
+  const sender = await senderName(supabase, deal.rep_name)
 
   const client = new Anthropic()
 
   const structured = await client.messages.parse({
     model: 'claude-opus-5',
-    max_tokens: 4000,
+    max_tokens: 2000,
     messages: [
       {
         role: 'user',
@@ -71,10 +92,10 @@ export async function draftSubmissionEmail(dealId: string, lenderId: string, rea
           reasoning,
           '',
           documentNames.length > 0
-            ? `--- Note ---\nThe following documents will be attached to this email automatically: ${documentNames.join(', ')}. You can reference that diligence materials are attached, but do not describe their contents beyond what's already in the deal profile above.`
-            : `--- Note ---\nNo documents are uploaded for this deal yet — do not claim anything is attached.`,
+            ? `--- Attachments ---\n${documentNames.length} documents will be attached automatically. Say "package attached" — don't list the files.`
+            : `--- Attachments ---\nNothing is attached — don't mention attachments.`,
           '',
-          deal.rep_name ? `The broker sending this email is: ${deal.rep_name}` : '',
+          `Sender's name for the sign-off: ${sender}`,
           DRAFT_INSTRUCTIONS,
         ]
           .filter(Boolean)

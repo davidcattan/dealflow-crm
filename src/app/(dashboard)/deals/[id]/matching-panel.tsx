@@ -29,6 +29,8 @@ function DraftEmail({
   body,
   outlookDraftCreatedAt,
   onCreated,
+  onRedraft,
+  redrafting,
 }: {
   dealId: string
   matchId: string
@@ -36,6 +38,8 @@ function DraftEmail({
   body: string
   outlookDraftCreatedAt: string | null
   onCreated: () => void
+  onRedraft: () => void
+  redrafting: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -80,6 +84,17 @@ function DraftEmail({
           {open ? 'Hide' : 'View'} auto-drafted submission email
         </button>
         <div className="flex items-center gap-2">
+          {open && (
+            <button
+              type="button"
+              onClick={onRedraft}
+              disabled={redrafting}
+              title="Writes a fresh draft (a few cents)"
+              className="rounded border border-amber-300 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+            >
+              {redrafting ? 'Redrafting…' : 'Redraft'}
+            </button>
+          )}
           {open && (
             <button
               type="button"
@@ -410,6 +425,8 @@ export function MatchingPanel({
                   body={m.draftBody}
                   outlookDraftCreatedAt={m.outlookDraftCreatedAt}
                   onCreated={() => router.refresh()}
+                  onRedraft={() => draftFor(m.id)}
+                  redrafting={draftingId === m.id}
                 />
               )}
               {draftingId === m.id && (
