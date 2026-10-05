@@ -24,6 +24,13 @@ export type MatchWithLender = {
 
 export type DealDoc = { id: string; name: string; size: number | null }
 export type Mailbox = { id: string; account_email: string }
+type AttachmentAdvice = {
+  reasons: Record<string, { include: boolean; reason: string }>
+  note: string | null
+  loading: boolean
+  error: string | null
+  run: () => void
+}
 
 function DraftEmail({
   dealId,
@@ -41,6 +48,7 @@ function DraftEmail({
   mailboxes,
   mailboxId,
   onPickMailbox,
+  attachmentAdvice,
 }: {
   dealId: string
   matchId: string
@@ -57,6 +65,7 @@ function DraftEmail({
   mailboxes: Mailbox[]
   mailboxId: string | null
   onPickMailbox: (id: string) => void
+  attachmentAdvice: AttachmentAdvice
 }) {
   const [showAttachments, setShowAttachments] = useState(false)
   const [open, setOpen] = useState(false)
@@ -178,8 +187,19 @@ function DraftEmail({
                 <button type="button" onClick={() => onSetAllDocs(false)} className="hover:underline">
                   Select none
                 </button>
+                <button
+                  type="button"
+                  onClick={attachmentAdvice.run}
+                  disabled={attachmentAdvice.loading}
+                  title="AI picks which documents to send (a few cents)"
+                  className="font-medium hover:underline disabled:opacity-50"
+                >
+                  {attachmentAdvice.loading ? 'Choosing…' : '✨ Recommend for me'}
+                </button>
                 <span className="text-slate-400">Applies to every lender email on this deal.</span>
               </div>
+              {attachmentAdvice.error && <p className="mb-1 text-red-600">{attachmentAdvice.error}</p>}
+              {attachmentAdvice.note && <p className="mb-1 text-slate-600">Missing: {attachmentAdvice.note}</p>}
               <ul className="max-h-56 space-y-0.5 overflow-y-auto">
                 {documents.map((d) => {
                   const tooBig = (d.size ?? 0) > 3 * 1024 * 1024
@@ -193,6 +213,13 @@ function DraftEmail({
                           className="rounded border-slate-300"
                         />
                         <span className="truncate">{d.name}</span>
+                        {attachmentAdvice.reasons[d.id] && (
+                          <span
+                            className={`shrink-0 ${attachmentAdvice.reasons[d.id].include ? 'text-emerald-700' : 'text-slate-400'}`}
+                          >
+                            — {attachmentAdvice.reasons[d.id].reason}
+                          </span>
+                        )}
                         {tooBig && <span className="shrink-0 text-red-600">over 3MB — Outlook will skip it</span>}
                       </label>
                     </li>
@@ -359,6 +386,37 @@ export function MatchingPanel({
       // No storage (private window) — keep the default.
     }
   }, [storageKey, documents])
+  const [adviceReasons, setAdviceReasons] = useState<AttachmentAdvice['reasons']>({})
+  const [adviceNote, setAdviceNote] = useState<string | null>(null)
+  const [adviceLoading, setAdviceLoading] = useState(false)
+  const [adviceError, setAdviceError] = useState<string | null>(null)
+  async function recommendAttachments() {
+    setAdviceLoading(true)
+    setAdviceError(null)
+    try {
+      const res = await fetch(`/api/deals/${dealId}/recommend-attachments`, { method: 'POST' })
+      const parsed = await readJsonResponse<{
+        decisions: { id: string; include: boolean; reason: string }[]
+        note: string | null
+      }>(res)
+      if (!parsed.ok) throw new Error(parsed.message)
+      setAdviceReasons(Object.fromEntries(parsed.body.decisions.map((d) => [d.id, { include: d.include, reason: d.reason }])))
+      setAdviceNote(parsed.body.note)
+      saveSelection(parsed.body.decisions.filter((d) => d.include).map((d) => d.id))
+    } catch (err) {
+      setAdviceError(err instanceof Error ? err.message : 'Could not recommend attachments')
+    } finally {
+      setAdviceLoading(false)
+    }
+  }
+  const attachmentAdvice: AttachmentAdvice = {
+    reasons: adviceReasons,
+    note: adviceNote,
+    loading: adviceLoading,
+    error: adviceError,
+    run: recommendAttachments,
+  }
+
   function saveSelection(ids: string[]) {
     setSelectedDocIds(ids)
     try {
@@ -575,6 +633,7 @@ export function MatchingPanel({
                   mailboxes={mailboxes}
                   mailboxId={mailboxId}
                   onPickMailbox={pickMailbox}
+                  attachmentAdvice={attachmentAdvice}
                 />
               )}
               {draftingId === m.id && (
