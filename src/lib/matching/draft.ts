@@ -112,9 +112,10 @@ export async function draftSubmissionEmail(
   if (dealError || !deal) throw new Error('Deal not found')
   if (lenderError || !lender) throw new Error('Lender not found')
 
-  const primaryContact =
-    (contacts ?? []).find((c) => c.email) ??
-    (lender.contact_email ? { name: lender.contact_name, email: lender.contact_email } : null)
+  // Greet the primary contact (the "To" on the Outlook draft).
+  const primaryContact = lender.contact_email
+    ? { name: lender.contact_name, email: lender.contact_email }
+    : ((contacts ?? []).find((c) => c.email) ?? null)
 
   const dealProfile = buildDealProfile(
     deal as Deal,

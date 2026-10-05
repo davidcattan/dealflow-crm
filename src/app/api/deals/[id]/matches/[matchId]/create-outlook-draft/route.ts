@@ -36,17 +36,23 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
 
   const [{ data: lender }, { data: contacts }, { data: documents }] = await Promise.all([
     supabase.from('lenders').select('name, contact_name, contact_email').eq('id', match.lender_id).single(),
-    supabase.from('lender_contacts').select('name, email').eq('lender_id', match.lender_id),
+    supabase.from('lender_contacts').select('*').eq('lender_id', match.lender_id),
     supabase.from('documents').select('*').eq('deal_id', dealId),
   ])
   if (!lender) return NextResponse.json({ error: 'Lender not found' }, { status: 404 })
 
-  const primaryContact =
-    (contacts ?? []).find((c) => c.email) ??
-    (lender.contact_email ? { name: lender.contact_name, email: lender.contact_email } : null)
+  // To: the lender's primary contact (else its first contact with an
+  // email). CC: every other contact marked "CC on submission emails".
+  const allContacts = (contacts ?? []) as { name: string | null; email: string | null; cc_on_emails?: boolean }[]
+  const primaryContact = lender.contact_email
+    ? { name: lender.contact_name, email: lender.contact_email }
+    : (allContacts.find((c) => c.email) as { name: string | null; email: string } | undefined) ?? null
   if (!primaryContact?.email) {
-    return NextResponse.json({ error: `${lender.name} has no contact email on file.` }, { status: 400 })
+    return NextResponse.json({ error: `${lender.name} has no contact email on file. Add one on the lender's page.` }, { status: 400 })
   }
+  const ccContacts = allContacts
+    .filter((c) => c.cc_on_emails && c.email && c.email.toLowerCase() !== primaryContact.email.toLowerCase())
+    .map((c) => ({ name: c.name, email: c.email as string }))
 
   try {
     // The mailbox the user picked (their own), else the most recent one.
@@ -70,6 +76,7 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
     const result = await createOutlookDraft({
       accessToken,
       to: { name: primaryContact.name, email: primaryContact.email },
+      cc: ccContacts,
       subject: match.draft_subject,
       body: match.draft_body,
       attachments,

@@ -142,12 +142,14 @@ export type DraftAttachment = { name: string; contentType: string; contentBytes:
 export async function createOutlookDraft({
   accessToken,
   to,
+  cc = [],
   subject,
   body,
   attachments,
 }: {
   accessToken: string
   to: { name?: string | null; email: string }
+  cc?: { name?: string | null; email: string }[]
   subject: string
   body: string
   attachments: DraftAttachment[]
@@ -163,6 +165,7 @@ export async function createOutlookDraft({
       // Sent as formatted HTML so bullets, bold labels and spacing survive.
       body: { contentType: 'html', content: textToEmailHtml(body) },
       toRecipients: [{ emailAddress: { address: to.email, name: to.name ?? undefined } }],
+      ccRecipients: cc.map((c) => ({ emailAddress: { address: c.email, name: c.name ?? undefined } })),
       attachments: included.map((a) => ({
         '@odata.type': '#microsoft.graph.fileAttachment',
         name: a.name,

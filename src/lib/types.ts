@@ -73,6 +73,9 @@ export type LenderContact = {
   lender_id: string
   name: string | null
   email: string | null
+  title?: string | null
+  phone?: string | null
+  cc_on_emails?: boolean
   created_at: string
 }
 

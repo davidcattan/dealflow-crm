@@ -13,6 +13,7 @@ import {
   GEOGRAPHY_CATEGORIES,
 } from '@/lib/lenders/categories'
 import type { Lender, LenderContact } from '@/lib/types'
+import { LenderContacts } from './lender-contacts'
 
 function moneyInputDefault(value: number | null): string {
   return value === null ? '' : formatCompactCurrency(value)
@@ -145,36 +146,7 @@ export function LenderDetail({
             </div>
           </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-sm font-semibold text-slate-900">
-              Contact
-            </h2>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-              <Fact label="Name" value={lender.contact_name} />
-              <Fact label="Email" value={lender.contact_email} />
-              <Fact label="Phone" value={lender.contact_phone} />
-            </div>
-
-            {contacts.length > 1 && (
-              <div className="mt-4 border-t border-slate-100 pt-4">
-                <p className="mb-2 text-xs font-medium text-slate-500">
-                  All contacts
-                </p>
-                <ul className="divide-y divide-slate-100">
-                  {contacts.map((c) => (
-                    <li key={c.id} className="py-2 text-sm">
-                      <span className="font-medium text-slate-800">
-                        {c.name ?? 'Unnamed contact'}
-                      </span>
-                      {c.email && (
-                        <span className="ml-2 text-slate-500">{c.email}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
+          <LenderContacts lender={lender} contacts={contacts} />
 
           <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-4 text-sm font-semibold text-slate-900">
@@ -225,7 +197,7 @@ export function LenderDetail({
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600">
-                Contact name
+                Primary contact name
               </label>
               <input
                 name="contact_name"
@@ -235,7 +207,7 @@ export function LenderDetail({
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600">
-                Contact email
+                Primary contact email
               </label>
               <input
                 name="contact_email"
@@ -245,7 +217,7 @@ export function LenderDetail({
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600">
-                Contact phone
+                Primary contact phone
               </label>
               <input
                 name="contact_phone"
