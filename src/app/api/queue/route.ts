@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { DocumentRecord } from '@/lib/types'
 import { loadDealEmails } from '@/lib/deals/deal-emails'
 import { findPossibleDuplicates } from '@/lib/deals/duplicates'
+import { loadLenderSearchPrompt } from '@/lib/lender-search/run'
 
 // Deals waiting for underwriting by Claude Code, with everything needed to
 // do it: deal info and a download link for each document. Requires a
@@ -16,9 +17,11 @@ export async function GET() {
 
   const { data: deals } = await supabase
     .from('deals')
-    .select('id, company_name, industry, loan_type, website, description, notes, deal_type, underwriting_requested_at, underwriting_requested_kind')
-    .not('underwriting_requested_at', 'is', null)
-    .order('underwriting_requested_at', { ascending: true })
+    .select(
+      'id, company_name, industry, loan_type, website, description, notes, deal_type, underwriting_requested_at, underwriting_requested_kind, lender_search_requested_at'
+    )
+    .or('underwriting_requested_at.not.is.null,lender_search_requested_at.not.is.null')
+    .order('created_at', { ascending: true })
 
   const out = []
   for (const deal of deals ?? []) {
@@ -46,7 +49,9 @@ export async function GET() {
         url: data?.signedUrl ?? null,
       })
     }
-    out.push({ ...deal, possible_duplicates, updates: updates ?? [], emails, documents })
+    // A queued "find new lenders" search: the full instructions + context.
+    const lender_search_prompt = deal.lender_search_requested_at ? await loadLenderSearchPrompt(supabase, deal.id) : null
+    out.push({ ...deal, possible_duplicates, updates: updates ?? [], emails, documents, lender_search_prompt })
   }
   return NextResponse.json({ queued: out })
 }

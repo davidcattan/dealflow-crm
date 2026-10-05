@@ -1,6 +1,6 @@
 ---
 name: process-underwriting-queue
-description: Underwrite the deals queued in the Dealflow CRM ("Queue for Claude Code" button) by reading their documents directly and saving the result back to the CRM — no paid Anthropic API calls. Use when the user says "process the underwriting queue", "run the queue", or asks to underwrite queued deals.
+description: Process the Dealflow CRM's Claude Code queue — underwrite queued deals by reading their documents, and run queued "find new lenders" web searches — saving results back to the CRM with no paid Anthropic API calls. Use when the user says "process the underwriting queue", "run the queue", "find lenders for the queue", or asks to underwrite queued deals.
 ---
 
 # Process the underwriting queue
@@ -44,3 +44,14 @@ Deals get queued from a deal page ("Underwrite for free → Queue for Claude Cod
 6. **Verify**: reload the deal page and confirm the snapshot/report shows, then fetch `/api/queue` again to confirm the deal left the queue.
 
 7. **Report back** in plain language: what was underwritten, the headline numbers (revenue, EBITDA, total debt, coverage), and the most important flags.
+
+## Queued lender searches ("Find new lenders online")
+
+A queue entry with a non-null `lender_search_prompt` also wants a lender search (an entry can have this without `underwriting_requested_at` — then skip steps 2–6 for it). The prompt contains the deal context, the names already in the broker's lender list, and the rules. Do it yourself with WebSearch/WebFetch:
+
+- Think about what the deal needs (product, collateral, size, state, weak points) and search for lenders that do exactly that.
+- **Verify every lender on its own website** (WebFetch the lender's page). Skip directories, marketplaces that don't lend, dead/parked/redirected domains, and anything already in the broker's list.
+- 10–15 lenders, best fit first. Only facts the lender's site states; unknowns are `null`.
+- Build JSON matching `src/lib/lender-search/schema.ts` (`LenderSearchSchema`: `needed`, `results[]` with name, website, lending_type, loan_size, geographies, why_fit, watch_out, contact, source_url, confidence, and `note`) and POST it from the logged-in page to `/api/deals/{id}/save-lender-search`. This clears the lender search from the queue.
+- Report the top few to the user in plain language and remind them they can click **Add to my lenders** on each card.
+

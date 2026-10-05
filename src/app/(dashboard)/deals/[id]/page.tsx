@@ -25,6 +25,9 @@ import type { SubmissionStatus } from '@/lib/deals/submission-status'
 import { loadDealEmails, emailsToText } from '@/lib/deals/deal-emails'
 import { findPossibleDuplicates } from '@/lib/deals/duplicates'
 import { MergeDealButton, DuplicateBanner } from './merge-deal'
+import { LenderSearchPanel } from './lender-search-panel'
+import { buildLenderSearchPrompt } from '@/lib/lender-search/prompt'
+import type { LenderSearch } from '@/lib/lender-search/schema'
 
 function formatBytes(bytes: number | null) {
   if (!bytes) return ''
@@ -450,6 +453,15 @@ export default async function DealDetailPage({
         loanTypeRecommendation={
           (deal as { loan_type_recommendation?: LoanTypeRecommendation | null }).loan_type_recommendation ?? null
         }
+      />
+
+      <LenderSearchPanel
+        dealId={deal.id}
+        search={(deal as { lender_search?: LenderSearch | null }).lender_search ?? null}
+        generatedAt={(deal as { lender_search_generated_at?: string | null }).lender_search_generated_at ?? null}
+        queuedAt={(deal as { lender_search_requested_at?: string | null }).lender_search_requested_at ?? null}
+        lenderIdsByName={Object.fromEntries((lenderRows ?? []).map((l) => [String(l.name).trim().toLowerCase(), l.id as string]))}
+        prompt={buildLenderSearchPrompt(deal, (lenderRows ?? []).map((l) => l.name as string))}
       />
     </div>
   )

@@ -243,3 +243,69 @@ export async function mergeDeals(sourceId: string, targetId: string) {
   revalidatePath('/')
   redirect(`/deals/${targetId}`)
 }
+
+// Queue (or unqueue) a "find new lenders" web search for Claude Code — free.
+export async function setLenderSearchQueued(dealId: string, queued: boolean) {
+  if (!dealId) return
+  const supabase = await createClient()
+  await supabase
+    .from('deals')
+    .update({ lender_search_requested_at: queued ? new Date().toISOString() : null })
+    .eq('id', dealId)
+  revalidatePath(`/deals/${dealId}`)
+}
+
+// Adds a lender found by the web search to the lender list (or reuses an
+// existing one with the same name). Returns the lender id.
+export async function addFoundLender(
+  dealId: string,
+  found: {
+    name: string
+    website: string
+    lending_type: string
+    loan_size: string | null
+    geographies: string | null
+    why_fit: string
+    contact: string | null
+    source_url: string
+  }
+) {
+  const name = found.name.trim()
+  if (!name) return { error: 'Missing lender name.' }
+  const supabase = await createClient()
+  const { data: existing } = await supabase.from('lenders').select('id').ilike('name', name).limit(1).maybeSingle()
+  if (existing) return { id: existing.id as string }
+
+  const email = found.contact?.match(/[\w.+-]+@[\w-]+\.[\w.-]+/)?.[0] ?? null
+  const phone = !email ? (found.contact?.match(/\+?\d[\d\s().-]{8,}\d/)?.[0] ?? null) : null
+  const notes = [
+    `[Found by web search ${new Date().toISOString().slice(0, 10)}] ${found.lending_type}.`,
+    found.loan_size ? `Loan size: ${found.loan_size}.` : null,
+    found.geographies ? `Lends in: ${found.geographies}.` : null,
+    found.contact && !email && !phone ? `Submit via: ${found.contact}.` : null,
+    `Source: ${found.source_url}`,
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const { data: created, error } = await supabase
+    .from('lenders')
+    .insert({
+      name,
+      website: found.website || null,
+      lending_type: found.lending_type || null,
+      contact_email: email,
+      contact_phone: phone,
+      mandate_notes: notes,
+      created_by: user?.id ?? null,
+    })
+    .select('id')
+    .single()
+  if (error || !created) return { error: 'Could not add the lender.' }
+  revalidatePath(`/deals/${dealId}`)
+  revalidatePath('/lenders')
+  return { id: created.id as string }
+}
