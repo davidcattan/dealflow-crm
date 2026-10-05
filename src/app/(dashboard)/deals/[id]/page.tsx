@@ -22,6 +22,7 @@ import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
 import { SubmissionsPanel, type SubmissionRow, type TimelineItem } from './submissions-panel'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
+import { loadDealEmails, emailsToText } from '@/lib/deals/deal-emails'
 
 function formatBytes(bytes: number | null) {
   if (!bytes) return ''
@@ -64,7 +65,7 @@ export default async function DealDetailPage({
 
   if (!deal) notFound()
 
-  const [{ data: submissionRows }, { data: lenderRows }, { data: lenderEmails }] = await Promise.all([
+  const [{ data: submissionRows }, { data: lenderRows }, { data: lenderEmails }, dealEmails] = await Promise.all([
     supabase
       .from('deal_submissions')
       .select('id, lender_id, status, sent_on, last_activity_at, lenders(name)')
@@ -77,6 +78,7 @@ export default async function DealDetailPage({
       .eq('deal_id', id)
       .not('lender_id', 'is', null)
       .order('received_at', { ascending: false }),
+    loadDealEmails(supabase, id),
   ])
   const lenderNameById = new Map((lenderRows ?? []).map((l) => [l.id as string, l.name as string]))
   const submissions: SubmissionRow[] = (submissionRows ?? []).map((r) => {
@@ -362,6 +364,39 @@ export default async function DealDetailPage({
         )}
       </section>
 
+      {dealEmails.length > 0 && (
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-900">Emails ({dealEmails.length})</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Emails the inbox filed on this deal. Their full text is included when the deal is underwritten.
+          </p>
+          <ul className="mt-4 divide-y divide-slate-100">
+            {dealEmails.map((e) => (
+              <li key={e.id} className="py-3 text-sm">
+                <details>
+                  <summary className="cursor-pointer list-none">
+                    <span className="mr-2 text-xs text-slate-400">
+                      {e.received_at ? new Date(e.received_at).toLocaleDateString() : ''}
+                    </span>
+                    <span className="font-medium text-slate-800">{e.subject || '(no subject)'}</span>
+                    <span className="text-slate-500"> — {e.from_email}</span>
+                    {e.summary && <p className="mt-1 text-slate-600">{e.summary}</p>}
+                    <span className="mt-1 inline-block text-xs text-slate-400 hover:underline">
+                      {e.body_text ? 'Show full email' : 'Full text not stored (read before this was added)'}
+                    </span>
+                  </summary>
+                  {e.body_text && (
+                    <pre className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 font-sans text-xs text-slate-700">
+                      {e.body_text}
+                    </pre>
+                  )}
+                </details>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <SnapshotPanel
         dealId={deal.id}
         snapshot={(deal.snapshot as Snapshot | null) ?? null}
@@ -377,7 +412,11 @@ export default async function DealDetailPage({
               : null,
         }))}
         manualPrompt={buildManualPrompt(deal, ((documents ?? []) as DocumentRecord[]).map((d) => d.file_name))}
-        snapshotPrompt={buildSnapshotPrompt(deal, ((documents ?? []) as DocumentRecord[]).map((d) => d.file_name))}
+        snapshotPrompt={buildSnapshotPrompt(
+          deal,
+          ((documents ?? []) as DocumentRecord[]).map((d) => d.file_name),
+          emailsToText(dealEmails)
+        )}
         hasReportUnderwriting={Boolean(deal.underwriting)}
       />
 

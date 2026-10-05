@@ -335,6 +335,7 @@ async function act({
         counter: 'lenderReplies',
         record: {
           classification: 'lender_reply',
+        body_text: message.bodyText,
           lender_id: lenderId,
           summary: summaryText,
           action_taken: "Couldn't tell which deal this is about — review manually",
@@ -386,6 +387,7 @@ async function act({
       counter: 'lenderReplies',
       record: {
         classification: 'lender_reply',
+        body_text: message.bodyText,
         deal_id: dealId,
         lender_id: lenderId,
         summary: `${outcomeLabel}: ${summaryText}`,
@@ -457,6 +459,7 @@ async function act({
       counter,
       record: {
         classification: 'new_deal',
+        body_text: message.bodyText,
         deal_id: dealId,
         summary: d.description,
         action_taken: `${actions.join(', ')}.${docsText}`,

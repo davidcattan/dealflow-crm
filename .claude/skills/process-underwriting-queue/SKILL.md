@@ -18,7 +18,7 @@ Deals get queued from a deal page ("Underwrite for free → Queue for Claude Cod
    ```js
    await (await fetch('/api/queue')).json()
    ```
-   Each entry has the deal fields, `underwriting_requested_kind` (`'snapshot'` — the default — or `'report'`), recent `updates`, and `documents` with a signed download `url` (valid ~1 hour) and any AI `triage` (doc type, important page ranges, summary). If the queue is empty, say so and stop.
+   Each entry has the deal fields, `underwriting_requested_kind` (`'snapshot'` — the default — or `'report'`), recent `updates`, `emails` (full text of emails the inbox filed on the deal — read these: borrowers often put values, budgets and plans in the email body rather than an attachment), and `documents` with a signed download `url` (valid ~1 hour) and any AI `triage` (doc type, important page ranges, summary). If the queue is empty, say so and stop.
 
 2. **Download and read every document** (save to the session scratchpad, not the repo):
    - **PDF**: try text extraction with mupdf first. Many financial PDFs (QuickBooks exports, scans) have broken embedded fonts and extract as garbage — if so, **render pages to PNG with mupdf and read them visually** (Read tool on the image). Use the triage page ranges to skip boilerplate on long PDFs. The script must live inside `crm/` so `import * as mupdf from 'mupdf'` resolves; delete it afterward.

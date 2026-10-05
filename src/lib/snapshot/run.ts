@@ -7,15 +7,17 @@ import { buildDocumentContent } from '@/lib/underwriting/build-content'
 import { SnapshotSchema, type Snapshot } from './schema'
 import { SNAPSHOT_RULES } from './prompt'
 import type { DocumentRecord } from '@/lib/types'
+import { loadDealEmails, emailsToText } from '@/lib/deals/deal-emails'
 
 // Paid path: one call, reads the documents natively and returns the
 // structured snapshot. No web research, so it costs far less than the
 // research-report underwriting.
 export async function runSnapshot(dealId: string, signal?: AbortSignal): Promise<Snapshot> {
   const supabase = await createClient()
-  const [{ data: deal, error }, { data: documents }] = await Promise.all([
+  const [{ data: deal, error }, { data: documents }, emails] = await Promise.all([
     supabase.from('deals').select('*').eq('id', dealId).single(),
     supabase.from('documents').select('*').eq('deal_id', dealId).order('uploaded_at', { ascending: true }),
+    loadDealEmails(supabase, dealId),
   ])
   if (error || !deal) throw new Error('Deal not found')
 
@@ -26,6 +28,7 @@ export async function runSnapshot(dealId: string, signal?: AbortSignal): Promise
     deal.description ? `Deal description (from the broker): ${deal.description}` : null,
     deal.notes ? `Broker notes: ${deal.notes}` : null,
     skipped.length ? `Note: these files could not be read and are not included: ${skipped.join(', ')}` : null,
+    emailsToText(emails),
   ]
     .filter(Boolean)
     .join('\n')

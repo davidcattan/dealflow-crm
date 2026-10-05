@@ -26,7 +26,8 @@ export function buildSnapshotPrompt(
     description?: string | null
     notes?: string | null
   },
-  documentNames: string[]
+  documentNames: string[],
+  emailsText: string | null = null
 ): string {
   return [
     `Company / deal: ${deal.company_name}`,
@@ -36,6 +37,7 @@ export function buildSnapshotPrompt(
     documentNames.length > 0
       ? `Documents attached (${documentNames.length}): ${documentNames.join(', ')}`
       : 'No documents are attached.',
+    emailsText ? `\n${emailsText}` : null,
     '',
     SNAPSHOT_RULES,
   ]
