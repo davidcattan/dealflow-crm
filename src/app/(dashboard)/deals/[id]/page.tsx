@@ -26,6 +26,7 @@ import { loadDealEmails, emailsToText } from '@/lib/deals/deal-emails'
 import { findPossibleDuplicates } from '@/lib/deals/duplicates'
 import { MergeDealButton, DuplicateBanner } from './merge-deal'
 import { LenderSearchPanel } from './lender-search-panel'
+import { CollapsibleSection, CollapseAllControls } from '@/components/collapsible-section'
 import { buildLenderSearchPrompt } from '@/lib/lender-search/prompt'
 import type { LenderSearch } from '@/lib/lender-search/schema'
 
@@ -215,10 +216,15 @@ export default async function DealDetailPage({
         </div>
       </div>
 
+      <CollapseAllControls />
+
       <DuplicateBanner dealId={deal.id} dealName={deal.company_name} duplicates={duplicates} />
 
+      <CollapsibleSection title="Deal details">
       <DealDetails deal={deal as Deal} />
+      </CollapsibleSection>
 
+      <CollapsibleSection title="Documents">
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold text-slate-900">
           Diligence documents
@@ -295,14 +301,18 @@ export default async function DealDetailPage({
           </p>
         )}
       </section>
+      </CollapsibleSection>
 
+      <CollapsibleSection title="Lenders sent to">
       <SubmissionsPanel
         dealId={deal.id}
         submissions={submissions}
         timeline={lenderTimeline}
         lenders={(lenderRows ?? []) as { id: string; name: string }[]}
       />
+      </CollapsibleSection>
 
+      <CollapsibleSection title="Updates">
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold text-slate-900">Updates</h2>
 
@@ -377,8 +387,10 @@ export default async function DealDetailPage({
           </p>
         )}
       </section>
+      </CollapsibleSection>
 
       {dealEmails.length > 0 && (
+        <CollapsibleSection title="Emails">
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-900">Emails ({dealEmails.length})</h2>
           <p className="mt-0.5 text-xs text-slate-500">
@@ -409,8 +421,10 @@ export default async function DealDetailPage({
             ))}
           </ul>
         </section>
+        </CollapsibleSection>
       )}
 
+      <CollapsibleSection title="AI underwriting">
       <SnapshotPanel
         dealId={deal.id}
         snapshot={(deal.snapshot as Snapshot | null) ?? null}
@@ -433,7 +447,9 @@ export default async function DealDetailPage({
         )}
         hasReportUnderwriting={Boolean(deal.underwriting)}
       />
+      </CollapsibleSection>
 
+      <CollapsibleSection title="Full research report">
       <UnderwritingPanel
         dealId={deal.id}
         dealName={deal.company_name}
@@ -442,7 +458,9 @@ export default async function DealDetailPage({
         underwriting={deal.underwriting as Underwriting | null}
         generatedAt={deal.underwriting_generated_at}
       />
+      </CollapsibleSection>
 
+      <CollapsibleSection title="Lender matching">
       <MatchingPanel
         dealId={deal.id}
         matches={matchesWithLender}
@@ -455,7 +473,9 @@ export default async function DealDetailPage({
           (deal as { loan_type_recommendation?: LoanTypeRecommendation | null }).loan_type_recommendation ?? null
         }
       />
+      </CollapsibleSection>
 
+      <CollapsibleSection title="Find new lenders">
       <LenderSearchPanel
         dealId={deal.id}
         search={(deal as { lender_search?: LenderSearch | null }).lender_search ?? null}
@@ -464,6 +484,7 @@ export default async function DealDetailPage({
         lenderIdsByName={Object.fromEntries((lenderRows ?? []).map((l) => [String(l.name).trim().toLowerCase(), l.id as string]))}
         prompt={buildLenderSearchPrompt(deal, (lenderRows ?? []).map((l) => l.name as string))}
       />
+      </CollapsibleSection>
     </div>
   )
 }
