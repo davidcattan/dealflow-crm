@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { InboxControls } from './inbox-controls'
 import { RetryButton } from './retry-button'
 import { DisconnectButton } from './disconnect-button'
+import { EmailProfile } from './email-profile'
 
 const KIND_STYLES: Record<string, string> = {
   new_deal: 'bg-emerald-100 text-emerald-800',
@@ -30,7 +31,7 @@ export default async function SettingsPage({
   const [{ data: connections }, { data: syncState }, { data: recent }] = await Promise.all([
     supabase
       .from('outlook_connections')
-      .select('id, account_email, connected_by, created_at, updated_at')
+      .select('id, account_email, connected_by, created_at, updated_at, email_intro, email_signature')
       .order('created_at', { ascending: true }),
     supabase.from('inbox_sync_state').select('*').eq('id', 1).maybeSingle(),
     supabase
@@ -81,6 +82,14 @@ export default async function SettingsPage({
                   )}
                 </span>
                 <DisconnectButton connectionId={c.id} email={c.account_email} />
+                <div className="w-full">
+                  <EmailProfile
+                    connectionId={c.id}
+                    email={c.account_email}
+                    intro={c.email_intro}
+                    signature={c.email_signature}
+                  />
+                </div>
               </li>
             ))}
           </ul>

@@ -49,6 +49,8 @@ function DraftEmail({
   mailboxId,
   onPickMailbox,
   attachmentAdvice,
+  includeIntro,
+  onToggleIntro,
 }: {
   dealId: string
   matchId: string
@@ -66,6 +68,8 @@ function DraftEmail({
   mailboxId: string | null
   onPickMailbox: (id: string) => void
   attachmentAdvice: AttachmentAdvice
+  includeIntro: boolean
+  onToggleIntro: (v: boolean) => void
 }) {
   const [showAttachments, setShowAttachments] = useState(false)
   const [open, setOpen] = useState(false)
@@ -121,6 +125,15 @@ function DraftEmail({
                 'Redrafting…'
               ) : (
                 <>
+                  <label className="mr-1 flex items-center gap-1" title="Start the email with your intro from Settings">
+                    <input
+                      type="checkbox"
+                      checked={includeIntro}
+                      onChange={(e) => onToggleIntro(e.target.checked)}
+                      className="rounded border-amber-300"
+                    />
+                    intro
+                  </label>
                   Redraft:
                   {(['short', 'long'] as const).map((st) => (
                     <button
@@ -434,6 +447,26 @@ export function MatchingPanel({
 
   // Drafts one email on demand (matches under the auto-draft score don't
   // get one automatically). Costs a few cents.
+  // Whether drafts open with the sender's intro (from Settings). Off is
+  // handy for lenders you already work with. Remembered in this browser.
+  const [includeIntro, setIncludeIntro] = useState(true)
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring a saved browser preference
+      if (localStorage.getItem('draft-include-intro') === 'false') setIncludeIntro(false)
+    } catch {
+      // Ignore.
+    }
+  }, [])
+  function toggleIntro(v: boolean) {
+    setIncludeIntro(v)
+    try {
+      localStorage.setItem('draft-include-intro', String(v))
+    } catch {
+      // Ignore.
+    }
+  }
+
   async function draftFor(matchId: string, style: 'short' | 'long' = 'short') {
     setDraftingId(matchId)
     setDraftError(null)
@@ -441,7 +474,7 @@ export function MatchingPanel({
       const res = await fetch(`/api/deals/${dealId}/matches/${matchId}/draft`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ style }),
+        body: JSON.stringify({ style, includeIntro }),
       })
       const result = await readJsonResponse(res)
       if (!result.ok) throw new Error(result.message)
@@ -634,6 +667,8 @@ export function MatchingPanel({
                   mailboxId={mailboxId}
                   onPickMailbox={pickMailbox}
                   attachmentAdvice={attachmentAdvice}
+                  includeIntro={includeIntro}
+                  onToggleIntro={toggleIntro}
                 />
               )}
               {draftingId === m.id && (

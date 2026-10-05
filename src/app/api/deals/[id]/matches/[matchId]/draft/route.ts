@@ -20,7 +20,7 @@ export async function POST(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id, matchId } = await ctx.params
-  const { style } = (await request.json().catch(() => ({}))) as { style?: string }
+  const { style, includeIntro } = (await request.json().catch(() => ({}))) as { style?: string; includeIntro?: boolean }
   const draftStyle: DraftStyle = DRAFT_STYLES.includes(style as DraftStyle) ? (style as DraftStyle) : 'short'
 
   const { data: match } = await supabase
@@ -32,7 +32,7 @@ export async function POST(
   if (!match) return NextResponse.json({ error: 'Match not found' }, { status: 404 })
 
   try {
-    const draft = await draftSubmissionEmail(id, match.lender_id, match.reasoning, draftStyle)
+    const draft = await draftSubmissionEmail(id, match.lender_id, match.reasoning, draftStyle, includeIntro !== false)
     const { error } = await supabase
       .from('deal_matches')
       .update({

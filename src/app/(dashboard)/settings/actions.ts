@@ -16,3 +16,14 @@ export async function disconnectOutlook(connectionId: string) {
   await supabase.from('outlook_connections').delete().eq('id', connectionId)
   revalidatePath('/settings')
 }
+
+// Saves one mailbox owner's intro paragraph and signature for lender emails.
+export async function saveEmailProfile(connectionId: string, intro: string, signature: string) {
+  if (!connectionId) return
+  const supabase = await createClient()
+  await supabase
+    .from('outlook_connections')
+    .update({ email_intro: intro.trim() || null, email_signature: signature.trim() || null })
+    .eq('id', connectionId)
+  revalidatePath('/settings')
+}
