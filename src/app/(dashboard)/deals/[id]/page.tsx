@@ -450,6 +450,7 @@ export default async function DealDetailPage({
         hasUnderwriting={Boolean(deal.underwriting || deal.snapshot)}
         currentLoanType={deal.loan_type}
         sentLenderIds={submissions.map((x) => x.lender_id)}
+        documents={docsWithUrls.map((d) => ({ id: d.id, name: d.file_name, size: d.file_size }))}
         loanTypeRecommendation={
           (deal as { loan_type_recommendation?: LoanTypeRecommendation | null }).loan_type_recommendation ?? null
         }

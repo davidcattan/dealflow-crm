@@ -7,10 +7,10 @@ import type { DocumentRecord } from '@/lib/types'
 export const maxDuration = 60
 
 // Creates a real Outlook draft (in the connected mailbox's Drafts folder)
-// from a match's already-generated subject/body, with the deal's documents
-// attached. Nothing is sent — no AI call here either, so this is free
+// from a match's already-generated subject/body, with the documents the
+// user ticked attached (all of the deal's documents if none are specified). Nothing is sent — no AI call here either, so this is free
 // beyond the one-time Outlook connection.
-export async function POST(_request: Request, ctx: RouteContext<'/api/deals/[id]/matches/[matchId]/create-outlook-draft'>) {
+export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/matches/[matchId]/create-outlook-draft'>) {
   const supabase = await createClient()
   const {
     data: { user },
@@ -18,6 +18,7 @@ export async function POST(_request: Request, ctx: RouteContext<'/api/deals/[id]
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id: dealId, matchId } = await ctx.params
+  const { documentIds } = (await request.json().catch(() => ({}))) as { documentIds?: string[] }
 
   const { data: match } = await supabase
     .from('deal_matches')
@@ -48,7 +49,10 @@ export async function POST(_request: Request, ctx: RouteContext<'/api/deals/[id]
     const { accessToken } = await getValidAccessToken()
 
     const attachments: DraftAttachment[] = []
-    for (const doc of (documents ?? []) as DocumentRecord[]) {
+    const chosen = ((documents ?? []) as DocumentRecord[]).filter(
+      (d) => !Array.isArray(documentIds) || documentIds.includes(d.id)
+    )
+    for (const doc of chosen) {
       const { data: file } = await supabase.storage.from('borrower-documents').download(doc.storage_path)
       if (!file) continue
       const buffer = Buffer.from(await file.arrayBuffer())

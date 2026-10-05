@@ -2,13 +2,15 @@ import { NextResponse } from 'next/server'
 import { friendlyAiError } from '@/lib/ai-errors'
 import { createClient } from '@/lib/supabase/server'
 import { draftSubmissionEmail } from '@/lib/matching/draft'
+import { DRAFT_STYLES, type DraftStyle } from '@/lib/matching/draft-schema'
 
 export const maxDuration = 120
 
-// On-demand draft for a single match — used when a match scored below the
-// auto-draft threshold but the user selected it anyway.
+// On-demand draft (or redraft) for a single match, in the short or long
+// style — used when a match scored below the auto-draft threshold, or to
+// rewrite an existing draft.
 export async function POST(
-  _request: Request,
+  request: Request,
   ctx: RouteContext<'/api/deals/[id]/matches/[matchId]/draft'>
 ) {
   const supabase = await createClient()
@@ -18,6 +20,8 @@ export async function POST(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id, matchId } = await ctx.params
+  const { style } = (await request.json().catch(() => ({}))) as { style?: string }
+  const draftStyle: DraftStyle = DRAFT_STYLES.includes(style as DraftStyle) ? (style as DraftStyle) : 'short'
 
   const { data: match } = await supabase
     .from('deal_matches')
@@ -28,7 +32,7 @@ export async function POST(
   if (!match) return NextResponse.json({ error: 'Match not found' }, { status: 404 })
 
   try {
-    const draft = await draftSubmissionEmail(id, match.lender_id, match.reasoning)
+    const draft = await draftSubmissionEmail(id, match.lender_id, match.reasoning, draftStyle)
     const { error } = await supabase
       .from('deal_matches')
       .update({

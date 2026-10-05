@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { matchScoreColor } from '@/lib/types'
 import { toggleMatchSelected } from './actions'
@@ -22,6 +22,8 @@ export type MatchWithLender = {
   outlookDraftCreatedAt: string | null
 }
 
+export type DealDoc = { id: string; name: string; size: number | null }
+
 function DraftEmail({
   dealId,
   matchId,
@@ -31,6 +33,10 @@ function DraftEmail({
   onCreated,
   onRedraft,
   redrafting,
+  documents,
+  selectedDocIds,
+  onToggleDoc,
+  onSetAllDocs,
 }: {
   dealId: string
   matchId: string
@@ -38,9 +44,14 @@ function DraftEmail({
   body: string
   outlookDraftCreatedAt: string | null
   onCreated: () => void
-  onRedraft: () => void
+  onRedraft: (style: 'short' | 'long') => void
   redrafting: boolean
+  documents: DealDoc[]
+  selectedDocIds: string[]
+  onToggleDoc: (id: string) => void
+  onSetAllDocs: (all: boolean) => void
 }) {
+  const [showAttachments, setShowAttachments] = useState(false)
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -61,7 +72,11 @@ function DraftEmail({
     setCreating(true)
     setOutlookError(null)
     try {
-      const res = await fetch(`/api/deals/${dealId}/matches/${matchId}/create-outlook-draft`, { method: 'POST' })
+      const res = await fetch(`/api/deals/${dealId}/matches/${matchId}/create-outlook-draft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentIds: selectedDocIds }),
+      })
       const result = await readJsonResponse<{ webLink: string; skippedAttachments: string[] }>(res)
       if (!result.ok) throw new Error(result.message)
       onCreated()
@@ -85,15 +100,25 @@ function DraftEmail({
         </button>
         <div className="flex items-center gap-2">
           {open && (
-            <button
-              type="button"
-              onClick={onRedraft}
-              disabled={redrafting}
-              title="Writes a fresh draft (a few cents)"
-              className="rounded border border-amber-300 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100 disabled:opacity-50"
-            >
-              {redrafting ? 'Redrafting…' : 'Redraft'}
-            </button>
+            <span className="flex items-center gap-1 text-xs text-amber-800" title="Writes a fresh draft (a few cents)">
+              {redrafting ? (
+                'Redrafting…'
+              ) : (
+                <>
+                  Redraft:
+                  {(['short', 'long'] as const).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => onRedraft(st)}
+                      className="rounded border border-amber-300 px-2 py-0.5 capitalize hover:bg-amber-100"
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </>
+              )}
+            </span>
           )}
           {open && (
             <button
@@ -118,6 +143,45 @@ function DraftEmail({
           </button>
         </div>
       </div>
+      {documents.length > 0 && (
+        <div className="mt-2 text-xs text-amber-800">
+          <button type="button" onClick={() => setShowAttachments((v) => !v)} className="hover:underline">
+            Attachments: {selectedDocIds.length} of {documents.length} selected {showAttachments ? '▴' : '▾'}
+          </button>
+          {showAttachments && (
+            <div className="mt-1 rounded border border-amber-200 bg-white p-2">
+              <div className="mb-1 flex gap-3">
+                <button type="button" onClick={() => onSetAllDocs(true)} className="hover:underline">
+                  Select all
+                </button>
+                <button type="button" onClick={() => onSetAllDocs(false)} className="hover:underline">
+                  Select none
+                </button>
+                <span className="text-slate-400">Applies to every lender email on this deal.</span>
+              </div>
+              <ul className="max-h-56 space-y-0.5 overflow-y-auto">
+                {documents.map((d) => {
+                  const tooBig = (d.size ?? 0) > 3 * 1024 * 1024
+                  return (
+                    <li key={d.id}>
+                      <label className="flex items-center gap-2 text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={selectedDocIds.includes(d.id)}
+                          onChange={() => onToggleDoc(d.id)}
+                          className="rounded border-slate-300"
+                        />
+                        <span className="truncate">{d.name}</span>
+                        {tooBig && <span className="shrink-0 text-red-600">over 3MB — Outlook will skip it</span>}
+                      </label>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
       {outlookDraftCreatedAt && (
         <p className="mt-1 text-xs text-amber-700">
           Created in Outlook {new Date(outlookDraftCreatedAt).toLocaleString()}
@@ -223,6 +287,7 @@ export function MatchingPanel({
   currentLoanType,
   sentLenderIds,
   loanTypeRecommendation,
+  documents,
 }: {
   dealId: string
   matches: MatchWithLender[]
@@ -231,7 +296,32 @@ export function MatchingPanel({
   currentLoanType: string | null
   sentLenderIds: string[]
   loanTypeRecommendation: LoanTypeRecommendation | null
+  documents: DealDoc[]
 }) {
+  // Which documents go with the Outlook drafts — one choice for the whole
+  // deal, remembered in this browser.
+  const storageKey = `draft-attachments:${dealId}`
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>(documents.map((d) => d.id))
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey) ?? 'null') as string[] | null
+      if (Array.isArray(saved)) {
+        const valid = new Set(documents.map((d) => d.id))
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring a saved browser preference
+        setSelectedDocIds(saved.filter((id) => valid.has(id)))
+      }
+    } catch {
+      // No storage (private window) — keep the default.
+    }
+  }, [storageKey, documents])
+  function saveSelection(ids: string[]) {
+    setSelectedDocIds(ids)
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(ids))
+    } catch {
+      // Ignore — selection still works for this visit.
+    }
+  }
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -241,11 +331,15 @@ export function MatchingPanel({
 
   // Drafts one email on demand (matches under the auto-draft score don't
   // get one automatically). Costs a few cents.
-  async function draftFor(matchId: string) {
+  async function draftFor(matchId: string, style: 'short' | 'long' = 'short') {
     setDraftingId(matchId)
     setDraftError(null)
     try {
-      const res = await fetch(`/api/deals/${dealId}/matches/${matchId}/draft`, { method: 'POST' })
+      const res = await fetch(`/api/deals/${dealId}/matches/${matchId}/draft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ style }),
+      })
       const result = await readJsonResponse(res)
       if (!result.ok) throw new Error(result.message)
       router.refresh()
@@ -425,8 +519,14 @@ export function MatchingPanel({
                   body={m.draftBody}
                   outlookDraftCreatedAt={m.outlookDraftCreatedAt}
                   onCreated={() => router.refresh()}
-                  onRedraft={() => draftFor(m.id)}
+                  onRedraft={(style) => draftFor(m.id, style)}
                   redrafting={draftingId === m.id}
+                  documents={documents}
+                  selectedDocIds={selectedDocIds}
+                  onToggleDoc={(id) =>
+                    saveSelection(selectedDocIds.includes(id) ? selectedDocIds.filter((x) => x !== id) : [...selectedDocIds, id])
+                  }
+                  onSetAllDocs={(all) => saveSelection(all ? documents.map((d) => d.id) : [])}
                 />
               )}
               {draftingId === m.id && (
@@ -438,13 +538,18 @@ export function MatchingPanel({
                 </p>
               )}
               {m.selected && m.draftStatus !== 'drafted' && draftingId !== m.id && (
-                <button
-                  type="button"
-                  onClick={() => draftFor(m.id)}
-                  className="mt-3 rounded-md border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                >
-                  Draft submission email
-                </button>
+                <div className="mt-3 flex gap-2">
+                  {(['short', 'long'] as const).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => draftFor(m.id, st)}
+                      className="rounded-md border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                    >
+                      Draft {st} email
+                    </button>
+                  ))}
+                </div>
               )}
             </li>
           ))}

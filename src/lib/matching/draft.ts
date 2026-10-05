@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { createClient } from '@/lib/supabase/server'
 import { logUsage } from '@/lib/usage'
-import { DraftEmailSchema } from './draft-schema'
+import { DraftEmailSchema, type DraftStyle } from './draft-schema'
 import { buildDealProfile } from './deal-profile'
 import type { Deal, DealUpdate } from '@/lib/types'
 
@@ -12,18 +12,30 @@ import type { Deal, DealUpdate } from '@/lib/types'
 // human should look over before any email gets written at all.
 export const DRAFT_SCORE_THRESHOLD = 70
 
-const DRAFT_INSTRUCTIONS = `You are writing a deal submission email from a commercial debt broker to a lender. Lenders get dozens of these a day — the email must be short and get to the point: what the deal is, why it fits them, and a clear ask.
+const COMMON_RULES = `You are writing a deal submission email from a commercial debt broker to a lender. Lenders get dozens of these a day, so get to the point: what the deal is, why it fits them, and a clear ask.
 
-Rules:
-- Under 120 words in the body. Short sentences. Bullets for numbers.
-- No filler: no "I hope this finds you well", no "I wanted to reach out", no restating the lender's own mandate back to them, no adjectives like "exciting" or "unique".
-- Lead with the deal in one sentence: who the borrower is (type, location), what they need, how much, secured by what.
-- Bullets: only the 2-4 facts a lender decides on (value, LTV, revenue/EBITDA, use of funds, exit). Use only numbers given to you; never invent or round in the borrower's favor.
-- Why them: one sentence tying the deal to this lender's product, size range or geography.
-- If there is a known problem most lenders would reject on (no income, owner-occupied, nonprofit borrower, etc.), say it in one honest line starting "Heads up:" — it saves everyone time.
-- Close with one line asking them to take a look or jump on a quick call. Mention the package is attached only if documents are attached.
-- Sign off with "Best," and the sender's name.
-- Use the borrower's company name, not the individual's personal details beyond what a lender needs.`
+Always:
+- No filler: no "I hope this finds you well", no "I wanted to reach out", no restating the lender's own mandate back to them, no hype words ("exciting", "unique", "great opportunity").
+- Use only facts and numbers given to you; never invent or round in the borrower's favor.
+- Be honest about deal-breakers (no income, owner-occupied, nonprofit borrower, etc.) — it saves everyone time.
+- Sign off with "Best," and the sender's name.`
+
+const STYLE_RULES: Record<DraftStyle, string> = {
+  short: `SHORT style — under 120 words in the body:
+- "Hi <first name>," (or "Hi there,")
+- One sentence: borrower type and location, what they need, how much, secured by what.
+- 2-4 bullet lines ("- ") with only the numbers a lender decides on (value, LTV, revenue/EBITDA, use of funds, exit).
+- One sentence on why it fits THIS lender (their product, size or geography).
+- Optional one line starting "Heads up:" only for an issue most lenders would reject on.
+- One closing line asking for a quick look or call (mention the package is attached only if documents are attached).`,
+  long: `LONG style — 200-300 words in the body, still tight and scannable:
+- "Hi <first name>," (or "Hi there,")
+- Two-sentence overview: who the borrower is, what they need, how much, secured by what, and the timing if known.
+- "The deal:" followed by 5-8 bullet lines ("- "): borrower/ownership, amount and use of funds, collateral and value (with source, e.g. appraisal date), LTV if computable, financials (revenue/EBITDA/net income or cash flow — say plainly if there are none), repayment/exit, anything already approved or in place.
+- "Why you:" one or two sentences tying the deal to this lender's product, size range and geography.
+- "Things to know:" 1-3 bullet lines with the real issues and any mitigant that was given.
+- One closing line asking for a call or term sheet; if documents are attached, name the main kinds in a few words (e.g. "appraisal, bank statements and tax return attached").`,
+}
 
 // Sign-off name: the deal's rep, else the first name of the connected
 // Outlook mailbox (e.g. eli@… → "Eli"), else a placeholder.
@@ -34,7 +46,12 @@ async function senderName(supabase: Awaited<ReturnType<typeof createClient>>, re
   return /^[a-z]{2,}$/i.test(first) ? first[0].toUpperCase() + first.slice(1).toLowerCase() : '[Your name]'
 }
 
-export async function draftSubmissionEmail(dealId: string, lenderId: string, reasoning: string) {
+export async function draftSubmissionEmail(
+  dealId: string,
+  lenderId: string,
+  reasoning: string,
+  style: DraftStyle = 'short'
+) {
   const supabase = await createClient()
 
   const [{ data: deal, error: dealError }, { data: updates }, { data: lender, error: lenderError }, { data: contacts }, { data: documents }] =
@@ -77,7 +94,7 @@ export async function draftSubmissionEmail(dealId: string, lenderId: string, rea
 
   const structured = await client.messages.parse({
     model: 'claude-opus-5',
-    max_tokens: 2000,
+    max_tokens: 3000,
     messages: [
       {
         role: 'user',
@@ -92,11 +109,13 @@ export async function draftSubmissionEmail(dealId: string, lenderId: string, rea
           reasoning,
           '',
           documentNames.length > 0
-            ? `--- Attachments ---\n${documentNames.length} documents will be attached automatically. Say "package attached" — don't list the files.`
+            ? `--- Attachments ---\nThe broker picks which of these to attach: ${documentNames.join(', ')}. Short style: just say "package attached". Long style: name the main kinds in a few words.`
             : `--- Attachments ---\nNothing is attached — don't mention attachments.`,
           '',
           `Sender's name for the sign-off: ${sender}`,
-          DRAFT_INSTRUCTIONS,
+          COMMON_RULES,
+          '',
+          STYLE_RULES[style],
         ]
           .filter(Boolean)
           .join('\n'),
