@@ -23,6 +23,8 @@ import { DealDetails } from './deal-details'
 import { SubmissionsPanel, type SubmissionRow, type TimelineItem } from './submissions-panel'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
 import { loadDealEmails, emailsToText } from '@/lib/deals/deal-emails'
+import { findPossibleDuplicates } from '@/lib/deals/duplicates'
+import { MergeDealButton, DuplicateBanner } from './merge-deal'
 
 function formatBytes(bytes: number | null) {
   if (!bytes) return ''
@@ -65,7 +67,7 @@ export default async function DealDetailPage({
 
   if (!deal) notFound()
 
-  const [{ data: submissionRows }, { data: lenderRows }, { data: lenderEmails }, dealEmails] = await Promise.all([
+  const [{ data: submissionRows }, { data: lenderRows }, { data: lenderEmails }, dealEmails, duplicates, { data: allDeals }] = await Promise.all([
     supabase
       .from('deal_submissions')
       .select('id, lender_id, status, sent_on, last_activity_at, lenders(name)')
@@ -79,6 +81,8 @@ export default async function DealDetailPage({
       .not('lender_id', 'is', null)
       .order('received_at', { ascending: false }),
     loadDealEmails(supabase, id),
+    findPossibleDuplicates(supabase, id),
+    supabase.from('deals').select('id, company_name, status').order('company_name'),
   ])
   const lenderNameById = new Map((lenderRows ?? []).map((l) => [l.id as string, l.name as string]))
   const submissions: SubmissionRow[] = (submissionRows ?? []).map((r) => {
@@ -191,6 +195,11 @@ export default async function DealDetailPage({
               {['dead', 'old', 'closed'].includes(deal.status) ? 'Mark as active' : 'Mark as dead'}
             </button>
           </form>
+          <MergeDealButton
+            dealId={deal.id}
+            dealName={deal.company_name}
+            deals={(allDeals ?? []) as { id: string; company_name: string; status: string }[]}
+          />
           <form action={deleteDeal}>
             <input type="hidden" name="deal_id" value={deal.id} />
             <ConfirmButton
@@ -202,6 +211,8 @@ export default async function DealDetailPage({
           </form>
         </div>
       </div>
+
+      <DuplicateBanner dealId={deal.id} dealName={deal.company_name} duplicates={duplicates} />
 
       <DealDetails deal={deal as Deal} />
 

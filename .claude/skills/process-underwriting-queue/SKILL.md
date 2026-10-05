@@ -20,18 +20,20 @@ Deals get queued from a deal page ("Underwrite for free → Queue for Claude Cod
    ```
    Each entry has the deal fields, `underwriting_requested_kind` (`'snapshot'` — the default — or `'report'`), recent `updates`, `emails` (full text of emails the inbox filed on the deal — read these: borrowers often put values, budgets and plans in the email body rather than an attachment), and `documents` with a signed download `url` (valid ~1 hour) and any AI `triage` (doc type, important page ranges, summary). If the queue is empty, say so and stop.
 
-2. **Download and read every document** (save to the session scratchpad, not the repo):
+2. **Check for duplicate deals first.** Each entry has `possible_duplicates` (other deals with the same contact email, phone, name or property address). The inbox sometimes files a borrower's emails under a second deal named after their trust or company — and that deal can hold the most important files (appraisals, deeds, the budget email). For each possible duplicate, open `/deals/{id}` from the logged-in page and read its documents and emails too. Include what's relevant in the snapshot, and tell the user plainly which deal is the duplicate and that they can combine them with **Merge** on the deal page. Also look for one yourself if names in the documents (trusts, LLCs, property addresses) match another deal's name.
+
+3. **Download and read every document** (save to the session scratchpad, not the repo):
    - **PDF**: try text extraction with mupdf first. Many financial PDFs (QuickBooks exports, scans) have broken embedded fonts and extract as garbage — if so, **render pages to PNG with mupdf and read them visually** (Read tool on the image). Use the triage page ranges to skip boilerplate on long PDFs. The script must live inside `crm/` so `import * as mupdf from 'mupdf'` resolves; delete it afterward.
    - **.docx**: `python3 -c "import docx"` — read tables with python-docx (debt schedules are usually tables).
    - **.eml**: parse with `mailparser` (`simpleParser`) from a script inside `crm/`.
    - **.xlsx / .csv**: exceljs (in `crm/node_modules`) or plain text.
 
-3. **Write the result** in the exact schema for the requested kind:
+4. **Write the result** in the exact schema for the requested kind:
    - `snapshot` → `src/lib/snapshot/schema.ts` (`SnapshotSchema`). Follow the rules in `src/lib/snapshot/prompt.ts` (`SNAPSHOT_RULES`): one block per legal entity plus a combined block if there's more than one; three periods newest first with a source on every figure; EBITDA = net income + interest + depreciation/amortization (+ taxes); coverage = annual debt service vs EBITDA; short flags; a request list of only what's actually missing.
    - `report` → `src/lib/underwriting/schema.ts` (`UnderwritingSchema`). This one also includes web research: verify the company's identity (same name, location, industry) before trusting any search result, and say plainly when nothing relevant is found.
-   - **Never invent a number.** Anything not in the documents is `null`. Cross-check totals (e.g. sum the debt schedule yourself and compare to the balance sheet) and flag mismatches.
+   - **Never invent a number.** Anything not in the documents or emails is `null`. Cross-check totals (e.g. sum the debt schedule yourself and compare to the balance sheet) and flag mismatches.
 
-4. **Save it** from the logged-in page — this clears the deal from the queue and moves it to Underwritten:
+5. **Save it** from the logged-in page — this clears the deal from the queue and moves it to Underwritten:
    ```js
    await fetch(`/api/deals/${dealId}/save-snapshot`, {      // or /save-underwriting for 'report'
      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result),
@@ -39,6 +41,6 @@ Deals get queued from a deal page ("Underwrite for free → Queue for Claude Cod
    ```
    A 400 response means the JSON didn't match the schema — the response lists the issues; fix and resend.
 
-5. **Verify**: reload the deal page and confirm the snapshot/report shows, then fetch `/api/queue` again to confirm the deal left the queue.
+6. **Verify**: reload the deal page and confirm the snapshot/report shows, then fetch `/api/queue` again to confirm the deal left the queue.
 
-6. **Report back** in plain language: what was underwritten, the headline numbers (revenue, EBITDA, total debt, coverage), and the most important flags.
+7. **Report back** in plain language: what was underwritten, the headline numbers (revenue, EBITDA, total debt, coverage), and the most important flags.

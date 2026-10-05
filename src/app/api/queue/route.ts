@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import type { DocumentRecord } from '@/lib/types'
 import { loadDealEmails } from '@/lib/deals/deal-emails'
+import { findPossibleDuplicates } from '@/lib/deals/duplicates'
 
 // Deals waiting for underwriting by Claude Code, with everything needed to
 // do it: deal info and a download link for each document. Requires a
@@ -21,7 +22,7 @@ export async function GET() {
 
   const out = []
   for (const deal of deals ?? []) {
-    const [{ data: docs }, { data: updates }, emails] = await Promise.all([
+    const [{ data: docs }, { data: updates }, emails, possible_duplicates] = await Promise.all([
       supabase.from('documents').select('*').eq('deal_id', deal.id).order('uploaded_at'),
       supabase
         .from('deal_updates')
@@ -30,6 +31,7 @@ export async function GET() {
         .order('entry_date', { ascending: false, nullsFirst: false })
         .limit(10),
       loadDealEmails(supabase, deal.id),
+      findPossibleDuplicates(supabase, deal.id),
     ])
     const documents = []
     for (const d of (docs ?? []) as DocumentRecord[]) {
@@ -44,7 +46,7 @@ export async function GET() {
         url: data?.signedUrl ?? null,
       })
     }
-    out.push({ ...deal, updates: updates ?? [], emails, documents })
+    out.push({ ...deal, possible_duplicates, updates: updates ?? [], emails, documents })
   }
   return NextResponse.json({ queued: out })
 }

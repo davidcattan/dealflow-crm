@@ -176,3 +176,70 @@ export async function setUnderwritingQueued(
   revalidatePath(`/deals/${dealId}`)
   revalidatePath('/')
 }
+
+// Merges a duplicate deal (source) into the deal being kept (target):
+// documents, updates, emails, lender submissions, matches and AI spend all
+// move over; blank fields on the target are filled from the source; then
+// the source deal is removed. Documents' stored files are untouched — only
+// which deal they belong to changes.
+export async function mergeDeals(sourceId: string, targetId: string) {
+  if (!sourceId || !targetId || sourceId === targetId) return { error: 'Pick a different deal to merge into.' }
+  const supabase = await createClient()
+  const [{ data: source }, { data: target }] = await Promise.all([
+    supabase.from('deals').select('*').eq('id', sourceId).single(),
+    supabase.from('deals').select('*').eq('id', targetId).single(),
+  ])
+  if (!source || !target) return { error: 'Deal not found.' }
+
+  const { count: docCount } = await supabase
+    .from('documents')
+    .update({ deal_id: targetId }, { count: 'exact' })
+    .eq('deal_id', sourceId)
+  const { count: emailCount } = await supabase
+    .from('inbox_messages')
+    .update({ deal_id: targetId }, { count: 'exact' })
+    .eq('deal_id', sourceId)
+  await supabase.from('deal_updates').update({ deal_id: targetId }).eq('deal_id', sourceId)
+  await supabase.from('ai_usage').update({ deal_id: targetId }).eq('deal_id', sourceId)
+
+  // Lender rows are unique per deal: move the ones the target doesn't have.
+  for (const table of ['deal_submissions', 'deal_matches'] as const) {
+    const [{ data: targetRows }, { data: sourceRows }] = await Promise.all([
+      supabase.from(table).select('lender_id').eq('deal_id', targetId),
+      supabase.from(table).select('id, lender_id').eq('deal_id', sourceId),
+    ])
+    const have = new Set((targetRows ?? []).map((r) => r.lender_id))
+    const move = (sourceRows ?? []).filter((r) => !have.has(r.lender_id)).map((r) => r.id)
+    if (move.length) await supabase.from(table).update({ deal_id: targetId }).in('id', move)
+  }
+
+  // Fill the target's blanks from the source; keep both notes.
+  const fill: Record<string, unknown> = {}
+  for (const key of [
+    'contact_name', 'contact_email', 'contact_phone', 'industry', 'loan_type', 'website',
+    'description', 'deal_type', 'rep_name', 'snapshot', 'snapshot_generated_at',
+    'underwriting', 'underwriting_generated_at',
+  ]) {
+    if (target[key] == null && source[key] != null) fill[key] = source[key]
+  }
+  if (source.notes) fill.notes = target.notes ? `${target.notes}\n\n[From merged deal "${source.company_name}"] ${source.notes}` : source.notes
+  if (Object.keys(fill).length) await supabase.from('deals').update(fill).eq('id', targetId)
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  await supabase.from('deal_updates').insert({
+    deal_id: targetId,
+    entry_date: new Date().toISOString().slice(0, 10),
+    note: `Merged duplicate deal "${source.company_name}" into this one (${docCount ?? 0} documents, ${emailCount ?? 0} emails moved).`,
+    source: 'manual',
+    created_by: user?.id ?? null,
+  })
+
+  await supabase.from('deals').delete().eq('id', sourceId)
+
+  revalidatePath('/deals')
+  revalidatePath('/pipeline')
+  revalidatePath('/')
+  redirect(`/deals/${targetId}`)
+}
