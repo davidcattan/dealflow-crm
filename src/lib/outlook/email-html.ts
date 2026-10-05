@@ -13,7 +13,7 @@ const BULLET = /^\s*(?:[-•*]|\d+[.)])\s+/
 // "The deal:", "Why you:", "Things to know:" on their own line.
 const LABEL_LINE = /^[A-Z][A-Za-z' ]{1,28}:$/
 // "Heads up: …" / "Why you: …" at the start of a line.
-const LABEL_PREFIX = /^((?:Heads up|Why you|Note|Things to know|The deal|Ask|Timing|Use of funds)):\s*/i
+const LABEL_PREFIX = /^((?:Heads up|Why you|Why it fits|Structure|Note|Things to know|The deal|Ask|Timing|Use of funds)):\s*/i
 
 function inline(line: string) {
   const text = escape(line.trim())
