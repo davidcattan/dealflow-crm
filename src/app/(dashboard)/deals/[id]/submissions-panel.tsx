@@ -320,6 +320,17 @@ export function SubmissionsPanel({
   const router = useRouter()
   const [adding, setAdding] = useState(false)
 
+  // On open, check Outlook Sent Items for drafts from this deal that have
+  // gone out (free) — so a lender you just emailed shows up here.
+  useEffect(() => {
+    fetch(`/api/deals/${dealId}/check-sent`, { method: 'POST' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (j?.found > 0) router.refresh()
+      })
+      .catch(() => {})
+  }, [dealId, router])
+
   // Keep the page current while it's open (inbox replies land on their own).
   useEffect(() => {
     const t = setInterval(() => {
@@ -339,7 +350,7 @@ export function SubmissionsPanel({
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Lenders sent to ({submissions.length})</h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            Lender replies from the inbox are added here automatically.
+            Lenders you email from a CRM draft, and their replies, are added here automatically.
           </p>
         </div>
         {!adding && (

@@ -16,7 +16,8 @@ export async function recordSubmission(
     lenderId,
     status,
     conversationId,
-  }: { dealId: string; lenderId: string; status?: SubmissionStatus; conversationId?: string | null }
+    sentOn,
+  }: { dealId: string; lenderId: string; status?: SubmissionStatus; conversationId?: string | null; sentOn?: string | null }
 ) {
   const now = new Date().toISOString()
   const { data: existing } = await supabase
@@ -49,6 +50,7 @@ export async function recordSubmission(
       deal_id: dealId,
       lender_id: lenderId,
       status: status ?? 'sent',
+      ...(sentOn ? { sent_on: sentOn } : {}),
       outlook_conversation_id: conversationId ?? match?.outlook_conversation_id ?? null,
       last_activity_at: now,
     })

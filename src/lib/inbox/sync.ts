@@ -12,6 +12,7 @@ import {
 import { classifyEmail, isAutomatedSender } from './classify'
 import { OUTCOME_LABELS, type EmailClassification } from './classify-schema'
 import { recordSubmission } from '@/lib/deals/submissions'
+import { detectSentDrafts } from '@/lib/outlook/sent-tracking'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
 
 // Deal-worthy attachment types; everything else (calendar invites, vCards,
@@ -246,6 +247,13 @@ export async function runInboxSync(supabase: SupabaseClient, maxMessages = 25): 
   try {
     const connections = await listConnections(supabase)
     if (connections.length === 0) throw new Error('Outlook is not connected yet. Go to Settings and connect it first.')
+
+    // First, notice CRM drafts that were sent since last time (free).
+    try {
+      await detectSentDrafts(supabase)
+    } catch (err) {
+      console.error('Sent-draft check failed', err)
+    }
 
     for (const connection of connections) {
       try {

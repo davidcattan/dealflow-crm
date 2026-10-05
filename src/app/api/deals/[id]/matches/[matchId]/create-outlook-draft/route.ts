@@ -50,7 +50,7 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
 
   try {
     // The mailbox the user picked (their own), else the most recent one.
-    const { accessToken, accountEmail } = await getValidAccessToken(supabase, connectionId)
+    const { accessToken, accountEmail, connectionId: usedConnectionId } = await getValidAccessToken(supabase, connectionId)
 
     const attachments: DraftAttachment[] = []
     const chosen = ((documents ?? []) as DocumentRecord[]).filter(
@@ -81,6 +81,7 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
         outlook_draft_created_at: new Date().toISOString(),
         // Replies keep this id, so the inbox sync can tie them back here.
         outlook_conversation_id: result.conversationId,
+        outlook_draft_connection_id: usedConnectionId,
       })
       .eq('id', matchId)
     // If this lender is already on the deal's "sent to" list, link the thread there too.

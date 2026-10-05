@@ -1,6 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
+import { textToEmailHtml } from './email-html'
 
 const TENANT = process.env.MICROSOFT_TENANT_ID!
 const CLIENT_ID = process.env.MICROSOFT_CLIENT_ID!
@@ -159,7 +160,8 @@ export async function createOutlookDraft({
     method: 'POST',
     body: JSON.stringify({
       subject,
-      body: { contentType: 'text', content: body },
+      // Sent as formatted HTML so bullets, bold labels and spacing survive.
+      body: { contentType: 'html', content: textToEmailHtml(body) },
       toRecipients: [{ emailAddress: { address: to.email, name: to.name ?? undefined } }],
       attachments: included.map((a) => ({
         '@odata.type': '#microsoft.graph.fileAttachment',
@@ -287,3 +289,19 @@ export async function getInboxStatus(accessToken: string, sinceIso: string, cap 
   }
 }
 
+// The sent copy of a message in this thread, if the mailbox owner has sent
+// one (used to notice that a CRM-created draft went out). No AI — free.
+export async function findSentInConversation(
+  accessToken: string,
+  conversationId: string
+): Promise<{ sentDateTime: string; subject: string } | null> {
+  const filter = encodeURIComponent(`conversationId eq '${conversationId.replace(/'/g, "''")}'`)
+  const json = await graphFetch(
+    `/me/mailFolders/sentitems/messages?$filter=${filter}&$select=subject,sentDateTime&$top=5`,
+    accessToken
+  )
+  const sent = (json.value as Array<{ subject?: string; sentDateTime?: string }>)
+    .filter((m) => m.sentDateTime)
+    .sort((a, b) => (a.sentDateTime! < b.sentDateTime! ? -1 : 1))[0]
+  return sent ? { sentDateTime: sent.sentDateTime!, subject: sent.subject ?? '' } : null
+}
