@@ -14,15 +14,19 @@ import { PipelineFilterBar } from './filter-bar'
 import { SearchBar } from '@/components/search-bar'
 import { matchesSearch } from '@/lib/search'
 import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
+import { loadNextSteps } from '@/lib/deals/load-next-steps'
+import { URGENCY_STYLES, type NextStepUrgency } from '@/lib/deals/next-step'
 
 function stageHref(
   status: string | null,
   industry: string | undefined,
   loanType: string | undefined,
-  search: string | undefined
+  search: string | undefined,
+  next?: string | null
 ) {
   const params = new URLSearchParams()
   if (status) params.set('stage', status)
+  if (next) params.set('next', next)
   if (industry) params.set('industry', industry)
   if (loanType) params.set('loanType', loanType)
   if (search) params.set('q', search)
@@ -99,9 +103,11 @@ export default async function PipelinePage({
     loanType?: string
     sort?: string
     q?: string
+    next?: string
   }>
 }) {
   const {
+    next: nextParam,
     stage: stageParam,
     industry: industryParam,
     loanType: loanTypeParam,
@@ -129,6 +135,15 @@ export default async function PipelinePage({
   ])
 
   const deals = (rawDeals ?? []) as PipelineDeal[]
+  const nextSteps = await loadNextSteps(
+    supabase,
+    deals.map((d) => d.id)
+  )
+  const activeNext = nextParam && nextParam in URGENCY_STYLES ? (nextParam as NextStepUrgency) : null
+  const urgencyCounts = (['you', 'follow_up', 'waiting'] as NextStepUrgency[]).map((u) => ({
+    urgency: u,
+    count: deals.filter((d) => nextSteps.get(d.id)?.urgency === u).length,
+  }))
   const defaultOrdered = deals.slice().sort((a, b) => {
     const stageDiff =
       PIPELINE_STATUSES.indexOf(displayStatus(a.status as DealStatus)) -
@@ -160,6 +175,7 @@ export default async function PipelinePage({
 
   const filtered = defaultOrdered
     .filter((d) => !activeStage || displayStatus(d.status as DealStatus) === activeStage)
+    .filter((d) => !activeNext || nextSteps.get(d.id)?.urgency === activeNext)
     .filter((d) => !industryParam || d.industry === industryParam)
     .filter((d) => !loanTypeParam || d.loan_type === loanTypeParam)
     .filter(
@@ -213,6 +229,27 @@ export default async function PipelinePage({
         ) : null}
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium uppercase tracking-wide text-slate-500">To do</span>
+        {urgencyCounts.map(({ urgency, count }) => {
+          const style = URGENCY_STYLES[urgency]
+          const isActive = activeNext === urgency
+          return (
+            <Link
+              key={urgency}
+              href={stageHref(activeStage, industryParam, loanTypeParam, q, isActive ? null : urgency)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
+                isActive ? 'border-slate-900 bg-slate-900 text-white' : style.pill
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${style.dot}`} />
+              {style.label}
+              <span className="font-semibold">{count}</span>
+            </Link>
+          )
+        })}
+      </div>
+
       <div className="flex flex-wrap gap-2">
         {counts.map(({ status, count }) => {
           const isActive = activeStage === status
@@ -250,12 +287,11 @@ export default async function PipelinePage({
         <table className="w-full table-fixed text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              <th className="w-[22%] truncate px-4 py-2.5">Company</th>
-              <th className="w-[16%] truncate px-4 py-2.5">Industry</th>
-              <th className="w-[16%] truncate px-4 py-2.5">Loan Type</th>
+              <th className="w-[23%] truncate px-4 py-2.5">Company</th>
               <th className="w-[14%] truncate px-4 py-2.5">Stage</th>
-              <th className="w-[16%] truncate px-4 py-2.5">Matches</th>
-              <th className="w-[16%] truncate px-4 py-2.5">Updated</th>
+              <th className="w-[41%] truncate px-4 py-2.5">Next step</th>
+              <th className="w-[11%] truncate px-4 py-2.5">Matches</th>
+              <th className="w-[11%] truncate px-4 py-2.5">Updated</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -275,22 +311,38 @@ export default async function PipelinePage({
                         {deal.company_name}
                       </Link>
                     </div>
-                  </td>
-                  <td className="px-4 py-2 text-slate-600">
-                    <div className="truncate" title={deal.industry ?? undefined}>
-                      {deal.industry ?? '—'}
-                    </div>
-                  </td>
-                  <td className="px-4 py-2 text-slate-600">
-                    <div className="truncate" title={deal.loan_type ?? undefined}>
-                      {deal.loan_type ?? '—'}
-                    </div>
+                    {(deal.industry || deal.loan_type) && (
+                      <p
+                        className="truncate pl-4 text-xs text-slate-400"
+                        title={[deal.industry, deal.loan_type].filter(Boolean).join(' · ')}
+                      >
+                        {[deal.industry, deal.loan_type].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
                   </td>
                   <td className="px-4 py-2">
                     <StatusSelect
                       dealId={deal.id}
                       status={deal.status as DealStatus}
                     />
+                  </td>
+                  <td className="px-4 py-2">
+                    {(() => {
+                      const step = nextSteps.get(deal.id)
+                      if (!step) return <span className="text-slate-400">—</span>
+                      const style = URGENCY_STYLES[step.urgency]
+                      return (
+                        <Link href={`/deals/${deal.id}`} className="block min-w-0 hover:underline" title={[step.text, step.detail].filter(Boolean).join(' — ')}>
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className={`h-2 w-2 shrink-0 rounded-full ${style.dot}`} />
+                            <span className={`truncate ${step.urgency === 'you' ? 'font-medium text-slate-900' : 'text-slate-600'}`}>
+                              {step.text}
+                            </span>
+                          </span>
+                          {step.detail && <span className="block truncate pl-4 text-xs text-slate-400">{step.detail}</span>}
+                        </Link>
+                      )
+                    })()}
                   </td>
                   <td className="px-4 py-2">
                     {(() => {
@@ -322,7 +374,7 @@ export default async function PipelinePage({
             ) : (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={5}
                   className="px-4 py-10 text-center text-slate-400"
                 >
                   {activeStage || industryParam || loanTypeParam || q
