@@ -243,7 +243,7 @@ export default async function DealDetailPage({
       <DealDetails deal={deal as Deal} />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Documents">
+      <CollapsibleSection title="Documents" phoneClosed>
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold text-slate-900">
           Diligence documents
@@ -443,7 +443,7 @@ export default async function DealDetailPage({
         </CollapsibleSection>
       )}
 
-      <CollapsibleSection title="AI underwriting">
+      <CollapsibleSection title="AI underwriting" phoneClosed>
       <SnapshotPanel
         dealId={deal.id}
         snapshot={(deal.snapshot as Snapshot | null) ?? null}
@@ -468,7 +468,7 @@ export default async function DealDetailPage({
       />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Full research report">
+      <CollapsibleSection title="Full research report" phoneClosed>
       <UnderwritingPanel
         dealId={deal.id}
         dealName={deal.company_name}
@@ -479,7 +479,7 @@ export default async function DealDetailPage({
       />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Lender matching">
+      <CollapsibleSection title="Lender matching" phoneClosed>
       <MatchingPanel
         dealId={deal.id}
         matches={matchesWithLender}
@@ -496,7 +496,7 @@ export default async function DealDetailPage({
       />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Find new lenders">
+      <CollapsibleSection title="Find new lenders" phoneClosed>
       <LenderSearchPanel
         dealId={deal.id}
         search={(deal as { lender_search?: LenderSearch | null }).lender_search ?? null}
