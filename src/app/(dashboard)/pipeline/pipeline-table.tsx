@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { Fragment, useState } from 'react'
-import { STATUS_COLORS, matchScoreColor, type DealStatus } from '@/lib/types'
+import { useState } from 'react'
+import { STATUS_COLORS, STATUS_LABELS, displayStatus, matchScoreColor, type DealStatus } from '@/lib/types'
 import type { NextStep } from '@/lib/deals/next-step'
 import { StatusSelect } from './status-select'
 
@@ -28,7 +28,7 @@ function Chevron({ open }: { open: boolean }) {
 
 export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyText: string }) {
   const [openIds, setOpenIds] = useState<Set<string>>(new Set())
-  const allOpen = rows.length > 0 && rows.every((r) => openIds.has(r.id))
+  const [view, setView] = useState<'table' | 'steps'>('table')
 
   const toggle = (id: string) =>
     setOpenIds((s) => {
@@ -41,17 +41,23 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
   return (
     <div className="space-y-2">
       <div className="flex justify-end">
-        <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-500">
-          <input
-            type="checkbox"
-            checked={allOpen}
-            onChange={(e) => setOpenIds(e.target.checked ? new Set(rows.map((r) => r.id)) : new Set())}
-            className="rounded border-slate-300"
-          />
-          Show next steps
-        </label>
+        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
+          {(['table', 'steps'] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              className={`rounded-md px-3 py-1 ${view === v ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+            >
+              {v === 'table' ? 'Table' : 'Next steps'}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {view === 'steps' ? (
+        <NextStepsList rows={rows} emptyText={emptyText} />
+      ) : (
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full table-fixed text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
@@ -65,19 +71,20 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
               <th className="w-[5%] px-2 py-2.5" aria-label="Next step" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.length === 0 ? (
+          {rows.length === 0 ? (
+            <tbody>
               <tr>
                 <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
                   {emptyText}
                 </td>
               </tr>
-            ) : (
+            </tbody>
+          ) : (
               rows.map((r) => {
                 const open = openIds.has(r.id)
                 return (
-                  <Fragment key={r.id}>
-                    <tr className={`hover:bg-slate-50 ${open ? 'bg-slate-50' : ''}`}>
+                  <tbody key={r.id} className={`border-t border-slate-100 first:border-t-0 ${open ? 'bg-slate-50/70' : 'hover:bg-slate-50'}`}>
+                    <tr>
                       <td className="px-4 py-2">
                         <div className="flex min-w-0 items-center">
                           <span className={`mr-2 inline-block h-2 w-2 shrink-0 rounded-full ${STATUS_COLORS[r.status as DealStatus]}`} />
@@ -127,32 +134,74 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
                       </td>
                     </tr>
                     {open && r.step && (
-                      <tr className="bg-slate-50">
-                        <td colSpan={7} className="px-4 pb-3 pt-0">
-                          <div className="ml-4 flex flex-wrap items-baseline justify-between gap-2 border-l-2 border-slate-300 pl-3">
+                      <tr>
+                        <td colSpan={7} className="px-4 pb-2.5 pt-0">
+                          <div className="flex items-baseline gap-2 pl-4">
+                            <span className="text-slate-300">→</span>
                             <div className="min-w-0">
-                              <p className={r.step.urgency === 'you' || r.step.urgency === 'follow_up' ? 'text-slate-900' : 'text-slate-500'}>
-                                <span className="text-xs uppercase tracking-wide text-slate-400">Next step · </span>
-                                <span className={r.step.urgency === 'you' || r.step.urgency === 'follow_up' ? 'font-medium' : ''}>
-                                  {r.step.text}
-                                </span>
+                              <p className={r.step.urgency === 'you' || r.step.urgency === 'follow_up' ? 'font-medium text-slate-900' : 'text-slate-500'}>
+                                {r.step.text}
                               </p>
-                              {r.step.detail && <p className="mt-0.5 text-xs text-slate-500">{r.step.detail}</p>}
+                              {r.step.detail && <p className="text-xs text-slate-500">{r.step.detail}</p>}
                             </div>
-                            <Link href={`/deals/${r.id}`} className="shrink-0 text-xs text-slate-500 hover:text-slate-800 hover:underline">
-                              Open deal →
-                            </Link>
                           </div>
                         </td>
                       </tr>
                     )}
-                  </Fragment>
+                  </tbody>
                 )
               })
-            )}
-          </tbody>
+          )}
         </table>
       </div>
+      )}
+    </div>
+  )
+}
+
+// "Next steps" view: a calm list grouped by who has the ball.
+function NextStepsList({ rows, emptyText }: { rows: PipelineRow[]; emptyText: string }) {
+  const groups = [
+    { title: 'Your move', rows: rows.filter((r) => r.step && (r.step.urgency === 'you' || r.step.urgency === 'follow_up')) },
+    { title: 'Waiting on lenders', rows: rows.filter((r) => r.step?.urgency === 'waiting') },
+    { title: 'Done', rows: rows.filter((r) => r.step?.urgency === 'done') },
+  ].filter((g) => g.rows.length > 0)
+
+  if (groups.length === 0) {
+    return <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">{emptyText}</p>
+  }
+
+  return (
+    <div className="space-y-6">
+      {groups.map((g) => (
+        <section key={g.title}>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            {g.title} <span className="font-normal text-slate-400">({g.rows.length})</span>
+          </h3>
+          <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            {g.rows.map((r) => (
+              <li key={r.id} className="flex items-start justify-between gap-4 px-4 py-3 hover:bg-slate-50">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Link href={`/deals/${r.id}`} className="truncate font-medium text-slate-900 hover:underline">
+                      {r.company_name}
+                    </Link>
+                    <span className="flex shrink-0 items-center gap-1 text-xs text-slate-400">
+                      <span className={`h-1.5 w-1.5 rounded-full ${STATUS_COLORS[r.status as DealStatus]}`} />
+                      {STATUS_LABELS[displayStatus(r.status as DealStatus)]}
+                    </span>
+                  </div>
+                  <p className={`mt-0.5 text-sm ${g.title === 'Your move' ? 'text-slate-800' : 'text-slate-500'}`}>{r.step!.text}</p>
+                  {r.step!.detail && <p className="mt-0.5 text-xs text-slate-500">{r.step!.detail}</p>}
+                </div>
+                <Link href={`/deals/${r.id}`} className="shrink-0 pt-0.5 text-xs text-slate-500 hover:text-slate-800 hover:underline">
+                  Open deal →
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
     </div>
   )
 }
