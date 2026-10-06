@@ -275,7 +275,7 @@ export async function getInboxStatus(accessToken: string, sinceIso: string, cap 
       '/me/mailFolders/inbox/messages?$select=subject,from,receivedDateTime&$orderby=receivedDateTime desc&$top=1',
       accessToken
     ),
-    graphFetch(`/me/mailFolders/inbox/messages?${filter}&$select=id&$top=${cap}`, accessToken),
+    graphFetch(`/me/mailFolders/inbox/messages?${filter}&$select=receivedDateTime&$top=${cap}`, accessToken),
   ])
   const n = (newestJson.value as Array<Record<string, unknown>>)[0]
   const from = n?.from as { emailAddress?: { address?: string; name?: string } } | undefined
@@ -287,7 +287,12 @@ export async function getInboxStatus(accessToken: string, sinceIso: string, cap 
           from: from?.emailAddress?.name || from?.emailAddress?.address || '',
         }
       : null,
-    waiting: (waitingJson.value as unknown[]).length,
+    // Graph matches "gt" at sub-second precision, so the last email already
+    // read (same second as the read-through point) can sneak back in —
+    // only count ones strictly later.
+    waiting: (waitingJson.value as Array<{ receivedDateTime: string }>).filter(
+      (m) => new Date(m.receivedDateTime).getTime() > new Date(sinceIso).getTime()
+    ).length,
     waitingCapped: Boolean(waitingJson['@odata.nextLink']),
   }
 }
