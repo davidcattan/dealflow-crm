@@ -213,7 +213,7 @@ function LenderCard({ dealId, sub, items }: { dealId: string; sub: SubmissionRow
           </Link>
           <span className="text-xs text-slate-400">updated {ago(sub.last_activity_at)}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-1 text-xs text-slate-500">
             Sent
             <input
