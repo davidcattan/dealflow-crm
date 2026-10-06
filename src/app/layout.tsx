@@ -16,6 +16,14 @@ export const metadata: Metadata = {
   title: "Dealflow CRM",
   description: "Deal and lender matching CRM",
   // Home-screen app on iPhone: full screen, own name under the icon.
+  // Solid (no transparency) icons in two sizes: iOS frames icons in white
+  // when they have an alpha channel or are too small for the device.
+  icons: {
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+      { url: "/apple-touch-icon-1024.png", sizes: "1024x1024", type: "image/png" },
+    ],
+  },
   appleWebApp: {
     capable: true,
     title: "JED",
