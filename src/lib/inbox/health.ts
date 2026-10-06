@@ -1,8 +1,10 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { easternHour, isQuietHours, QUIET_END_HOUR, QUIET_LABEL } from './quiet-hours'
+
 export type InboxHealth = {
-  level: 'ok' | 'waiting' | 'problem' | 'off'
+  level: 'ok' | 'waiting' | 'problem' | 'off' | 'paused'
   headline: string
   detail: string | null
   lastAutoAt: string | null
@@ -26,6 +28,17 @@ export async function getInboxHealth(supabase: SupabaseClient): Promise<InboxHea
 
   if (!state?.auto_sync_enabled) {
     return { level: 'off', headline: 'Automatic inbox check is off', detail: 'Turn it on in Settings → Inbox.', lastAutoAt: null }
+  }
+  // Overnight pause, plus a few minutes' grace for the first morning run.
+  const now = new Date()
+  const justResumed = easternHour(now) === QUIET_END_HOUR && now.getMinutes() < 15
+  if (isQuietHours(now) || justResumed) {
+    return {
+      level: 'paused',
+      headline: 'Paused overnight',
+      detail: `The automatic check pauses ${QUIET_LABEL} and catches up on overnight email at 7:00 AM.`,
+      lastAutoAt: lastAuto?.started_at ?? null,
+    }
   }
   if (error || !lastAuto) {
     return {

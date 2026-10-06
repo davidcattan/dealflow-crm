@@ -6,6 +6,7 @@ const DOT: Record<InboxHealth['level'], string> = {
   waiting: 'bg-amber-400',
   problem: 'bg-red-500',
   off: 'bg-slate-300',
+  paused: 'bg-indigo-300',
 }
 
 const LABEL: Record<InboxHealth['level'], string> = {
@@ -13,6 +14,7 @@ const LABEL: Record<InboxHealth['level'], string> = {
   waiting: 'Inbox: starting',
   problem: 'Inbox: check',
   off: 'Inbox: off',
+  paused: 'Inbox: paused overnight',
 }
 
 // Small header indicator; links to the full status in Settings.

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runInboxSync, type SyncSummary } from '@/lib/inbox/sync'
 import { startRun, finishRun } from '@/lib/inbox/run-log'
+import { isQuietHours } from '@/lib/inbox/quiet-hours'
 
 // Needs Fluid Compute on Vercel Pro (max 800s).
 export const maxDuration = 800
@@ -14,6 +15,11 @@ export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET
   if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Paused overnight; the first run after 7am catches up.
+  if (isQuietHours()) {
+    return NextResponse.json({ skipped: 'Overnight pause (10pm–7am ET)' })
   }
 
   const supabase = createAdminClient()

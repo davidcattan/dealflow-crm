@@ -157,7 +157,9 @@ export default async function SettingsPage({
               )}
               {health.detail}
             </p>
-            {health.level === 'ok' && <p className="mt-0.5 text-xs text-slate-500">Next one within 30 minutes.</p>}
+            {health.level === 'ok' && (
+              <p className="mt-0.5 text-xs text-slate-500">Next one within 30 minutes. Pauses overnight (10pm–7am ET).</p>
+            )}
           </div>
         </div>
         {syncState?.last_error && health.level !== 'problem' && (
@@ -170,9 +172,14 @@ export default async function SettingsPage({
         />
 
         {runs && runs.length > 0 && (
-          <div className="mt-5">
-            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Recent checks</p>
-            <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm">
+          <details className="group mt-5">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-500 hover:text-slate-800">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 transition-transform group-open:rotate-90" aria-hidden="true">
+                <path d="M7.2 4.2a1 1 0 0 1 1.4 0l5.1 5.1a1 1 0 0 1 0 1.4l-5.1 5.1a1 1 0 1 1-1.4-1.4L11.6 10 7.2 5.6a1 1 0 0 1 0-1.4Z" />
+              </svg>
+              Recent checks ({runs.length})
+            </summary>
+            <ul className="mt-1 divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm">
               {runs.map((r) => (
                 <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5">
                   <span className="flex items-center gap-2">
@@ -193,7 +200,7 @@ export default async function SettingsPage({
                 </li>
               ))}
             </ul>
-          </div>
+          </details>
         )}
 
         {recent && recent.length > 0 && (
