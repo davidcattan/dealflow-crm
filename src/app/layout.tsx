@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   // Home-screen app on iPhone: full screen, own name under the icon.
   appleWebApp: {
     capable: true,
-    title: "Dealflow",
+    title: "JED",
     statusBarStyle: "default",
   },
 };

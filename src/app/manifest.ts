@@ -4,8 +4,8 @@ import type { MetadataRoute } from 'next'
 // Screen"), opening full-screen like an app.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Dealflow CRM',
-    short_name: 'Dealflow',
+    name: 'JED Capital CRM',
+    short_name: 'JED',
     description: 'JED Capital deal pipeline, lenders and inbox',
     start_url: '/pipeline',
     scope: '/',
