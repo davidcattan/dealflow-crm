@@ -61,19 +61,18 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
         <table className="w-full table-fixed text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              <th className="w-[25%] truncate px-4 py-2.5">Company</th>
-              <th className="w-[14%] truncate px-4 py-2.5">Industry</th>
-              <th className="w-[14%] truncate px-4 py-2.5">Loan Type</th>
-              <th className="w-[15%] truncate px-4 py-2.5">Stage</th>
-              <th className="w-[16%] truncate px-4 py-2.5">Lenders</th>
-              <th className="w-[11%] truncate px-4 py-2.5">Updated</th>
+              <th className="w-[30%] truncate px-4 py-2.5">Company</th>
+              <th className="w-[17%] truncate px-4 py-2.5">Loan Type</th>
+              <th className="w-[16%] truncate px-4 py-2.5">Stage</th>
+              <th className="w-[20%] truncate px-4 py-2.5">Lenders</th>
+              <th className="w-[12%] truncate px-4 py-2.5">Updated</th>
               <th className="w-[5%] px-2 py-2.5" aria-label="Next step" />
             </tr>
           </thead>
           {rows.length === 0 ? (
             <tbody>
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
                   {emptyText}
                 </td>
               </tr>
@@ -90,11 +89,6 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
                           <Link href={`/deals/${r.id}`} title={r.company_name} className="truncate font-medium text-slate-800 hover:underline">
                             {r.company_name}
                           </Link>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 text-slate-600">
-                        <div className="truncate" title={r.industry ?? undefined}>
-                          {r.industry ?? '—'}
                         </div>
                       </td>
                       <td className="px-4 py-2 text-slate-600">
@@ -131,7 +125,7 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
                     </tr>
                     {open && r.step && (
                       <tr>
-                        <td colSpan={7} className="px-4 pb-2.5 pt-0">
+                        <td colSpan={6} className="px-4 pb-2.5 pt-0">
                           <div className="flex items-baseline gap-2 pl-4">
                             <span className="text-slate-300">→</span>
                             <div className="min-w-0">
