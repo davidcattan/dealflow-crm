@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getInboxHealth } from '@/lib/inbox/health'
 import { InboxHealthBadge } from '@/components/inbox-health-badge'
 import { unreadCount } from '@/lib/notifications'
+import { AskAiPanel } from '@/components/ask-ai-panel'
 
 export default async function DashboardLayout({
   children,
@@ -82,6 +83,7 @@ export default async function DashboardLayout({
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
         {children}
       </main>
+      <AskAiPanel />
     </div>
     </UnderwritingRunnerProvider>
   )
