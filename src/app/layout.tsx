@@ -29,6 +29,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   // Keeps iOS from zooming into text boxes on tap.
   maximumScale: 1,
+  // Lets the bottom tab bar sit above the iPhone home indicator.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

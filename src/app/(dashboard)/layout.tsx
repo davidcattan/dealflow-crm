@@ -7,6 +7,7 @@ import { getInboxHealth } from '@/lib/inbox/health'
 import { InboxHealthBadge } from '@/components/inbox-health-badge'
 import { unreadCount } from '@/lib/notifications'
 import { AskAiPanel } from '@/components/ask-ai-panel'
+import { MobileNav } from '@/components/mobile-nav'
 
 export default async function DashboardLayout({
   children,
@@ -20,13 +21,13 @@ export default async function DashboardLayout({
   return (
     <UnderwritingRunnerProvider>
     <div className="flex min-h-screen flex-col bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
+      <header className="border-b border-slate-200 bg-white" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3 sm:px-6">
           <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
             <Link href="/" className="whitespace-nowrap text-sm font-semibold text-slate-900 hover:text-slate-600">
               Dealflow CRM
             </Link>
-            <nav className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
+            <nav className="hidden flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600 sm:flex">
               <Link href="/" className="whitespace-nowrap hover:text-slate-900">
                 Dashboard
               </Link>
@@ -50,7 +51,7 @@ export default async function DashboardLayout({
               </Link>
             </nav>
           </div>
-          <div className="flex items-center gap-3 text-sm text-slate-500">
+          <div className="hidden items-center gap-3 text-sm text-slate-500 sm:flex">
             <Link
               href="/activity"
               title={unread ? `${unread} new update${unread === 1 ? '' : 's'} from email` : 'Activity'}
@@ -80,10 +81,11 @@ export default async function DashboardLayout({
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 pb-24 sm:px-6 sm:py-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-28 pt-5 sm:px-6 sm:py-8">
         {children}
       </main>
       <AskAiPanel />
+      <MobileNav unread={unread} health={health} email={user.email ?? null} />
     </div>
     </UnderwritingRunnerProvider>
   )

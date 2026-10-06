@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation'
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { loadChat, type ChatMessage } from '@/lib/chat/actions'
+import { OPEN_ASK_AI_EVENT } from '@/components/mobile-nav'
 
 const DEAL_PATH = /^\/deals\/([0-9a-f-]{36})/
 
@@ -163,6 +164,13 @@ export function AskAiPanel() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [messages])
 
+  // The phone tab bar's "Ask AI" button opens the panel.
+  useEffect(() => {
+    const openPanel = () => setOpen(true)
+    window.addEventListener(OPEN_ASK_AI_EVENT, openPanel)
+    return () => window.removeEventListener(OPEN_ASK_AI_EVENT, openPanel)
+  }, [])
+
   async function send(textArg?: string) {
     const text = (textArg ?? input).trim()
     if (!text || busy) return
@@ -227,14 +235,17 @@ export function AskAiPanel() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-lg hover:bg-slate-800"
+          className="fixed bottom-5 right-5 z-40 hidden items-center gap-2 rounded-full sm:flex bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-lg hover:bg-slate-800"
         >
           ✨ Ask AI
         </button>
       )}
 
       {open && (
-        <div className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-slate-200 bg-white shadow-2xl sm:w-[480px]">
+        <div
+          className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-slate-200 bg-white shadow-2xl sm:w-[480px]"
+          style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
           <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-slate-900">✨ Ask AI</p>
@@ -345,7 +356,7 @@ export function AskAiPanel() {
                 }}
                 rows={Math.min(8, Math.max(2, input.split('\n').length))}
                 placeholder={dealId ? 'Ask about this deal, or paste an email…' : 'Ask about your pipeline…'}
-                className="min-w-0 flex-1 resize-none rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="min-w-0 flex-1 resize-none rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm"
               />
               {busy ? (
                 <button

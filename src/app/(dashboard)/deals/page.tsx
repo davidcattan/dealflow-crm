@@ -139,7 +139,7 @@ export default async function DealsPage({
             Every deal you&apos;re working, in one place.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="hidden items-center gap-3 sm:flex">
           <BackfillButton
             endpoint="/api/deals/backfill-industry"
             label="Standardize industries"
@@ -205,13 +205,13 @@ export default async function DealsPage({
               <th className="sel-col w-[4%] px-4 py-3">
                 <SelectAllCheckbox />
               </th>
-              <th className="w-[22%] truncate px-4 py-3">Company</th>
-              <th className="w-[16%] truncate px-4 py-3">Industry</th>
-              <th className="w-[14%] truncate px-4 py-3">Contact</th>
-              <th className="w-[12%] truncate px-4 py-3">Status</th>
-              <th className="w-[10%] truncate px-4 py-3">Activity</th>
-              <th className="w-[14%] truncate px-4 py-3">Matches</th>
-              <th className="w-[12%] truncate px-4 py-3">Added</th>
+              <th className="w-[60%] truncate px-4 py-3 sm:w-[22%]">Company</th>
+              <th className="w-[16%] hidden truncate px-4 py-3 sm:table-cell">Industry</th>
+              <th className="w-[14%] hidden truncate px-4 py-3 sm:table-cell">Contact</th>
+              <th className="w-[40%] truncate px-4 py-3 sm:w-[12%]">Status</th>
+              <th className="w-[10%] hidden truncate px-4 py-3 sm:table-cell">Activity</th>
+              <th className="w-[14%] hidden truncate px-4 py-3 sm:table-cell">Matches</th>
+              <th className="w-[12%] hidden truncate px-4 py-3 sm:table-cell">Added</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -237,12 +237,12 @@ export default async function DealsPage({
                       {b.company_name}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="hidden px-4 py-3 text-slate-600 sm:table-cell">
                     <div className="truncate" title={b.industry ?? undefined}>
                       {b.industry ?? '—'}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="hidden px-4 py-3 text-slate-600 sm:table-cell">
                     <div className="truncate" title={b.contact_name ?? undefined}>
                       {b.contact_name ?? '—'}
                     </div>
@@ -252,7 +252,7 @@ export default async function DealsPage({
                       {STATUS_LABELS[b.status as DealStatus]}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="hidden px-4 py-3 sm:table-cell">
                     {b.activity_score !== null ? (
                       <span className="flex min-w-0 items-center gap-1.5">
                         <span
@@ -266,7 +266,7 @@ export default async function DealsPage({
                       <span className="text-slate-400">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="hidden px-4 py-3 sm:table-cell">
                     {(() => {
                       const score = topMatchScore(b)
                       const count = b.deal_matches?.length ?? 0
@@ -288,7 +288,7 @@ export default async function DealsPage({
                       )
                     })()}
                   </td>
-                  <td className="truncate px-4 py-3 text-slate-500">
+                  <td className="hidden truncate px-4 py-3 text-slate-500 sm:table-cell">
                     {formatDateOnly(b.created_at)}
                   </td>
                 </tr>

@@ -40,7 +40,7 @@ export function PipelineFilterBar({
   const hasFilters = industry || loanType
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="hidden flex-wrap items-center gap-2 sm:flex">
       <select
         value={industry}
         onChange={(e) => updateParams({ industry: e.target.value })}

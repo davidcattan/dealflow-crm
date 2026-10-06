@@ -39,7 +39,9 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-end">
+      <PhoneCards rows={rows} emptyText={emptyText} />
+
+      <div className="hidden justify-end sm:flex">
         <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
           {(['table', 'steps'] as const).map((v) => (
             <button
@@ -55,9 +57,11 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
       </div>
 
       {view === 'steps' ? (
-        <NextStepsList rows={rows} emptyText={emptyText} />
+        <div className="hidden sm:block">
+          <NextStepsList rows={rows} emptyText={emptyText} />
+        </div>
       ) : (
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm sm:block">
         <table className="w-full table-fixed text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
@@ -193,5 +197,42 @@ function NextStepsList({ rows, emptyText }: { rows: PipelineRow[]; emptyText: st
         </section>
       ))}
     </div>
+  )
+}
+
+// Phones: one tappable card per deal instead of a squeezed table.
+function PhoneCards({ rows, emptyText }: { rows: PipelineRow[]; emptyText: string }) {
+  if (rows.length === 0) {
+    return <p className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-400 sm:hidden">{emptyText}</p>
+  }
+  return (
+    <ul className="space-y-2.5 sm:hidden">
+      {rows.map((r) => {
+        const yours = r.step && (r.step.urgency === 'you' || r.step.urgency === 'follow_up')
+        return (
+          <li key={r.id}>
+            <Link href={`/deals/${r.id}`} className="block rounded-xl border border-slate-200 bg-white p-4 shadow-sm active:bg-slate-50">
+              <div className="flex items-start justify-between gap-3">
+                <p className="min-w-0 text-base font-semibold leading-snug text-slate-900">{r.company_name}</p>
+                <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">
+                  <span className={`h-1.5 w-1.5 rounded-full ${STATUS_COLORS[r.status as DealStatus]}`} />
+                  {STATUS_LABELS[displayStatus(r.status as DealStatus)]}
+                </span>
+              </div>
+              <p className="mt-0.5 text-sm text-slate-500">
+                {[r.loan_type, r.updatedLabel].filter(Boolean).join(' · ')}
+              </p>
+              {r.lenders && <p className="mt-2 text-sm text-slate-700">Lenders: {r.lenders}</p>}
+              {r.step && (
+                <p className={`mt-2 border-t border-slate-100 pt-2 text-sm ${yours ? 'font-medium text-slate-900' : 'text-slate-500'}`}>
+                  <span className="text-slate-400">Next → </span>
+                  {r.step.text}
+                </p>
+              )}
+            </Link>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
