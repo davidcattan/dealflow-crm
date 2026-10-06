@@ -45,7 +45,7 @@ export async function recommendLoanType(dealId: string) {
   const client = new Anthropic()
 
   const structured = await client.messages.parse({
-    model: 'claude-opus-5',
+    model: 'claude-opus-5-5',
     max_tokens: 4000,
     messages: [
       {
@@ -56,7 +56,7 @@ export async function recommendLoanType(dealId: string) {
     output_config: { format: zodOutputFormat(LoanTypeRecommendationSchema) },
   })
 
-  await logUsage({ feature: 'loan-type-recommendation', model: 'claude-opus-5', dealId: dealId, usage: structured.usage })
+  await logUsage({ feature: 'loan-type-recommendation', model: 'claude-opus-5-5', dealId: dealId, usage: structured.usage })
 
   if (!structured.parsed_output) {
     throw new Error('Could not produce a loan type recommendation')

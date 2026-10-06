@@ -55,7 +55,7 @@ export async function logUsage(opts: {
     const searches = Number(
       u.web_searches ?? (u.server_tool_use as { web_search_requests?: number } | undefined)?.web_search_requests ?? 0
     )
-    const p = PRICES[opts.model] ?? PRICES['claude-opus-5']
+    const p = PRICES[opts.model] ?? PRICES['claude-opus-5-5']
     const cost =
       (input * p.in + output * p.out + cacheRead * p.in * (p.cacheRead ?? 0.1) + cacheWrite * p.in * 1.25) / 1_000_000 +
       searches * WEB_SEARCH_USD

@@ -72,7 +72,7 @@ export async function backfillLoanTypes() {
     })
 
     const structured = await client.messages.parse({
-      model: 'claude-opus-5',
+      model: 'claude-opus-5-5',
       max_tokens: 8000,
       messages: [
         {
@@ -83,7 +83,7 @@ export async function backfillLoanTypes() {
       output_config: { format: zodOutputFormat(LoanTypeBackfillSchema) },
     })
 
-    await logUsage({ feature: 'loan-type-standardize', model: 'claude-opus-5', usage: structured.usage })
+    await logUsage({ feature: 'loan-type-standardize', model: 'claude-opus-5-5', usage: structured.usage })
 
     if (!structured.parsed_output) continue
 

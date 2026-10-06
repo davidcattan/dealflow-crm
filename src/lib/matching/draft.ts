@@ -140,7 +140,7 @@ export async function draftSubmissionEmail(
   const client = new Anthropic()
 
   const structured = await client.messages.parse({
-    model: 'claude-opus-5',
+    model: 'claude-opus-5-5',
     max_tokens: 3000,
     messages: [
       {
@@ -174,7 +174,7 @@ export async function draftSubmissionEmail(
     output_config: { format: zodOutputFormat(DraftEmailSchema) },
   })
 
-  await logUsage({ feature: 'email-draft', model: 'claude-opus-5', dealId: dealId, usage: structured.usage })
+  await logUsage({ feature: 'email-draft', model: 'claude-opus-5-5', dealId: dealId, usage: structured.usage })
 
   if (!structured.parsed_output) {
     throw new Error('Could not draft a submission email')

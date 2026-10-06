@@ -36,7 +36,7 @@ export async function runSnapshot(dealId: string, signal?: AbortSignal): Promise
 
   const structured = await client.messages.parse(
     {
-      model: 'claude-opus-5',
+      model: 'claude-opus-5-5',
       max_tokens: 16000,
       messages: [
         {
@@ -52,7 +52,7 @@ export async function runSnapshot(dealId: string, signal?: AbortSignal): Promise
     },
     { signal }
   )
-  await logUsage({ feature: 'snapshot', model: 'claude-opus-5', dealId, usage: structured.usage })
+  await logUsage({ feature: 'snapshot', model: 'claude-opus-5-5', dealId, usage: structured.usage })
   if (!structured.parsed_output) throw new Error('Could not build the snapshot')
   return structured.parsed_output
 }
@@ -63,7 +63,7 @@ export async function structureSnapshot(text: string, dealId: string, signal?: A
   const client = new Anthropic()
   const structured = await client.messages.parse(
     {
-      model: 'claude-opus-5',
+      model: 'claude-opus-5-5',
       max_tokens: 16000,
       messages: [
         {
@@ -75,7 +75,7 @@ export async function structureSnapshot(text: string, dealId: string, signal?: A
     },
     { signal }
   )
-  await logUsage({ feature: 'snapshot', model: 'claude-opus-5', dealId, usage: structured.usage })
+  await logUsage({ feature: 'snapshot', model: 'claude-opus-5-5', dealId, usage: structured.usage })
   if (!structured.parsed_output) throw new Error('Could not structure the snapshot')
   return structured.parsed_output
 }

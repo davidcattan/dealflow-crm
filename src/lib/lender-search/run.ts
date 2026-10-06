@@ -27,7 +27,7 @@ export async function runLenderSearch(
 
   const runner = client.beta.messages.toolRunner(
     {
-      model: 'claude-opus-5',
+      model: 'claude-opus-5-5',
       max_tokens: 16000,
       tools: [
         { type: 'web_search_20260209', name: 'web_search', max_uses: 8 },
@@ -39,7 +39,7 @@ export async function runLenderSearch(
   )
   // Log each step as it arrives so a stopped run is still counted.
   for await (const message of runner) {
-    await logUsage({ feature: 'lender-search', model: 'claude-opus-5', dealId, usage: message.usage as never })
+    await logUsage({ feature: 'lender-search', model: 'claude-opus-5-5', dealId, usage: message.usage as never })
     if (message.stop_reason === 'pause_turn') runner.pushMessages({ role: 'assistant', content: message.content })
   }
   const done = await runner.done()
@@ -56,7 +56,7 @@ export async function structureLenderSearch(text: string, dealId: string, signal
   const client = new Anthropic()
   const structured = await client.messages.parse(
     {
-      model: 'claude-opus-5',
+      model: 'claude-opus-5-5',
       max_tokens: 8000,
       messages: [
         {
@@ -68,7 +68,7 @@ export async function structureLenderSearch(text: string, dealId: string, signal
     },
     { signal }
   )
-  await logUsage({ feature: 'lender-search', model: 'claude-opus-5', dealId, usage: structured.usage })
+  await logUsage({ feature: 'lender-search', model: 'claude-opus-5-5', dealId, usage: structured.usage })
   if (!structured.parsed_output) throw new Error('Could not read the lender search results')
   return structured.parsed_output
 }

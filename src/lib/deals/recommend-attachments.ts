@@ -63,12 +63,12 @@ export async function recommendAttachments(supabase: SupabaseClient, dealId: str
 
   const client = new Anthropic()
   const structured = await client.messages.parse({
-    model: 'claude-opus-5',
+    model: 'claude-opus-5-5',
     max_tokens: 4000,
     messages: [{ role: 'user', content }],
     output_config: { format: zodOutputFormat(RecommendationSchema) },
   })
-  await logUsage({ feature: 'attachment-recommendation', model: 'claude-opus-5', dealId, usage: structured.usage })
+  await logUsage({ feature: 'attachment-recommendation', model: 'claude-opus-5-5', dealId, usage: structured.usage })
   if (!structured.parsed_output) throw new Error('Could not recommend attachments')
 
   const byRef = new Map(refs.map((r) => [r.ref, r.doc.id]))

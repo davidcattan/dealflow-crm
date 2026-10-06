@@ -74,7 +74,7 @@ export async function backfillIndustries() {
     })
 
     const structured = await client.messages.parse({
-      model: 'claude-opus-5',
+      model: 'claude-opus-5-5',
       max_tokens: 8000,
       messages: [
         {
@@ -85,7 +85,7 @@ export async function backfillIndustries() {
       output_config: { format: zodOutputFormat(IndustryBackfillSchema) },
     })
 
-    await logUsage({ feature: 'industry-standardize', model: 'claude-opus-5', usage: structured.usage })
+    await logUsage({ feature: 'industry-standardize', model: 'claude-opus-5-5', usage: structured.usage })
 
     if (!structured.parsed_output) continue
 

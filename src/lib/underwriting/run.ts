@@ -59,7 +59,7 @@ export async function runUnderwriting(
   ]
 
   const runner = client.beta.messages.toolRunner({
-    model: 'claude-opus-5',
+    model: 'claude-opus-5-5',
     max_tokens: 16000,
     tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
     messages: [{ role: 'user', content: researchContent }],
@@ -68,7 +68,7 @@ export async function runUnderwriting(
   // Each step's usage is logged the moment it arrives, so a run that gets
   // stopped or times out is still counted — Anthropic bills for it anyway.
   for await (const message of runner) {
-    await logUsage({ feature: 'underwriting', model: 'claude-opus-5', dealId, usage: message.usage as never })
+    await logUsage({ feature: 'underwriting', model: 'claude-opus-5-5', dealId, usage: message.usage as never })
     if (message.stop_reason === 'pause_turn') {
       runner.pushMessages({ role: 'assistant', content: message.content })
     }
@@ -96,7 +96,7 @@ export async function structureUnderwriting(
 ): Promise<Underwriting> {
   const client = new Anthropic()
   const structured = await client.messages.parse({
-    model: 'claude-opus-5',
+    model: 'claude-opus-5-5',
     max_tokens: 16000,
     messages: [
       {
@@ -107,7 +107,7 @@ export async function structureUnderwriting(
     output_config: { format: zodOutputFormat(UnderwritingSchema) },
   }, { signal })
 
-  await logUsage({ feature: 'underwriting', model: 'claude-opus-5', dealId, usage: structured.usage })
+  await logUsage({ feature: 'underwriting', model: 'claude-opus-5-5', dealId, usage: structured.usage })
 
   if (!structured.parsed_output) {
     throw new Error('Could not structure the underwriting analysis')

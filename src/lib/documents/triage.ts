@@ -6,7 +6,7 @@ import { logUsage } from '@/lib/usage'
 import { DocTriageSchema } from './triage-schema'
 import type { DocumentRecord } from '@/lib/types'
 
-const TRIAGE_MODEL = 'claude-opus-5'
+const TRIAGE_MODEL = 'claude-opus-5-5'
 
 const INSTRUCTIONS = `You are triaging a document uploaded for an asset-based lending underwriting file. Decide which pages carry real underwriting signal and which are boilerplate, so the full underwriting pass only needs to read the pages that matter.
 

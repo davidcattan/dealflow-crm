@@ -80,7 +80,7 @@ export async function runMatching(dealId: string) {
   const client = new Anthropic()
 
   const structured = await client.messages.parse({
-    model: 'claude-opus-5',
+    model: 'claude-opus-5-5',
     max_tokens: 16000,
     messages: [
       {
@@ -98,7 +98,7 @@ export async function runMatching(dealId: string) {
     output_config: { format: zodOutputFormat(MatchSchema) },
   })
 
-  await logUsage({ feature: 'matching', model: 'claude-opus-5', dealId: dealId, usage: structured.usage })
+  await logUsage({ feature: 'matching', model: 'claude-opus-5-5', dealId: dealId, usage: structured.usage })
 
   if (!structured.parsed_output) {
     throw new Error('Could not produce lender matches')

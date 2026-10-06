@@ -16,8 +16,8 @@ const TOKENS_PER_PDF_PAGE = 2500
 const TOKENS_PER_IMAGE = 1600
 const BYTES_PER_PDF_PAGE = 75_000
 
-const PRICE_IN = 5 / 1_000_000 // Opus 5, $ per input token
-const PRICE_OUT = 25 / 1_000_000
+const PRICE_IN = 4 / 1_000_000 // Opus 5.5, $ per input token
+const PRICE_OUT = 20 / 1_000_000
 
 // Fixed part of every run: research write-up (~12-18k output tokens), the
 // structuring call, and up to 3 web searches.

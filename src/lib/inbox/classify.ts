@@ -11,7 +11,7 @@ import { EmailClassificationSchema, TriageSchema, type EmailClassification } fro
 // lender reply (usually a small share of an inbox) are re-read by the top
 // model, which does the extraction that actually changes the CRM.
 export const TRIAGE_MODEL = 'claude-haiku-4-5-20251001'
-export const INBOX_MODEL = 'claude-opus-5'
+export const INBOX_MODEL = 'claude-opus-5-5'
 
 const TRIAGE_INSTRUCTIONS = `You are doing a quick first-pass sort of a debt broker's inbox. Decide whether this email could be:
 - new_deal: someone presenting a financing request for a specific business, or sending more info/documents about one
