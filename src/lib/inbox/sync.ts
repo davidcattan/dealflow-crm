@@ -13,6 +13,7 @@ import { classifyEmail, isAutomatedSender } from './classify'
 import { OUTCOME_LABELS, type EmailClassification } from './classify-schema'
 import { recordSubmission } from '@/lib/deals/submissions'
 import { detectSentDrafts } from '@/lib/outlook/sent-tracking'
+import { notify } from '@/lib/notifications'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
 
 // Deal-worthy attachment types; everything else (calendar invites, vCards,
@@ -176,6 +177,40 @@ function baseRecord(message: InboxMessage, mailbox?: string) {
   }
 }
 
+// Turns what an email did into an activity-feed entry (only emails that
+// changed something or need a person).
+async function notifyOutcome(supabase: SupabaseClient, ctx: Context, message: InboxMessage, record: Record<string, unknown>) {
+  const dealId = (record.deal_id as string | null | undefined) ?? null
+  const lenderId = (record.lender_id as string | null | undefined) ?? null
+  const dealName = dealId ? (ctx.dealById.get(dealId)?.company_name ?? 'a deal') : null
+  const lenderName = lenderId ? (ctx.lenderById.get(lenderId)?.name ?? null) : null
+  const sender = message.fromName || message.from
+  const summary = (record.summary as string | null) ?? null
+  const action = (record.action_taken as string | null) ?? ''
+
+  switch (record.classification) {
+    case 'new_deal':
+      if (action.startsWith('Created deal')) {
+        return notify(supabase, { kind: 'new_deal', title: `New deal: ${dealName}`, body: `From ${sender}. ${action} ${summary ?? ''}`.trim(), dealId })
+      }
+      return notify(supabase, { kind: 'deal_update', title: `Deal updated: ${dealName}`, body: `Email from ${sender}. ${action} ${summary ?? ''}`.trim(), dealId })
+    case 'lender_reply':
+      if (!dealId) {
+        return notify(supabase, {
+          kind: 'needs_review',
+          title: `Lender reply needs a deal: ${lenderName ?? sender}`,
+          body: `"${message.subject}" — couldn't tell which deal it's about. Open Settings → Inbox to retry or file it. ${summary ?? ''}`.trim(),
+          lenderId,
+        })
+      }
+      return notify(supabase, { kind: 'lender_reply', title: `${lenderName ?? sender} replied on ${dealName}`, body: `${summary ?? ''} (${action})`, dealId, lenderId })
+    case 'error':
+      return notify(supabase, { kind: 'needs_review', title: `Couldn't process an email from ${sender}`, body: `"${message.subject}" — ${action}. Retry it in Settings → Inbox.` })
+    default:
+      return
+  }
+}
+
 // Reads new inbox mail since the last run, has Claude decide what each
 // email is, and acts on it: new deals are created (with their attachments
 // uploaded), follow-ups are logged on the existing deal, and lender replies
@@ -314,6 +349,7 @@ async function syncMailbox(
     if (!already) {
       const outcome = await processMessage(supabase, ctx, message)
       await supabase.from('inbox_messages').insert({ ...baseRecord(message, connection.account_email), ...outcome.record })
+      await notifyOutcome(supabase, ctx, message, outcome.record)
       if (message.internetMessageId) seen.add(message.internetMessageId)
       summary[outcome.counter]++
       summary.processed++
@@ -344,6 +380,7 @@ export async function reprocessInboxMessage(supabase: SupabaseClient, inboxMessa
     .from('inbox_messages')
     .update({ deal_id: null, lender_id: null, summary: null, ...baseRecord(message, source?.account_email), ...outcome.record })
     .eq('id', row.id)
+  await notifyOutcome(supabase, ctx, message, outcome.record)
 
   return outcome.record
 }
