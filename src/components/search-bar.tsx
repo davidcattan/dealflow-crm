@@ -76,14 +76,14 @@ export function SearchBar({
     : []
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative w-full sm:w-auto">
       <form
         onSubmit={(e) => {
           e.preventDefault()
           setOpen(false)
           commit(value)
         }}
-        className="flex items-center gap-2"
+        className="flex w-full items-center gap-2"
       >
         <input
           type="text"
@@ -94,7 +94,7 @@ export function SearchBar({
           }}
           onFocus={() => setOpen(true)}
           placeholder={placeholder}
-          className="w-72 rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+          className="w-full min-w-0 rounded-md border border-slate-300 px-3 py-1.5 text-sm sm:w-72"
         />
         <button
           type="submit"
@@ -118,7 +118,7 @@ export function SearchBar({
       </form>
 
       {open && visibleSuggestions.length > 0 && (
-        <ul className="absolute z-10 mt-1 w-72 overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg">
+        <ul className="absolute z-10 mt-1 w-full overflow-hidden sm:w-72 rounded-md border border-slate-200 bg-white shadow-lg">
           {visibleSuggestions.map((s) => (
             <li key={s.id}>
               <button

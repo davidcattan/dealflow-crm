@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 // /api/cron is called by Vercel with no user session; those routes check
 // CRON_SECRET themselves instead.
-const PUBLIC_PATHS = ['/login', '/auth', '/api/cron']
+const PUBLIC_PATHS = ['/login', '/auth', '/api/cron', '/manifest.webmanifest']
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request })

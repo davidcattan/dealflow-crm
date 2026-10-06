@@ -85,14 +85,14 @@ export default async function LendersPage({
         <NewLenderForm />
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
               <th className="px-4 py-3">Lender</th>
               <th className="px-4 py-3">Minimum loan</th>
-              <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3">Status</th>
+              <th className="hidden px-4 py-3 sm:table-cell">Type</th>
+              <th className="hidden px-4 py-3 sm:table-cell">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -110,12 +110,12 @@ export default async function LendersPage({
                   <td className="px-4 py-3 text-slate-600">
                     {formatLoanRange(l.min_loan_amount, l.max_loan_amount)}
                   </td>
-                  <td className="max-w-xs truncate px-4 py-3 text-slate-600">
+                  <td className="hidden max-w-xs truncate px-4 py-3 text-slate-600 sm:table-cell">
                     {l.asset_types.length > 0
                       ? l.asset_types.join(', ')
                       : (l.lending_type ?? '—')}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="hidden px-4 py-3 sm:table-cell">
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                       {l.status}
                     </span>

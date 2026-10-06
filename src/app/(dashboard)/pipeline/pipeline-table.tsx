@@ -62,10 +62,10 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
               <th className="w-[30%] truncate px-4 py-2.5">Company</th>
-              <th className="w-[17%] truncate px-4 py-2.5">Loan Type</th>
+              <th className="hidden w-[17%] truncate px-4 py-2.5 sm:table-cell">Loan Type</th>
               <th className="w-[16%] truncate px-4 py-2.5">Stage</th>
               <th className="w-[20%] truncate px-4 py-2.5">Lenders</th>
-              <th className="w-[12%] truncate px-4 py-2.5">Updated</th>
+              <th className="hidden w-[12%] truncate px-4 py-2.5 sm:table-cell">Updated</th>
               <th className="w-[5%] px-2 py-2.5" aria-label="Next step" />
             </tr>
           </thead>
@@ -91,7 +91,7 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
                           </Link>
                         </div>
                       </td>
-                      <td className="px-4 py-2 text-slate-600">
+                      <td className="hidden px-4 py-2 text-slate-600 sm:table-cell">
                         <div className="truncate" title={r.loan_type ?? undefined}>
                           {r.loan_type ?? '—'}
                         </div>
@@ -108,7 +108,7 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
                           <span className="text-slate-400">—</span>
                         )}
                       </td>
-                      <td className="truncate px-4 py-2 text-slate-500">{r.updatedLabel}</td>
+                      <td className="hidden truncate px-4 py-2 text-slate-500 sm:table-cell">{r.updatedLabel}</td>
                       <td className="px-2 py-2 text-right">
                         {r.step && (
                           <button
