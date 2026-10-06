@@ -27,7 +27,6 @@ function Chevron({ open }: { open: boolean }) {
 
 export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyText: string }) {
   const [openIds, setOpenIds] = useState<Set<string>>(new Set())
-  const [view, setView] = useState<'table' | 'steps'>('table')
 
   const toggle = (id: string) =>
     setOpenIds((s) => {
@@ -41,26 +40,6 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
     <div className="space-y-2">
       <PhoneCards rows={rows} emptyText={emptyText} />
 
-      <div className="hidden justify-end sm:flex">
-        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
-          {(['table', 'steps'] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setView(v)}
-              className={`rounded-md px-3 py-1 ${view === v ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-            >
-              {v === 'table' ? 'Table' : 'Next steps'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {view === 'steps' ? (
-        <div className="hidden sm:block">
-          <NextStepsList rows={rows} emptyText={emptyText} />
-        </div>
-      ) : (
       <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm sm:block">
         <table className="w-full table-fixed text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
@@ -85,7 +64,16 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
               rows.map((r) => {
                 const open = openIds.has(r.id)
                 return (
-                  <tbody key={r.id} className={`border-t border-slate-100 first:border-t-0 ${open ? 'bg-slate-50/70' : 'hover:bg-slate-50'}`}>
+                  <tbody
+                    key={r.id}
+                    onClick={(e) => {
+                      // Clicking empty space opens/closes the next step;
+                      // links, the stage dropdown and buttons keep working.
+                      if (!r.step || (e.target as HTMLElement).closest('a, button, select, input, label')) return
+                      toggle(r.id)
+                    }}
+                    className={`border-t border-slate-100 first:border-t-0 ${r.step ? 'cursor-pointer' : ''} ${open ? 'bg-slate-50/70' : 'hover:bg-slate-50'}`}
+                  >
                     <tr>
                       <td className="px-4 py-2">
                         <div className="flex min-w-0 items-center">
@@ -148,54 +136,6 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
           )}
         </table>
       </div>
-      )}
-    </div>
-  )
-}
-
-// "Next steps" view: a calm list grouped by who has the ball.
-function NextStepsList({ rows, emptyText }: { rows: PipelineRow[]; emptyText: string }) {
-  const groups = [
-    { title: 'Your move', rows: rows.filter((r) => r.step && (r.step.urgency === 'you' || r.step.urgency === 'follow_up')) },
-    { title: 'Waiting on lenders', rows: rows.filter((r) => r.step?.urgency === 'waiting') },
-    { title: 'Done', rows: rows.filter((r) => r.step?.urgency === 'done') },
-  ].filter((g) => g.rows.length > 0)
-
-  if (groups.length === 0) {
-    return <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">{emptyText}</p>
-  }
-
-  return (
-    <div className="space-y-6">
-      {groups.map((g) => (
-        <section key={g.title}>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            {g.title} <span className="font-normal text-slate-400">({g.rows.length})</span>
-          </h3>
-          <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            {g.rows.map((r) => (
-              <li key={r.id} className="flex items-start justify-between gap-4 px-4 py-3 hover:bg-slate-50">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <Link href={`/deals/${r.id}`} className="truncate font-medium text-slate-900 hover:underline">
-                      {r.company_name}
-                    </Link>
-                    <span className="flex shrink-0 items-center gap-1 text-xs text-slate-400">
-                      <span className={`h-1.5 w-1.5 rounded-full ${STATUS_COLORS[r.status as DealStatus]}`} />
-                      {STATUS_LABELS[displayStatus(r.status as DealStatus)]}
-                    </span>
-                  </div>
-                  <p className={`mt-0.5 text-sm ${g.title === 'Your move' ? 'text-slate-800' : 'text-slate-500'}`}>{r.step!.text}</p>
-                  {r.step!.detail && <p className="mt-0.5 text-xs text-slate-500">{r.step!.detail}</p>}
-                </div>
-                <Link href={`/deals/${r.id}`} className="shrink-0 pt-0.5 text-xs text-slate-500 hover:text-slate-800 hover:underline">
-                  Open deal →
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
     </div>
   )
 }
