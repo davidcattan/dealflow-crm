@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { STATUS_COLORS, STATUS_LABELS, displayStatus, matchScoreColor, type DealStatus } from '@/lib/types'
+import { STATUS_COLORS, STATUS_LABELS, displayStatus, type DealStatus } from '@/lib/types'
 import type { NextStep } from '@/lib/deals/next-step'
 import { StatusSelect } from './status-select'
 
@@ -12,8 +12,7 @@ export type PipelineRow = {
   industry: string | null
   loan_type: string | null
   status: string
-  matchCount: number
-  topScore: number | null
+  lenders: string | null
   updatedLabel: string
   step: NextStep | null
 }
@@ -63,10 +62,10 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
               <th className="w-[25%] truncate px-4 py-2.5">Company</th>
-              <th className="w-[16%] truncate px-4 py-2.5">Industry</th>
-              <th className="w-[16%] truncate px-4 py-2.5">Loan Type</th>
+              <th className="w-[14%] truncate px-4 py-2.5">Industry</th>
+              <th className="w-[14%] truncate px-4 py-2.5">Loan Type</th>
               <th className="w-[15%] truncate px-4 py-2.5">Stage</th>
-              <th className="w-[12%] truncate px-4 py-2.5">Matches</th>
+              <th className="w-[16%] truncate px-4 py-2.5">Lenders</th>
               <th className="w-[11%] truncate px-4 py-2.5">Updated</th>
               <th className="w-[5%] px-2 py-2.5" aria-label="Next step" />
             </tr>
@@ -107,15 +106,12 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
                         <StatusSelect dealId={r.id} status={r.status as DealStatus} />
                       </td>
                       <td className="px-4 py-2">
-                        {r.topScore === null ? (
-                          <span className="text-slate-400">—</span>
+                        {r.lenders ? (
+                          <span className="block truncate text-slate-600" title={r.lenders}>
+                            {r.lenders}
+                          </span>
                         ) : (
-                          <Link href={`/deals/${r.id}#lender-matches`} className="flex min-w-0 items-center gap-1.5 hover:underline">
-                            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${matchScoreColor(r.topScore)}`} />
-                            <span className="truncate text-slate-600">
-                              {r.matchCount} match{r.matchCount === 1 ? '' : 'es'}
-                            </span>
-                          </Link>
+                          <span className="text-slate-400">—</span>
                         )}
                       </td>
                       <td className="truncate px-4 py-2 text-slate-500">{r.updatedLabel}</td>

@@ -52,6 +52,22 @@ type PipelineDeal = {
   notes: string | null
   activity_score: number | null
   deal_matches: { score: number }[]
+  deal_submissions?: { status: string }[]
+}
+
+// "3 sent · 1 interested" — how far the deal has got with lenders.
+function lenderSummary(deal: PipelineDeal): string | null {
+  const subs = deal.deal_submissions ?? []
+  if (subs.length === 0) return null
+  const n = (s: string) => subs.filter((x) => x.status === s).length
+  const best =
+    (n('funded') && `${n('funded')} funded`) ||
+    (n('term_sheet') && `${n('term_sheet')} term sheet${n('term_sheet') > 1 ? 's' : ''}`) ||
+    (n('interested') && `${n('interested')} interested`) ||
+    (n('needs_more_info') && `${n('needs_more_info')} need${n('needs_more_info') > 1 ? '' : 's'} info`) ||
+    (n('sent') && 'waiting') ||
+    'all passed'
+  return `${subs.length} sent · ${best}`
 }
 
 function topMatchScore(deal: PipelineDeal): number | null {
@@ -118,7 +134,7 @@ export default async function PipelinePage({
     supabase
       .from('deals')
       .select(
-        'id, company_name, industry, loan_type, status, updated_at, created_at, contact_name, rep_name, notes, activity_score, deal_matches(score)'
+        'id, company_name, industry, loan_type, status, updated_at, created_at, contact_name, rep_name, notes, activity_score, deal_matches(score), deal_submissions(status)'
       )
       .in('status', PIPELINE_QUERY_STATUSES)
       .order('updated_at', { ascending: false }),
@@ -258,8 +274,7 @@ export default async function PipelinePage({
           industry: deal.industry,
           loan_type: deal.loan_type,
           status: deal.status,
-          matchCount: deal.deal_matches?.length ?? 0,
-          topScore: topMatchScore(deal),
+          lenders: lenderSummary(deal),
           updatedLabel: daysAgo(deal.updated_at),
           step: nextSteps.get(deal.id) ?? null,
         }))}
