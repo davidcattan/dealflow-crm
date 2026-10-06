@@ -6,16 +6,14 @@ import {
   displayStatus,
   STATUS_LABELS,
   STATUS_COLORS,
-  matchScoreColor,
   type DealStatus,
 } from '@/lib/types'
-import { StatusSelect } from './status-select'
 import { PipelineFilterBar } from './filter-bar'
 import { SearchBar } from '@/components/search-bar'
 import { matchesSearch } from '@/lib/search'
 import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 import { loadNextSteps } from '@/lib/deals/load-next-steps'
-import { NextStepToggle } from '@/components/next-step-toggle'
+import { PipelineTable } from './pipeline-table'
 
 function stageHref(
   status: string | null,
@@ -253,101 +251,22 @@ export default async function PipelinePage({
         <PipelineFilterBar industries={industries} loanTypes={loanTypes} />
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full table-fixed text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="w-[21%] truncate px-4 py-2.5">Company</th>
-              <th className="w-[14%] truncate px-4 py-2.5">Industry</th>
-              <th className="w-[14%] truncate px-4 py-2.5">Loan Type</th>
-              <th className="w-[14%] truncate px-4 py-2.5">Stage</th>
-              <th className="w-[13%] truncate px-4 py-2.5">Next</th>
-              <th className="w-[12%] truncate px-4 py-2.5">Matches</th>
-              <th className="w-[12%] truncate px-4 py-2.5">Updated</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {visibleDeals.length > 0 ? (
-              visibleDeals.map((deal) => (
-                <tr key={deal.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-2">
-                    <div className="flex min-w-0 items-center">
-                      <span
-                        className={`mr-2 inline-block h-2 w-2 shrink-0 rounded-full ${STATUS_COLORS[deal.status as DealStatus]}`}
-                      />
-                      <Link
-                        href={`/deals/${deal.id}`}
-                        title={deal.company_name}
-                        className="truncate font-medium text-slate-800 hover:underline"
-                      >
-                        {deal.company_name}
-                      </Link>
-                    </div>
-                  </td>
-                  <td className="px-4 py-2 text-slate-600">
-                    <div className="truncate" title={deal.industry ?? undefined}>
-                      {deal.industry ?? '—'}
-                    </div>
-                  </td>
-                  <td className="px-4 py-2 text-slate-600">
-                    <div className="truncate" title={deal.loan_type ?? undefined}>
-                      {deal.loan_type ?? '—'}
-                    </div>
-                  </td>
-                  <td className="px-4 py-2">
-                    <StatusSelect
-                      dealId={deal.id}
-                      status={deal.status as DealStatus}
-                    />
-                  </td>
-                  <td className="px-4 py-2">
-                    {(() => {
-                      const step = nextSteps.get(deal.id)
-                      return step ? <NextStepToggle step={step} /> : <span className="text-slate-400">—</span>
-                    })()}
-                  </td>
-                  <td className="px-4 py-2">
-                    {(() => {
-                      const topScore = topMatchScore(deal)
-                      const count = deal.deal_matches?.length ?? 0
-                      if (topScore === null) {
-                        return <span className="text-slate-400">—</span>
-                      }
-                      return (
-                        <Link
-                          href={`/deals/${deal.id}#lender-matches`}
-                          className="flex min-w-0 items-center gap-1.5 hover:underline"
-                        >
-                          <span
-                            className={`h-2.5 w-2.5 shrink-0 rounded-full ${matchScoreColor(topScore)}`}
-                          />
-                          <span className="truncate text-slate-600">
-                            {count} match{count === 1 ? '' : 'es'}
-                          </span>
-                        </Link>
-                      )
-                    })()}
-                  </td>
-                  <td className="truncate px-4 py-2 text-slate-500">
-                    {daysAgo(deal.updated_at)}
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td
-                  colSpan={7}
-                  className="px-4 py-10 text-center text-slate-400"
-                >
-                  {activeStage || industryParam || loanTypeParam || q
-                    ? 'No deals match this filter.'
-                    : 'No active deals right now.'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <PipelineTable
+        rows={visibleDeals.map((deal) => ({
+          id: deal.id,
+          company_name: deal.company_name,
+          industry: deal.industry,
+          loan_type: deal.loan_type,
+          status: deal.status,
+          matchCount: deal.deal_matches?.length ?? 0,
+          topScore: topMatchScore(deal),
+          updatedLabel: daysAgo(deal.updated_at),
+          step: nextSteps.get(deal.id) ?? null,
+        }))}
+        emptyText={
+          activeStage || industryParam || loanTypeParam || q ? 'No deals match this filter.' : 'No active deals right now.'
+        }
+      />
     </div>
   )
 }
