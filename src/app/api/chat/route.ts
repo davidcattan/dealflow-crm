@@ -8,7 +8,8 @@ import type { DocumentRecord } from '@/lib/types'
 
 export const maxDuration = 300
 
-const MODEL = 'claude-opus-5'
+// Sonnet: ~60% cheaper than Opus and strong at drafting and Q&A.
+const MODEL = 'claude-sonnet-5-5'
 const HISTORY_LIMIT = 30
 
 // "Ask AI": one question in a conversation, answered as a text stream.

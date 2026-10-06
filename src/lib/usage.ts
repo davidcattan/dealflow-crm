@@ -4,9 +4,11 @@ import { createClient } from '@/lib/supabase/server'
 
 // USD per million tokens. Cache reads bill at 0.1x input, cache writes at
 // 1.25x. Web search is billed per request (~$10 per 1,000 — an estimate).
-const PRICES: Record<string, { in: number; out: number }> = {
+const PRICES: Record<string, { in: number; out: number; cacheRead?: number }> = {
   'claude-opus-5': { in: 5, out: 25 },
+  'claude-opus-5-5': { in: 4, out: 20, cacheRead: 0.05 },
   'claude-sonnet-5': { in: 2, out: 10 },
+  'claude-sonnet-5-5': { in: 2, out: 10 },
   'claude-haiku-4-5': { in: 1, out: 5 },
   'claude-haiku-4-5-20251001': { in: 1, out: 5 },
 }
@@ -55,7 +57,7 @@ export async function logUsage(opts: {
     )
     const p = PRICES[opts.model] ?? PRICES['claude-opus-5']
     const cost =
-      (input * p.in + output * p.out + cacheRead * p.in * 0.1 + cacheWrite * p.in * 1.25) / 1_000_000 +
+      (input * p.in + output * p.out + cacheRead * p.in * (p.cacheRead ?? 0.1) + cacheWrite * p.in * 1.25) / 1_000_000 +
       searches * WEB_SEARCH_USD
 
     const supabase = opts.supabase ?? (await createClient())

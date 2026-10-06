@@ -367,7 +367,7 @@ export function AskAiPanel() {
               )}
             </div>
             <p className="mt-1.5 text-[11px] text-slate-400">
-              About 5–15¢ per question{dealId ? ' · attached documents cost more' : ''}. Enter to send, Shift+Enter for a new line.
+              About 1–6¢ per question{dealId ? ' · attached documents cost more' : ''}. Enter to send, Shift+Enter for a new line.
             </p>
           </div>
         </div>
