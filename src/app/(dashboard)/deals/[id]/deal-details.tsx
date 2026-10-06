@@ -8,9 +8,10 @@ import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categorie
 
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-0.5 text-sm text-slate-800">{value || '—'}</p>
+      {/* Long emails/URLs wrap instead of running off a phone screen. */}
+      <p className="mt-0.5 text-sm text-slate-800 [overflow-wrap:anywhere]">{value || '—'}</p>
     </div>
   )
 }

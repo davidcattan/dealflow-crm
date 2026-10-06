@@ -172,13 +172,13 @@ export function LenderContacts({ lender, contacts }: { lender: Lender; contacts:
             ) : (
               <li key={r.id} className="flex flex-wrap items-start justify-between gap-2 py-2.5 text-sm">
                 <div className="min-w-0">
-                  <p className="font-medium text-slate-800">
+                  <p className="font-medium text-slate-800 [overflow-wrap:anywhere]">
                     {r.name || r.title || r.email || 'Contact'}
                     {r.primary && <span className="ml-2 rounded-full bg-slate-900 px-2 py-0.5 text-[10px] text-white">Primary (To)</span>}
                     {!r.primary && r.cc && <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] text-sky-800">CC</span>}
                   </p>
                   {r.name && r.title && <p className="text-xs text-slate-500">{r.title}</p>}
-                  <p className="text-xs text-slate-600">
+                  <p className="text-xs text-slate-600 [overflow-wrap:anywhere]">
                     {r.email && (
                       <a href={`mailto:${r.email}`} className="hover:underline">
                         {r.email}
