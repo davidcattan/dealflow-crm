@@ -28,7 +28,7 @@ import { MergeDealButton, DuplicateBanner } from './merge-deal'
 import { LenderSearchPanel } from './lender-search-panel'
 import { CollapsibleSection, CollapseAllControls } from '@/components/collapsible-section'
 import { loadNextSteps } from '@/lib/deals/load-next-steps'
-import { URGENCY_STYLES } from '@/lib/deals/next-step'
+import { NextStepToggle } from '@/components/next-step-toggle'
 import { buildLenderSearchPrompt } from '@/lib/lender-search/prompt'
 import type { LenderSearch } from '@/lib/lender-search/schema'
 
@@ -231,19 +231,11 @@ export default async function DealDetailPage({
         </div>
       </div>
 
-      {step && !['dead', 'old', 'closed'].includes(deal.status) && (
-        <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${URGENCY_STYLES[step.urgency].pill}`}>
-          <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${URGENCY_STYLES[step.urgency].dot}`} />
-          <div>
-            <p>
-              <span className="font-semibold">Next step ({URGENCY_STYLES[step.urgency].label.toLowerCase()}):</span> {step.text}
-            </p>
-            {step.detail && <p className="mt-0.5 text-xs opacity-80">{step.detail}</p>}
-          </div>
-        </div>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {step && !['dead', 'old', 'closed'].includes(deal.status) ? <NextStepToggle step={step} /> : <span />}
+        <CollapseAllControls />
+      </div>
 
-      <CollapseAllControls />
 
       <DuplicateBanner dealId={deal.id} dealName={deal.company_name} duplicates={duplicates} />
 
