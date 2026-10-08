@@ -31,11 +31,13 @@ function stageHref(
   return qs ? `/pipeline?${qs}` : '/pipeline'
 }
 
+// "12 min ago" / "3h ago" within the last day, then "2 days ago".
 function daysAgo(dateStr: string) {
-  const days = Math.floor(
-    (Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)
-  )
-  if (days <= 0) return 'today'
+  const mins = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins} min ago`
+  if (mins < 60 * 24) return `${Math.floor(mins / 60)}h ago`
+  const days = Math.floor(mins / (60 * 24))
   if (days === 1) return '1 day ago'
   return `${days} days ago`
 }
