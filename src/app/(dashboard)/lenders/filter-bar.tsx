@@ -12,13 +12,14 @@ const SORT_OPTIONS = [
   { value: 'recent', label: 'Recently added' },
 ]
 
-export function LenderFilterBar() {
+export function LenderFilterBar({ typeOptions }: { typeOptions: { key: string; label: string; count: number }[] }) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
   const q = searchParams.get('q') ?? ''
   const sort = searchParams.get('sort') ?? 'name_asc'
+  const type = searchParams.get('type') ?? ''
 
   function updateParams(next: Record<string, string>) {
     const params = new URLSearchParams(searchParams.toString())
@@ -50,6 +51,20 @@ export function LenderFilterBar() {
       </form>
 
       <select
+        value={type}
+        onChange={(e) => updateParams({ type: e.target.value })}
+        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600"
+        aria-label="Filter by lender type"
+      >
+        <option value="">All lender types</option>
+        {typeOptions.map((o) => (
+          <option key={o.key} value={o.key}>
+            {o.label} ({o.count})
+          </option>
+        ))}
+      </select>
+
+      <select
         value={sort}
         onChange={(e) => updateParams({ sort: e.target.value })}
         className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600"
@@ -61,12 +76,12 @@ export function LenderFilterBar() {
         ))}
       </select>
 
-      {q && (
+      {(q || type) && (
         <button
-          onClick={() => updateParams({ q: '' })}
+          onClick={() => updateParams({ q: '', type: '' })}
           className="text-sm text-slate-500 hover:underline"
         >
-          Clear search
+          Clear filters
         </button>
       )}
     </div>

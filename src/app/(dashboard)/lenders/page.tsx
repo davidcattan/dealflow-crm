@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NewLenderForm } from './new-lender-form'
 import { LenderFilterBar } from './filter-bar'
 import { formatCompactCurrency } from '@/lib/format'
+import { LENDER_TYPE_GROUPS, lenderTypeKeys, type LenderTypeKey } from '@/lib/lenders/type-groups'
 
 function formatAmount(n: number | null) {
   return formatCompactCurrency(n, { zeroLabel: 'No minimum' })
@@ -41,9 +42,9 @@ const SORT_CONFIG: Record<
 export default async function LendersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; sort?: string }>
+  searchParams: Promise<{ q?: string; sort?: string; type?: string }>
 }) {
-  const { q, sort } = await searchParams
+  const { q, sort, type } = await searchParams
   const sortKey: SortKey = sort && sort in SORT_CONFIG ? (sort as SortKey) : 'name_asc'
   const sortConfig = SORT_CONFIG[sortKey]
 
@@ -58,10 +59,21 @@ export default async function LendersPage({
     query = query.ilike('name', `%${q}%`)
   }
 
-  const { data: lenders } = await query.order(sortConfig.column, {
+  const { data: allLenders } = await query.order(sortConfig.column, {
     ascending: sortConfig.ascending,
     nullsFirst: sortConfig.nullsFirst,
   })
+
+  // Lender-type filter: groups built from each lender's free-text type.
+  const withKeys = (allLenders ?? []).map((l) => ({ ...l, typeKeys: lenderTypeKeys(l) }))
+  const typeOptions = [
+    ...LENDER_TYPE_GROUPS.map((g) => ({ key: g.key as LenderTypeKey, label: g.label })),
+    { key: 'unknown' as LenderTypeKey, label: 'Type not set' },
+  ]
+    .map((o) => ({ ...o, count: withKeys.filter((l) => l.typeKeys.includes(o.key)).length }))
+    .filter((o) => o.count > 0)
+  const activeType = typeOptions.some((o) => o.key === type) ? (type as LenderTypeKey) : null
+  const lenders = activeType ? withKeys.filter((l) => l.typeKeys.includes(activeType)) : withKeys
 
   return (
     <div className="space-y-6">
@@ -69,7 +81,9 @@ export default async function LendersPage({
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Lenders</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Your lender network and their mandates.
+            {activeType || q
+              ? `${lenders.length} of ${withKeys.length} lenders`
+              : 'Your lender network and their mandates.'}
           </p>
         </div>
         <Link
@@ -81,7 +95,7 @@ export default async function LendersPage({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <LenderFilterBar />
+        <LenderFilterBar typeOptions={typeOptions} />
         <NewLenderForm />
       </div>
 
@@ -128,8 +142,8 @@ export default async function LendersPage({
                   colSpan={4}
                   className="px-4 py-10 text-center text-slate-400"
                 >
-                  {q
-                    ? `No lenders match "${q}".`
+                  {q || activeType
+                    ? 'No lenders match these filters.'
                     : 'No lenders yet. Add your first one above.'}
                 </td>
               </tr>
