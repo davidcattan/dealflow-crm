@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { InboxControls } from './inbox-controls'
 import { RetryButton } from './retry-button'
-import { AssignToDeal } from './assign-to-deal'
+import { AssignToDeal, LinkLender } from './assign-to-deal'
 import { DisconnectButton } from './disconnect-button'
 import { EmailProfile } from './email-profile'
 import { getInboxHealth } from '@/lib/inbox/health'
@@ -39,7 +39,7 @@ export default async function SettingsPage({
     supabase.from('inbox_sync_state').select('*').eq('id', 1).maybeSingle(),
     supabase
       .from('inbox_messages')
-      .select('id, from_email, subject, received_at, classification, deal_id, summary, action_taken, mailbox, deals(company_name)')
+      .select('id, from_email, subject, received_at, classification, deal_id, lender_id, summary, action_taken, mailbox, deals(company_name)')
       .order('received_at', { ascending: false })
       .limit(30),
     getInboxHealth(supabase),
@@ -245,6 +245,9 @@ export default async function SettingsPage({
                         {m.summary && <p className="mt-0.5 line-clamp-2">{m.summary}</p>}
                         {(m.classification === 'error' ||
                           (m.classification === 'lender_reply' && !m.deal_id)) && <RetryButton messageId={m.id} />}
+                        {m.classification === 'lender_reply' && m.deal_id && !m.lender_id && (
+                          <LinkLender messageId={m.id} dealId={m.deal_id} />
+                        )}
                       </td>
                       <td className={`px-3 py-2 ${m.deal_id ? "truncate" : ""}`}>
                         {m.deal_id ? (

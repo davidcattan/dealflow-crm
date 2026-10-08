@@ -80,3 +80,42 @@ export function AssignToDeal({ messageId, deals }: { messageId: string; deals: {
     </div>
   )
 }
+
+// For a lender reply already on a deal but not tied to a lender: recognize
+// the lender from the sender and add it to the deal's "Lenders sent to".
+export function LinkLender({ messageId, dealId }: { messageId: string; dealId: string }) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+  return (
+    <span className="mt-1 block">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true)
+          setNote(null)
+          try {
+            const res = await fetch(`/api/inbox/messages/${messageId}/assign`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dealId }),
+            })
+            const parsed = await readJsonResponse<{ action: string }>(res)
+            if (!parsed.ok) throw new Error(parsed.message)
+            if (!/added to/.test(parsed.body.action)) setNote("Couldn't tell which lender — add it on the deal with + Add lenders.")
+            router.refresh()
+          } catch (err) {
+            setNote(err instanceof Error ? err.message : 'Failed')
+          } finally {
+            setBusy(false)
+          }
+        }}
+        className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+      >
+        {busy ? 'Linking…' : 'Link lender'}
+      </button>
+      {note && <span className="ml-2 text-xs text-amber-700">{note}</span>}
+    </span>
+  )
+}
