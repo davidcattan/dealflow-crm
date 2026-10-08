@@ -68,10 +68,13 @@ export function NewDealForm() {
   const busy = creating || uploading
 
   return (
+    // Opens as a pop-up panel so the button can sit in a page header.
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-4 pt-16">
     <form
       action={handleSubmit}
-      className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2"
+      className="grid w-full max-w-2xl grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-5 shadow-xl sm:grid-cols-2"
     >
+      <h2 className="text-base font-semibold text-slate-900 sm:col-span-2">New deal</h2>
       <div className="sm:col-span-2">
         <label className="block text-xs font-medium text-slate-600">
           Company name *
@@ -258,5 +261,6 @@ export function NewDealForm() {
         </button>
       </div>
     </form>
+    </div>
   )
 }

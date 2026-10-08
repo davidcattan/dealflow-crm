@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { useState } from 'react'
 import { STATUS_COLORS, STATUS_LABELS, displayStatus, type DealStatus } from '@/lib/types'
 import type { NextStep } from '@/lib/deals/next-step'
@@ -25,7 +26,24 @@ function Chevron({ open }: { open: boolean }) {
   )
 }
 
-export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyText: string }) {
+// A column header you click to sort; click again to flip. ▼/▲ shows the
+// active sort, a faint arrow the others.
+function SortHeader({ label, keyName, sort, firstDir = 'asc' }: { label: string; keyName: string; sort: string; firstDir?: 'asc' | 'desc' }) {
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const active = sort === `${keyName}_asc` || sort === `${keyName}_desc`
+  const next = active ? (sort.endsWith('_asc') ? `${keyName}_desc` : `${keyName}_asc`) : `${keyName}_${firstDir}`
+  const params = new URLSearchParams(searchParams.toString())
+  params.set('sort', next)
+  return (
+    <Link href={`${pathname}?${params.toString()}`} className="inline-flex items-center gap-1 hover:text-slate-800" title={`Sort by ${label.toLowerCase()}`}>
+      {label}
+      <span className={active ? 'text-slate-800' : 'text-slate-300'}>{active && sort.endsWith('_asc') ? '▲' : '▼'}</span>
+    </Link>
+  )
+}
+
+export function PipelineTable({ rows, emptyText, sort = '' }: { rows: PipelineRow[]; emptyText: string; sort?: string }) {
   const [openIds, setOpenIds] = useState<Set<string>>(new Set())
 
   const toggle = (id: string) =>
@@ -44,11 +62,19 @@ export function PipelineTable({ rows, emptyText }: { rows: PipelineRow[]; emptyT
         <table className="w-full table-fixed text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              <th className="w-[30%] truncate px-4 py-2.5">Company</th>
-              <th className="hidden w-[17%] truncate px-4 py-2.5 sm:table-cell">Loan Type</th>
-              <th className="w-[16%] truncate px-4 py-2.5">Stage</th>
+              <th className="w-[30%] truncate px-4 py-2.5">
+                <SortHeader label="Company" keyName="name" sort={sort} />
+              </th>
+              <th className="hidden w-[17%] truncate px-4 py-2.5 sm:table-cell">
+                <SortHeader label="Loan Type" keyName="loan" sort={sort} />
+              </th>
+              <th className="w-[16%] truncate px-4 py-2.5">
+                <SortHeader label="Stage" keyName="stage" sort={sort} />
+              </th>
               <th className="w-[20%] truncate px-4 py-2.5">Lenders</th>
-              <th className="hidden w-[12%] truncate px-4 py-2.5 sm:table-cell">Updated</th>
+              <th className="hidden w-[12%] truncate px-4 py-2.5 sm:table-cell">
+                <SortHeader label="Updated" keyName="updated" sort={sort} firstDir="desc" />
+              </th>
               <th className="w-[5%] px-2 py-2.5" aria-label="Next step" />
             </tr>
           </thead>

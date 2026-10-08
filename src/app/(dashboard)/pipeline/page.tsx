@@ -101,6 +101,22 @@ function applySort(deals: PipelineDeal[], sort: string | undefined): PipelineDea
     case 'updated_desc':
       sorted.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
       break
+    case 'loan_asc':
+    case 'loan_desc': {
+      // Deals with no loan type always go last.
+      const dir = sort === 'loan_asc' ? 1 : -1
+      sorted.sort((a, b) =>
+        !a.loan_type ? 1 : !b.loan_type ? -1 : dir * a.loan_type.localeCompare(b.loan_type)
+      )
+      break
+    }
+    case 'stage_asc':
+    case 'stage_desc': {
+      const dir = sort === 'stage_asc' ? 1 : -1
+      const rank = (d: PipelineDeal) => PIPELINE_STATUSES.indexOf(displayStatus(d.status as DealStatus))
+      sorted.sort((a, b) => dir * (rank(a) - rank(b)) || new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      break
+    }
     default:
       break
   }
@@ -233,10 +249,9 @@ export default async function PipelinePage({
           <Link href="/deals/import" className="hidden text-slate-500 hover:underline sm:inline">
             Import
           </Link>
+          <NewDealForm />
         </div>
       </div>
-
-      <NewDealForm />
 
       <div className="flex flex-wrap gap-2">
         {counts.map(({ status, count }) => {
@@ -285,6 +300,7 @@ export default async function PipelinePage({
         emptyText={
           activeStage || industryParam || loanTypeParam || q ? 'No deals match this filter.' : 'No active deals right now.'
         }
+        sort={sortParam ?? ''}
       />
     </div>
   )
