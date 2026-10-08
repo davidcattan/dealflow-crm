@@ -132,6 +132,12 @@ export function AskAiPanel() {
   const dealId = pathname.match(DEAL_PATH)?.[1] ?? null
 
   const [open, setOpen] = useState(false)
+  // Minimized: the panel stays alive (an answer keeps streaming) but is
+  // tucked into a small bubble so the page underneath can be used.
+  const [minimized, setMinimized] = useState(false)
+  // Computer only: drag the left edge to resize; remembered per browser.
+  const [width, setWidth] = useState(480)
+  const [isDesktop, setIsDesktop] = useState(false)
   const [chatId, setChatId] = useState<string | null>(null)
   const [dealName, setDealName] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -155,18 +161,63 @@ export function AskAiPanel() {
     setLoading(false)
   }, [dealId])
 
+  const busyRef = useRef(false)
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- (re)load the conversation for the page being viewed
-    if (open) refresh()
+    busyRef.current = busy
+  }, [busy])
+  useEffect(() => {
+    if (open && !busyRef.current) refresh()
   }, [open, refresh])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [messages])
 
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 640px)')
+    const update = () => setIsDesktop(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    try {
+      const saved = Number(localStorage.getItem('ask-ai-width'))
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring a saved browser preference
+      if (saved >= 320 && saved <= 1200) setWidth(saved)
+    } catch {
+      // ignore
+    }
+    return () => mq.removeEventListener('change', update)
+  }, [])
+
+  function startResize(e: React.MouseEvent) {
+    e.preventDefault()
+    const onMove = (ev: MouseEvent) => {
+      const next = Math.min(Math.max(window.innerWidth - ev.clientX, 320), Math.min(1100, window.innerWidth - 200))
+      setWidth(next)
+    }
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      document.body.style.userSelect = ''
+      setWidth((w) => {
+        try {
+          localStorage.setItem('ask-ai-width', String(w))
+        } catch {
+          // ignore
+        }
+        return w
+      })
+    }
+    document.body.style.userSelect = 'none'
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
   // The phone tab bar's "Ask AI" button opens the panel.
   useEffect(() => {
-    const openPanel = () => setOpen(true)
+    const openPanel = () => {
+      setOpen(true)
+      setMinimized(false)
+    }
     window.addEventListener(OPEN_ASK_AI_EVENT, openPanel)
     return () => window.removeEventListener(OPEN_ASK_AI_EVENT, openPanel)
   }, [])
@@ -234,18 +285,42 @@ export function AskAiPanel() {
       {!open && (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setOpen(true)
+            setMinimized(false)
+          }}
           className="fixed bottom-5 right-5 z-40 hidden items-center gap-2 rounded-full sm:flex bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-lg hover:bg-slate-800"
         >
           ✨ Ask AI
         </button>
       )}
 
+      {open && minimized && (
+        <button
+          type="button"
+          onClick={() => setMinimized(false)}
+          className="fixed bottom-20 right-4 z-50 flex max-w-[260px] items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-lg hover:bg-slate-800 sm:bottom-5 sm:right-5"
+          title="Open the chat again"
+        >
+          ✨ <span className="truncate">{busy ? 'Ask AI — answering…' : `Ask AI${dealName ? ` · ${dealName}` : ''}`}</span>
+        </button>
+      )}
+
       {open && (
         <div
-          className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-slate-200 bg-white shadow-2xl sm:w-[480px]"
-          style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+          className={`fixed inset-y-0 right-0 z-50 w-full flex-col border-l border-slate-200 bg-white shadow-2xl ${minimized ? 'hidden' : 'flex'}`}
+          style={{
+            paddingTop: 'env(safe-area-inset-top)',
+            paddingBottom: 'env(safe-area-inset-bottom)',
+            ...(isDesktop ? { width } : {}),
+          }}
         >
+          <div
+            onMouseDown={startResize}
+            className="absolute inset-y-0 left-0 hidden w-1.5 cursor-col-resize hover:bg-slate-300/60 sm:block"
+            title="Drag to resize"
+            aria-hidden="true"
+          />
           <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-slate-900">✨ Ask AI</p>
@@ -266,6 +341,15 @@ export function AskAiPanel() {
                 title="Start a fresh conversation (the old one is kept)"
               >
                 New chat
+              </button>
+              <button
+                type="button"
+                onClick={() => setMinimized(true)}
+                className="rounded-md px-2 py-1 text-lg leading-none text-slate-500 hover:bg-slate-100"
+                aria-label="Minimize"
+                title="Minimize — keeps the chat going"
+              >
+                –
               </button>
               <button
                 type="button"
