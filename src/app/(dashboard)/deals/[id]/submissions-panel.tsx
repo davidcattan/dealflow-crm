@@ -35,6 +35,8 @@ export type TimelineItem = {
   at: string
   text: string
   subject?: string | null
+  // e.g. "in Eli's inbox" — whose mailbox the email was in.
+  where?: string | null
 }
 
 // How often the page re-reads the deal while it's open, so replies the
@@ -260,6 +262,7 @@ function LenderCard({ dealId, sub, items }: { dealId: string; sub: SubmissionRow
                   <span className="mr-1 rounded bg-violet-50 px-1.5 py-0.5 text-[11px] font-medium text-violet-700">
                     Email
                   </span>
+                  {it.where && <span className="mr-1 text-[11px] text-slate-500">({it.where})</span>}
                   {it.subject && <span className="font-medium text-slate-700">{it.subject} — </span>}
                   <span className="text-slate-600">{it.text}</span>
                 </>

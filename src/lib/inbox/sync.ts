@@ -18,6 +18,7 @@ import { detectSentDrafts } from '@/lib/outlook/sent-tracking'
 import { notify } from '@/lib/notifications'
 import { addresses } from '@/lib/deals/duplicates'
 import { ownText } from '@/lib/outlook/own-text'
+import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
 import type { Snapshot } from '@/lib/snapshot/schema'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
 
@@ -331,7 +332,15 @@ function baseRecord(message: InboxMessage, mailbox?: string) {
 
 // Turns what an email did into an activity-feed entry (only emails that
 // changed something or need a person).
-async function notifyOutcome(supabase: SupabaseClient, ctx: Context, message: InboxMessage, record: Record<string, unknown>) {
+async function notifyOutcome(
+  supabase: SupabaseClient,
+  ctx: Context,
+  message: InboxMessage,
+  record: Record<string, unknown>,
+  mailbox?: string | null
+) {
+  const where = mailboxLabel(mailbox)
+  const tag = where ? ` · ${where}` : ''
   const dealId = (record.deal_id as string | null | undefined) ?? null
   const lenderId = (record.lender_id as string | null | undefined) ?? null
   const dealName = dealId ? (ctx.dealById.get(dealId)?.company_name ?? 'a deal') : null
@@ -343,21 +352,21 @@ async function notifyOutcome(supabase: SupabaseClient, ctx: Context, message: In
   switch (record.classification) {
     case 'new_deal':
       if (action.startsWith('Created deal')) {
-        return notify(supabase, { kind: 'new_deal', title: `New deal: ${dealName}`, body: `From ${sender}. ${action} ${summary ?? ''}`.trim(), dealId })
+        return notify(supabase, { kind: 'new_deal', title: `New deal: ${dealName}${tag}`, body: `From ${sender}. ${action} ${summary ?? ''}`.trim(), dealId })
       }
-      return notify(supabase, { kind: 'deal_update', title: `Deal updated: ${dealName}`, body: `Email from ${sender}. ${action} ${summary ?? ''}`.trim(), dealId })
+      return notify(supabase, { kind: 'deal_update', title: `Deal updated: ${dealName}${tag}`, body: `Email from ${sender}. ${action} ${summary ?? ''}`.trim(), dealId })
     case 'lender_reply':
       if (!dealId) {
         return notify(supabase, {
           kind: 'needs_review',
-          title: `Lender reply needs a deal: ${lenderName ?? sender}`,
+          title: `Lender reply needs a deal: ${lenderName ?? sender}${tag}`,
           body: `"${message.subject}" — couldn't tell which deal it's about. Open Settings → Inbox to retry or file it. ${summary ?? ''}`.trim(),
           lenderId,
         })
       }
-      return notify(supabase, { kind: 'lender_reply', title: `${lenderName ?? sender} replied on ${dealName}`, body: `${summary ?? ''} (${action})`, dealId, lenderId })
+      return notify(supabase, { kind: 'lender_reply', title: `${lenderName ?? sender} replied on ${dealName}${tag}`, body: `${summary ?? ''} (${action})`, dealId, lenderId })
     case 'error':
-      return notify(supabase, { kind: 'needs_review', title: `Couldn't process an email from ${sender}`, body: `"${message.subject}" — ${action}. Retry it in Settings → Inbox.` })
+      return notify(supabase, { kind: 'needs_review', title: `Couldn't process an email from ${sender}${tag}`, body: `"${message.subject}" — ${action}. Retry it in Settings → Inbox.` })
     default:
       return
   }
@@ -501,7 +510,7 @@ async function syncMailbox(
     if (!already) {
       const outcome = await processMessage(supabase, ctx, message)
       await supabase.from('inbox_messages').insert({ ...baseRecord(message, connection.account_email), ...outcome.record })
-      await notifyOutcome(supabase, ctx, message, outcome.record)
+      await notifyOutcome(supabase, ctx, message, outcome.record, connection.account_email)
       if (message.internetMessageId) seen.add(message.internetMessageId)
       summary[outcome.counter]++
       summary.processed++
@@ -624,7 +633,7 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
         await notify(supabase, {
           kind: 'sent',
           title: `Sent: ${deal?.company_name ?? 'deal'} → ${lender?.name ?? 'lender'}`,
-          body: `"${m.subject}" — from ${mailbox.split('@')[0]}'s Sent folder.`,
+          body: `"${m.subject}" — sent by ${mailboxOwner(mailbox) ?? 'your team'}.`,
           dealId,
           lenderId,
         })
@@ -669,7 +678,7 @@ export async function reprocessInboxMessage(supabase: SupabaseClient, inboxMessa
     .from('inbox_messages')
     .update({ deal_id: null, lender_id: null, summary: null, ...baseRecord(message, source?.account_email), ...outcome.record })
     .eq('id', row.id)
-  await notifyOutcome(supabase, ctx, message, outcome.record)
+  await notifyOutcome(supabase, ctx, message, outcome.record, source?.account_email)
 
   return outcome.record
 }
@@ -1011,7 +1020,9 @@ export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMe
 
   if (!alreadyHere) await notify(supabase, {
     kind: isLenderReply ? 'lender_reply' : 'deal_update',
-    title: isLenderReply ? `${who} replied on ${deal.company_name}` : `Deal updated: ${deal.company_name}`,
+    title: `${isLenderReply ? `${who} replied on ${deal.company_name}` : `Deal updated: ${deal.company_name}`}${
+      mailboxLabel(row.mailbox as string | null, isSent) ? ` · ${mailboxLabel(row.mailbox as string | null, isSent)}` : ''
+    }`,
     body: `${row.subject ? `"${row.subject}" — ` : ''}${row.summary ?? ''} (filed by hand)`,
     dealId,
     lenderId: lender?.id ?? null,

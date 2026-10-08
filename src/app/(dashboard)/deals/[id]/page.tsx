@@ -19,6 +19,7 @@ import { DocumentUploader } from './document-uploader'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
+import { mailboxLabel } from '@/lib/outlook/mailbox-label'
 import { UpdateRow } from './update-row'
 import { SubmissionsPanel, type SubmissionRow, type TimelineItem } from './submissions-panel'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
@@ -106,7 +107,7 @@ export default async function DealDetailPage({
     supabase.from('lenders').select('id, name').order('name'),
     supabase
       .from('inbox_messages')
-      .select('id, lender_id, subject, summary, received_at')
+      .select('id, lender_id, subject, summary, received_at, mailbox, classification')
       .eq('deal_id', id)
       .not('lender_id', 'is', null)
       .order('received_at', { ascending: false }),
@@ -145,6 +146,7 @@ export default async function DealDetailPage({
       at: m.received_at as string,
       text: (m.summary as string | null) ?? '',
       subject: m.subject as string | null,
+      where: mailboxLabel(m.mailbox as string | null, m.classification === 'sent'),
     })),
     ...((updates ?? []) as (DealUpdate & { lender_id?: string | null })[])
       .filter((u) => u.lender_id && u.source !== 'email')
@@ -427,6 +429,11 @@ export default async function DealDetailPage({
                     </span>
                     <span className="font-medium text-slate-800">{e.subject || '(no subject)'}</span>
                     <span className="text-slate-500"> — {e.from_email}</span>
+                    {mailboxLabel(e.mailbox, e.classification === 'sent') && (
+                      <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                        {mailboxLabel(e.mailbox, e.classification === 'sent')}
+                      </span>
+                    )}
                     {e.summary && <p className="mt-1 text-slate-600">{e.summary}</p>}
                     <span className="mt-1 inline-block text-xs text-slate-400 hover:underline">
                       {e.body_text ? 'Show full email' : 'Full text not stored (read before this was added)'}
