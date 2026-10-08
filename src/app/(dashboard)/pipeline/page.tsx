@@ -214,7 +214,9 @@ export default async function PipelinePage({
         ])
     )
 
-  const visibleDeals = applySort(filtered, sortParam)
+  // Most recently updated first unless a column arrow picks another order.
+  const sort = sortParam || 'updated_desc'
+  const visibleDeals = applySort(filtered, sort)
 
   return (
     <div className="space-y-5">
@@ -300,7 +302,7 @@ export default async function PipelinePage({
         emptyText={
           activeStage || industryParam || loanTypeParam || q ? 'No deals match this filter.' : 'No active deals right now.'
         }
-        sort={sortParam ?? ''}
+        sort={sort}
       />
     </div>
   )
