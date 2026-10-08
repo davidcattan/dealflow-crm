@@ -13,7 +13,8 @@ export function AssignToDeal({ messageId, deals }: { messageId: string; deals: {
   const [error, setError] = useState<string | null>(null)
 
   const q = query.trim().toLowerCase()
-  const results = useMemo(() => (q ? deals.filter((d) => d.name.toLowerCase().includes(q)).slice(0, 8) : deals.slice(0, 8)), [q, deals])
+  // Every deal (active first), scrollable; typing just narrows it down.
+  const results = useMemo(() => (q ? deals.filter((d) => d.name.toLowerCase().includes(q)) : deals), [q, deals])
 
   async function assign(dealId: string) {
     setBusy(true)
@@ -47,15 +48,15 @@ export function AssignToDeal({ messageId, deals }: { messageId: string; deals: {
     )
   }
   return (
-    <div className="mt-1 w-56 rounded-md border border-slate-200 bg-white p-2 shadow-sm">
+    <div className="mt-1 w-64 rounded-md border border-slate-200 bg-white p-2 shadow-sm">
       <input
         autoFocus
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search deals…"
+        placeholder="Scroll or type to search…"
         className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
       />
-      <ul className="mt-1 max-h-48 overflow-y-auto">
+      <ul className="mt-1 max-h-64 overflow-y-auto overscroll-contain">
         {results.map((d) => (
           <li key={d.id}>
             <button
