@@ -85,7 +85,58 @@ function findDealByText(deals: (Deal & { ref: string })[], text: string): (Deal 
   )
   return hits.length === 1 ? hits[0] : null
 }
-type Lender = { id: string; name: string; contact_email: string | null; mandate_notes: string | null }
+type Lender = { id: string; name: string; contact_email: string | null; mandate_notes: string | null; website?: string | null }
+
+// Words that don't identify a lender ("Fairview Commercial Lending" → "fairview").
+const LENDER_FILLER = /\b(the|commercial|lending|lender|lenders|capital|funding|finance|financial|credit|partners|group|holdings|bank|llc|inc|co|corp|company|business|advisors?)\b/g
+
+function lenderCore(text: string) {
+  return text.toLowerCase().replace(/&/g, ' and ').replace(LENDER_FILLER, ' ').replace(/[^a-z0-9]/g, '')
+}
+
+function domainOf(emailOrUrl: string | null | undefined) {
+  if (!emailOrUrl) return null
+  const host = emailOrUrl.includes('@') ? emailOrUrl.split('@')[1] : emailOrUrl.replace(/^https?:\/\//i, '').split('/')[0]
+  return host?.toLowerCase().replace(/^www\./, '') || null
+}
+
+// Which lender sent this email when the address isn't a saved contact:
+// same email/website domain as a lender, or the domain's name matches the
+// lender's name ("fairviewlending.com" → "Fairview Commercial Lending").
+// Only a single clear match counts.
+export function findLenderBySender(
+  lenders: Lender[],
+  contacts: { lender_id: string; email: string | null }[],
+  sender: string
+): string | null {
+  const domain = domainOf(sender)
+  if (!domain || GENERIC_DOMAINS.has(domain)) return null
+  const byDomain = new Set<string>()
+  for (const l of lenders) {
+    if (domainOf(l.contact_email) === domain || domainOf(l.website) === domain) byDomain.add(l.id)
+  }
+  for (const c of contacts) if (domainOf(c.email) === domain) byDomain.add(c.lender_id)
+  if (byDomain.size === 1) return [...byDomain][0]
+  if (byDomain.size > 1) return null
+  const core = lenderCore(domain.split('.')[0])
+  if (core.length < 4) return null
+  const byName = lenders.filter((l) => {
+    const c = lenderCore(l.name)
+    return c.length >= 4 && (c === core || core.startsWith(c) || c.startsWith(core))
+  })
+  return byName.length === 1 ? byName[0].id : null
+}
+
+// What a lender's reply means for its status on the deal, from the stored
+// "Outcome: summary" text (or plain wording for older records).
+export function statusFromReplySummary(summary: string | null): SubmissionStatus | undefined {
+  const s = (summary ?? '').toLowerCase()
+  if (s.startsWith('term sheet')) return 'term_sheet'
+  if (s.startsWith('declined') || /not (a loan|a fit|interested|something)|\bpass(ing)? on\b|\bdeclin|won'?t be able|unable to/.test(s)) return 'declined'
+  if (s.startsWith('needs more info')) return 'needs_more_info'
+  if (s.startsWith('interested')) return 'interested'
+  return undefined
+}
 
 type Context = {
   accessToken: string
@@ -95,6 +146,8 @@ type Context = {
   dealById: Map<string, Deal>
   lenderById: Map<string, Lender>
   lenderByEmail: Map<string, string>
+  lenders: Lender[]
+  contacts: { lender_id: string; email: string | null }[]
   threadByConversation: Map<string, { dealId: string; lenderId: string }>
 }
 
@@ -127,7 +180,7 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
         .from('deals')
         .select('id, company_name, contact_name, contact_email, status, description, notes, deal_type, snapshot')
         .order('created_at', { ascending: false }),
-      supabase.from('lenders').select('id, name, contact_email, mandate_notes'),
+      supabase.from('lenders').select('id, name, contact_email, mandate_notes, website'),
       supabase.from('lender_contacts').select('lender_id, email'),
       supabase
         .from('deal_matches')
@@ -160,6 +213,8 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
     dealById: new Map(refDeals.map((d) => [d.id, d])),
     lenderById: new Map((lenders ?? []).map((l) => [l.id, l])),
     lenderByEmail,
+    lenders: (lenders ?? []) as Lender[],
+    contacts: (contacts ?? []) as { lender_id: string; email: string | null }[],
     threadByConversation: new Map(
       threads.map((t) => [t.outlook_conversation_id as string, { dealId: t.deal_id, lenderId: t.lender_id }])
     ),
@@ -181,7 +236,17 @@ async function processMessage(
   try {
     const internalDomain = firmDomain(message.from, ctx.accountEmail)
     const thread = ctx.threadByConversation.get(message.conversationId) ?? null
-    const senderLenderId = ctx.lenderByEmail.get(message.from) ?? null
+    let senderLenderId = ctx.lenderByEmail.get(message.from) ?? null
+    if (!senderLenderId && !internalDomain) {
+      // New person at a known lender: recognize the lender and save them
+      // as a contact so their next email matches instantly.
+      senderLenderId = findLenderBySender(ctx.lenders, ctx.contacts, message.from)
+      if (senderLenderId) {
+        await supabase.from('lender_contacts').insert({ lender_id: senderLenderId, email: message.from, name: message.fromName || null })
+        ctx.lenderByEmail.set(message.from, senderLenderId)
+        ctx.contacts.push({ lender_id: senderLenderId, email: message.from })
+      }
+    }
     const attachments = message.hasAttachments ? await getMessageAttachments(ctx.accessToken, message.id) : []
 
     const classification = await classifyEmail(
@@ -541,7 +606,7 @@ async function act({
           classification: 'lender_reply',
         body_text: message.bodyText,
           lender_id: lenderId,
-          summary: summaryText,
+          summary: `${outcomeLabel}: ${summaryText}`,
           action_taken: "Couldn't tell which deal this is about — review manually",
         },
       }
@@ -687,32 +752,52 @@ async function act({
 export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMessageId: string, dealId: string) {
   const { data: row } = await supabase
     .from('inbox_messages')
-    .select('id, graph_message_id, mailbox, classification, from_email, subject, summary, lender_id, conversation_id, body_text')
+    .select('id, graph_message_id, mailbox, classification, from_email, subject, summary, lender_id, conversation_id, body_text, deal_id')
     .eq('id', inboxMessageId)
     .single()
   if (!row) throw new Error('Email record not found')
   const { data: deal } = await supabase.from('deals').select('id, company_name').eq('id', dealId).single()
   if (!deal) throw new Error('Deal not found')
 
-  const { data: lender } = row.lender_id
-    ? await supabase.from('lenders').select('id, name').eq('id', row.lender_id).single()
-    : { data: null }
+  const alreadyHere = row.deal_id === dealId
   const isLenderReply = row.classification === 'lender_reply'
+
+  // Which lender: the one already recorded, else recognize it from the
+  // sender's email (and save the sender as that lender's contact).
+  let lenderId = row.lender_id as string | null
+  if (!lenderId && isLenderReply && row.from_email) {
+    const [{ data: lenders }, { data: contacts }] = await Promise.all([
+      supabase.from('lenders').select('id, name, contact_email, mandate_notes, website'),
+      supabase.from('lender_contacts').select('lender_id, email'),
+    ])
+    lenderId = findLenderBySender((lenders ?? []) as Lender[], contacts ?? [], row.from_email)
+    if (lenderId) await supabase.from('lender_contacts').insert({ lender_id: lenderId, email: row.from_email })
+  }
+  const { data: lender } = lenderId
+    ? await supabase.from('lenders').select('id, name').eq('id', lenderId).single()
+    : { data: null }
   const who = lender?.name ?? row.from_email ?? 'someone'
   const summary = row.summary ? ` ${row.summary}` : ''
 
-  await supabase.from('deal_updates').insert({
-    deal_id: dealId,
-    lender_id: lender?.id ?? null,
-    entry_date: today(),
-    note: isLenderReply ? `Lender reply — ${who}:${summary}` : `Email from ${who}: "${row.subject ?? ''}".${summary}`,
-    source: 'email',
-  })
+  if (!alreadyHere) {
+    await supabase.from('deal_updates').insert({
+      deal_id: dealId,
+      lender_id: lender?.id ?? null,
+      entry_date: today(),
+      note: isLenderReply ? `Lender reply — ${who}:${summary}` : `Email from ${who}: "${row.subject ?? ''}".${summary}`,
+      source: 'email',
+    })
+  }
 
   const actions = [`Filed on deal by hand`]
   if (isLenderReply && lender) {
-    await recordSubmission(supabase, { dealId, lenderId: lender.id, conversationId: row.conversation_id })
-    actions.push('lender added to "Lenders sent to"')
+    await recordSubmission(supabase, {
+      dealId,
+      lenderId: lender.id,
+      conversationId: row.conversation_id,
+      status: statusFromReplySummary(row.summary),
+    })
+    actions.push(`${lender.name} added to "Lenders sent to"`)
   }
 
   // Attachments and full text from Outlook (free) — best effort.
@@ -736,10 +821,10 @@ export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMe
 
   await supabase
     .from('inbox_messages')
-    .update({ deal_id: dealId, body_text: bodyText, action_taken: actions.join(', ') })
+    .update({ deal_id: dealId, lender_id: lender?.id ?? null, body_text: bodyText, action_taken: actions.join(', ') })
     .eq('id', row.id)
 
-  await notify(supabase, {
+  if (!alreadyHere) await notify(supabase, {
     kind: isLenderReply ? 'lender_reply' : 'deal_update',
     title: isLenderReply ? `${who} replied on ${deal.company_name}` : `Deal updated: ${deal.company_name}`,
     body: `${row.subject ? `"${row.subject}" — ` : ''}${row.summary ?? ''} (filed by hand)`,

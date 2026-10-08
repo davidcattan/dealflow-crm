@@ -243,7 +243,7 @@ export default async function DealDetailPage({
       <DealDetails deal={deal as Deal} />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Documents" phoneClosed>
+      <CollapsibleSection title="Documents" phoneClosed closed={(documents ?? []).length > 0}>
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold text-slate-900">
           Diligence documents
@@ -409,7 +409,7 @@ export default async function DealDetailPage({
       </CollapsibleSection>
 
       {dealEmails.length > 0 && (
-        <CollapsibleSection title="Emails">
+        <CollapsibleSection title="Emails" closed>
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-900">Emails ({dealEmails.length})</h2>
           <p className="mt-0.5 text-xs text-slate-500">
@@ -443,7 +443,7 @@ export default async function DealDetailPage({
         </CollapsibleSection>
       )}
 
-      <CollapsibleSection title="AI underwriting" phoneClosed>
+      <CollapsibleSection title="AI underwriting" phoneClosed closed={Boolean(deal.snapshot)}>
       <SnapshotPanel
         dealId={deal.id}
         snapshot={(deal.snapshot as Snapshot | null) ?? null}
@@ -468,7 +468,7 @@ export default async function DealDetailPage({
       />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Full research report" phoneClosed>
+      <CollapsibleSection title="Full research report" phoneClosed closed>
       <UnderwritingPanel
         dealId={deal.id}
         dealName={deal.company_name}
@@ -496,7 +496,7 @@ export default async function DealDetailPage({
       />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Find new lenders" phoneClosed>
+      <CollapsibleSection title="Find new lenders" phoneClosed closed={Boolean((deal as { lender_search?: unknown }).lender_search)}>
       <LenderSearchPanel
         dealId={deal.id}
         search={(deal as { lender_search?: LenderSearch | null }).lender_search ?? null}

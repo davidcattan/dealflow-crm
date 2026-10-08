@@ -16,13 +16,16 @@ export function CollapsibleSection({
   title,
   children,
   phoneClosed = false,
+  closed = false,
 }: {
   title: string
   children: ReactNode
   phoneClosed?: boolean
+  // Starts hidden everywhere (e.g. a section that's already filled in).
+  closed?: boolean
 }) {
   // null = follow the default (open; or closed on phones if phoneClosed).
-  const [open, setOpen] = useState<boolean | null>(phoneClosed ? null : true)
+  const [open, setOpen] = useState<boolean | null>(closed ? false : phoneClosed ? null : true)
 
   useEffect(() => {
     const onSetAll = (e: Event) => setOpen((e as CustomEvent<boolean>).detail)
@@ -52,7 +55,7 @@ export function CollapsibleSection({
           <path d="M7.2 4.2a1 1 0 0 1 1.4 0l5.1 5.1a1 1 0 0 1 0 1.4l-5.1 5.1a1 1 0 1 1-1.4-1.4L11.6 10 7.2 5.6a1 1 0 0 1 0-1.4Z" />
         </svg>
         {title}
-        <span className={`normal-case tracking-normal text-slate-400 ${hint}`}>— tap to show</span>
+        <span className={`normal-case tracking-normal text-slate-400 ${hint}`}>— click to show</span>
       </button>
       <div className={body}>{children}</div>
     </div>
