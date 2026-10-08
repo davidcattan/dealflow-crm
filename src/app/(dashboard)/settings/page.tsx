@@ -13,12 +13,14 @@ const KIND_STYLES: Record<string, string> = {
   lender_reply: 'bg-violet-100 text-violet-800',
   other: 'bg-slate-100 text-slate-600',
   error: 'bg-red-100 text-red-700',
+  sent: 'bg-sky-100 text-sky-800',
 }
 const KIND_LABELS: Record<string, string> = {
   new_deal: 'Deal',
   lender_reply: 'Lender reply',
   other: 'Other',
   error: 'Error',
+  sent: 'Sent',
 }
 
 export default async function SettingsPage({
@@ -39,7 +41,7 @@ export default async function SettingsPage({
     supabase.from('inbox_sync_state').select('*').eq('id', 1).maybeSingle(),
     supabase
       .from('inbox_messages')
-      .select('id, from_email, subject, received_at, classification, deal_id, lender_id, summary, action_taken, mailbox, deals(company_name)')
+      .select('id, from_email, to_emails, subject, received_at, classification, deal_id, lender_id, summary, action_taken, mailbox, deals(company_name)')
       .order('received_at', { ascending: false })
       .limit(30),
     getInboxHealth(supabase),
@@ -126,7 +128,7 @@ export default async function SettingsPage({
       <section id="inbox" className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">Inbox</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Reads new mail in the connected inbox. New deal submissions become deals (attachments
+          Reads new mail in the connected inboxes and Sent folders. New deal submissions become deals (attachments
           included), follow-ups are logged on the existing deal, and lender replies are logged on
           the deal they answer.
         </p>
@@ -235,7 +237,7 @@ export default async function SettingsPage({
                           {m.subject || '(no subject)'}
                         </p>
                         <p className="truncate text-xs text-slate-500" title={m.from_email ?? ''}>
-                          {m.from_email}
+                          {m.classification === 'sent' ? `to ${m.to_emails ?? ''}` : m.from_email}
                           {m.received_at && ` · ${new Date(m.received_at).toLocaleDateString()}`}
                           {m.mailbox && ` · in ${String(m.mailbox).split('@')[0]}'s inbox`}
                         </p>

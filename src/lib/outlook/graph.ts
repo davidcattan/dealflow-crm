@@ -313,3 +313,37 @@ export async function findSentInConversation(
     .sort((a, b) => (a.sentDateTime! < b.sentDateTime! ? -1 : 1))[0]
   return sent ? { sentDateTime: sent.sentDateTime!, subject: sent.subject ?? '' } : null
 }
+
+export type SentMessage = {
+  id: string
+  internetMessageId: string | null
+  conversationId: string
+  subject: string
+  sentDateTime: string
+  to: { email: string; name: string }[]
+  bodyText: string
+}
+
+// Sent Items after `sinceIso`, oldest first (same catch-up logic as the
+// inbox). Recipients include To and CC.
+export async function listSentMessagesSince(accessToken: string, sinceIso: string, top = 25): Promise<SentMessage[]> {
+  const filter = `$filter=${encodeURIComponent(`sentDateTime gt ${sinceIso}`)}`
+  const select = '$select=id,internetMessageId,conversationId,subject,sentDateTime,toRecipients,ccRecipients,body'
+  const json = await graphFetch(
+    `/me/mailFolders/sentitems/messages?${filter}&${select}&$orderby=sentDateTime asc&$top=${top}`,
+    accessToken,
+    TEXT_BODY
+  )
+  type Rcpt = { emailAddress?: { address?: string; name?: string } }
+  return (json.value as Array<Record<string, unknown>>).map((m) => ({
+    id: m.id as string,
+    internetMessageId: (m.internetMessageId as string | undefined) ?? null,
+    conversationId: m.conversationId as string,
+    subject: (m.subject as string) ?? '',
+    sentDateTime: m.sentDateTime as string,
+    to: [...((m.toRecipients as Rcpt[]) ?? []), ...((m.ccRecipients as Rcpt[]) ?? [])]
+      .map((r) => ({ email: (r.emailAddress?.address ?? '').toLowerCase(), name: r.emailAddress?.name ?? '' }))
+      .filter((r) => r.email),
+    bodyText: toInboxMessage({ ...m, from: null }).bodyText,
+  }))
+}

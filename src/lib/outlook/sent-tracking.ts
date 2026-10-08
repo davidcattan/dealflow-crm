@@ -2,7 +2,6 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { findSentInConversation, getValidAccessToken, listConnections } from './graph'
 import { recordSubmission } from '@/lib/deals/submissions'
-import { notify } from '@/lib/notifications'
 
 // Notices CRM-created Outlook drafts that have since been sent: looks for
 // the thread in the mailbox's Sent Items, then puts the lender on the
@@ -55,28 +54,13 @@ export async function detectSentDrafts(supabase: SupabaseClient, dealId?: string
         continue
       }
       if (!sent) continue
-      const lender = Array.isArray(d.lenders) ? d.lenders[0] : d.lenders
       await recordSubmission(supabase, {
         dealId: d.deal_id,
         lenderId: d.lender_id,
         conversationId: d.outlook_conversation_id as string,
         sentOn: sent.sentDateTime.slice(0, 10),
       })
-      await supabase.from('deal_updates').insert({
-        deal_id: d.deal_id,
-        lender_id: d.lender_id,
-        entry_date: sent.sentDateTime.slice(0, 10),
-        note: `Submission email sent to ${(lender as { name?: string } | null)?.name ?? 'lender'}: "${sent.subject}".`,
-        source: 'email',
-      })
-      const { data: deal } = await supabase.from('deals').select('company_name').eq('id', d.deal_id).single()
-      await notify(supabase, {
-        kind: 'sent',
-        title: `Sent: ${deal?.company_name ?? 'deal'} → ${(lender as { name?: string } | null)?.name ?? 'lender'}`,
-        body: `"${sent.subject}" went out. The lender is now on the deal's "Lenders sent to" list.`,
-        dealId: d.deal_id,
-        lenderId: d.lender_id,
-      })
+      // The Sent-folder sync logs the update and the Activity entry.
       found++
       break
     }

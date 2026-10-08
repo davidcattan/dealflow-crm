@@ -4,6 +4,8 @@ import {
   getValidAccessToken,
   listConnections,
   listInboxMessagesSince,
+  listSentMessagesSince,
+  type SentMessage,
   getInboxMessage,
   getInboxStatus,
   getMessageAttachments,
@@ -149,6 +151,8 @@ type Context = {
   lenders: Lender[]
   contacts: { lender_id: string; email: string | null }[]
   threadByConversation: Map<string, { dealId: string; lenderId: string }>
+  dealByConversation: Map<string, string>
+  dealByContactEmail: Map<string, string>
 }
 
 function isBillingError(err: unknown) {
@@ -192,6 +196,14 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
         .not('outlook_conversation_id', 'is', null),
     ])
   const threads = [...(matchThreads ?? []), ...(submissionThreads ?? [])]
+  // Threads whose emails were already filed on a deal (inbound or sent).
+  const { data: filedThreads } = await supabase
+    .from('inbox_messages')
+    .select('conversation_id, deal_id')
+    .not('deal_id', 'is', null)
+    .not('conversation_id', 'is', null)
+    .order('received_at', { ascending: false })
+    .limit(3000)
 
   const refDeals = (deals ?? []).map((d, i) => ({
     id: d.id as string,
@@ -217,6 +229,12 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
     contacts: (contacts ?? []) as { lender_id: string; email: string | null }[],
     threadByConversation: new Map(
       threads.map((t) => [t.outlook_conversation_id as string, { dealId: t.deal_id, lenderId: t.lender_id }])
+    ),
+    dealByConversation: new Map((filedThreads ?? []).map((t) => [t.conversation_id as string, t.deal_id as string])),
+    dealByContactEmail: new Map(
+      (deals ?? [])
+        .filter((d) => d.contact_email && !INACTIVE.includes(d.status))
+        .map((d) => [String(d.contact_email).toLowerCase(), d.id as string])
     ),
   }
 }
@@ -473,6 +491,147 @@ async function syncMailbox(
     await supabase.from('outlook_connections').update({ last_synced_at: message.receivedDateTime }).eq('id', connection.id)
     connection.last_synced_at = message.receivedDateTime
   }
+
+  // Then the Sent folder (free — no AI).
+  try {
+    await syncSentMailbox(supabase, ctx, connection, maxMessages, summary)
+  } catch (err) {
+    console.error('Sent-folder sync failed', connection.account_email, err)
+  }
+}
+
+// The new part of a sent email (what we wrote, not the quoted thread).
+function ownText(body: string) {
+  return body.split(/\n\s*(From:|-----Original Message|On .{5,80} wrote:|________________)/)[0].trim()
+}
+
+// Reads one mailbox's Sent folder and files emails on deals: sends to
+// lenders put the lender on "Lenders sent to" (and are logged + shown in
+// Activity); emails to borrowers are logged on their deal. Emails only
+// between teammates are skipped. Matching: the thread, the recipient (deal
+// contact), or the deal's address/company names in the email.
+async function syncSentMailbox(
+  supabase: SupabaseClient,
+  ctx: Context,
+  connection: { id: string; account_email: string; last_sent_synced_at?: string | null },
+  maxMessages: number,
+  summary: SyncSummary
+) {
+  // Needs migration 028 (the column exists, even if empty); otherwise skip.
+  if (!('last_sent_synced_at' in connection)) return
+  const since = connection.last_sent_synced_at ?? new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+  const messages = await listSentMessagesSince(ctx.accessToken, since, maxMessages)
+  if (messages.length === maxMessages) summary.moreWaiting = true
+
+  const internetIds = messages.map((m) => m.internetMessageId).filter((x): x is string => Boolean(x))
+  const { data: seenRows } = await supabase
+    .from('inbox_messages')
+    .select('internet_message_id')
+    .in('internet_message_id', internetIds.concat('none'))
+  const seen = new Set((seenRows ?? []).map((r) => r.internet_message_id as string))
+  const firm = ctx.accountEmail.split('@')[1]
+
+  for (const m of messages) {
+    if (!(m.internetMessageId && seen.has(m.internetMessageId))) {
+      await fileSentMessage(supabase, ctx, connection.account_email, m, firm)
+      if (m.internetMessageId) seen.add(m.internetMessageId)
+    }
+    await supabase.from('outlook_connections').update({ last_sent_synced_at: m.sentDateTime }).eq('id', connection.id)
+    connection.last_sent_synced_at = m.sentDateTime
+  }
+}
+
+async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: string, m: SentMessage, firm: string | undefined) {
+  const external = m.to.filter((r) => !(firm && r.email.endsWith(`@${firm}`)) && r.email !== ctx.accountEmail)
+  if (external.length === 0) return // teammates only
+
+  // Lenders among the recipients (saving new people at known lenders).
+  const lenderIds: string[] = []
+  for (const r of external) {
+    let id = ctx.lenderByEmail.get(r.email) ?? null
+    if (!id) {
+      id = findLenderBySender(ctx.lenders, ctx.contacts, r.email)
+      if (id) {
+        await supabase.from('lender_contacts').insert({ lender_id: id, email: r.email, name: r.name || null })
+        ctx.lenderByEmail.set(r.email, id)
+        ctx.contacts.push({ lender_id: id, email: r.email })
+      }
+    }
+    if (id && !lenderIds.includes(id)) lenderIds.push(id)
+  }
+
+  const dealId =
+    ctx.threadByConversation.get(m.conversationId)?.dealId ??
+    ctx.dealByConversation.get(m.conversationId) ??
+    external.map((r) => ctx.dealByContactEmail.get(r.email)).find(Boolean) ??
+    findDealByText(ctx.deals, `${m.subject}\n${m.bodyText}`)?.id ??
+    null
+
+  // Nothing to do with a deal or a lender — e.g. personal mail.
+  if (!dealId && lenderIds.length === 0) return
+
+  const deal = dealId ? ctx.dealById.get(dealId) : undefined
+  const names = external.map((r) => r.name || r.email).join(', ')
+  const preview = ownText(m.bodyText).replace(/\s+/g, ' ').slice(0, 220)
+  const actions: string[] = []
+  const { data: recorded, error: recordError } = await supabase.from('inbox_messages').insert({
+    graph_message_id: m.id,
+    internet_message_id: m.internetMessageId,
+    conversation_id: m.conversationId,
+    mailbox,
+    from_email: mailbox,
+    to_emails: external.map((r) => r.email).join(', '),
+    subject: m.subject,
+    received_at: m.sentDateTime,
+    classification: 'sent',
+    deal_id: dealId,
+    lender_id: lenderIds[0] ?? null,
+    summary: preview || null,
+    body_text: m.bodyText,
+    action_taken: 'Filing…',
+  }).select('id').single()
+  // Couldn't record it (e.g. already recorded) — don't log anything twice.
+  if (recordError || !recorded) return
+
+
+  if (dealId) {
+    if (lenderIds.length) {
+      for (const lenderId of lenderIds) {
+        const lender = ctx.lenderById.get(lenderId)
+        await recordSubmission(supabase, { dealId, lenderId, conversationId: m.conversationId, sentOn: m.sentDateTime.slice(0, 10) })
+        ctx.threadByConversation.set(m.conversationId, { dealId, lenderId })
+        await supabase.from('deal_updates').insert({
+          deal_id: dealId,
+          lender_id: lenderId,
+          entry_date: m.sentDateTime.slice(0, 10),
+          note: `Email sent to ${lender?.name ?? 'lender'}: "${m.subject}".`,
+          source: 'email',
+        })
+        await notify(supabase, {
+          kind: 'sent',
+          title: `Sent: ${deal?.company_name ?? 'deal'} → ${lender?.name ?? 'lender'}`,
+          body: `"${m.subject}" — from ${mailbox.split('@')[0]}'s Sent folder.`,
+          dealId,
+          lenderId,
+        })
+      }
+      actions.push(`Logged on deal; ${lenderIds.length} lender${lenderIds.length === 1 ? '' : 's'} on "Lenders sent to"`)
+    } else {
+      await supabase.from('deal_updates').insert({
+        deal_id: dealId,
+        entry_date: m.sentDateTime.slice(0, 10),
+        note: `Email sent to ${names}: "${m.subject}".${preview ? ` ${preview}` : ''}`,
+        source: 'email',
+      })
+      actions.push('Logged on deal')
+    }
+    ctx.dealByConversation.set(m.conversationId, dealId)
+  } else {
+    actions.push("Sent to a lender — couldn't tell which deal; add it to a deal if it belongs to one")
+  }
+
+
+  await supabase.from('inbox_messages').update({ action_taken: actions.join(', ') }).eq('id', recorded.id)
 }
 
 // Re-reads one already-recorded email (e.g. a lender reply that couldn't
@@ -752,7 +911,7 @@ async function act({
 export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMessageId: string, dealId: string) {
   const { data: row } = await supabase
     .from('inbox_messages')
-    .select('id, graph_message_id, mailbox, classification, from_email, subject, summary, lender_id, conversation_id, body_text, deal_id')
+    .select('id, graph_message_id, mailbox, classification, from_email, to_emails, subject, summary, lender_id, conversation_id, body_text, deal_id')
     .eq('id', inboxMessageId)
     .single()
   if (!row) throw new Error('Email record not found')
@@ -764,14 +923,22 @@ export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMe
 
   // Which lender: the one already recorded, else recognize it from the
   // sender's email (and save the sender as that lender's contact).
+  const isSent = row.classification === 'sent'
   let lenderId = row.lender_id as string | null
-  if (!lenderId && isLenderReply && row.from_email) {
+  const lookupEmails = isSent ? String(row.to_emails ?? '').split(',').map((e) => e.trim()).filter(Boolean) : [row.from_email]
+  if (!lenderId && (isLenderReply || isSent) && lookupEmails.length) {
     const [{ data: lenders }, { data: contacts }] = await Promise.all([
       supabase.from('lenders').select('id, name, contact_email, mandate_notes, website'),
       supabase.from('lender_contacts').select('lender_id, email'),
     ])
-    lenderId = findLenderBySender((lenders ?? []) as Lender[], contacts ?? [], row.from_email)
-    if (lenderId) await supabase.from('lender_contacts').insert({ lender_id: lenderId, email: row.from_email })
+    for (const email of lookupEmails) {
+      lenderId = findLenderBySender((lenders ?? []) as Lender[], contacts ?? [], email)
+      if (lenderId) {
+        if (!(contacts ?? []).some((c) => c.email?.toLowerCase() === email.toLowerCase()))
+          await supabase.from('lender_contacts').insert({ lender_id: lenderId, email })
+        break
+      }
+    }
   }
   const { data: lender } = lenderId
     ? await supabase.from('lenders').select('id, name').eq('id', lenderId).single()
@@ -784,18 +951,22 @@ export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMe
       deal_id: dealId,
       lender_id: lender?.id ?? null,
       entry_date: today(),
-      note: isLenderReply ? `Lender reply — ${who}:${summary}` : `Email from ${who}: "${row.subject ?? ''}".${summary}`,
+      note: isLenderReply
+        ? `Lender reply — ${who}:${summary}`
+        : isSent
+          ? `Email sent to ${lender?.name ?? row.to_emails ?? 'recipient'}: "${row.subject ?? ''}".`
+          : `Email from ${who}: "${row.subject ?? ''}".${summary}`,
       source: 'email',
     })
   }
 
   const actions = [`Filed on deal by hand`]
-  if (isLenderReply && lender) {
+  if ((isLenderReply || isSent) && lender) {
     await recordSubmission(supabase, {
       dealId,
       lenderId: lender.id,
       conversationId: row.conversation_id,
-      status: statusFromReplySummary(row.summary),
+      status: isSent ? undefined : statusFromReplySummary(row.summary),
     })
     actions.push(`${lender.name} added to "Lenders sent to"`)
   }
