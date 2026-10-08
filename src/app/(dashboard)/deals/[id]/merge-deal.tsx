@@ -8,6 +8,8 @@ import { mergeDeals } from './actions'
 
 type DealOption = { id: string; company_name: string; status: string }
 
+const PAST = ['dead', 'closed', 'old']
+
 function explain(source: string, target: string) {
   return `Merge "${source}" into "${target}"?\n\nAll documents, emails, updates and lender history move to "${target}", and "${source}" is removed. This can't be undone.`
 }
@@ -19,11 +21,12 @@ export function MergeDealButton({ dealId, dealName, deals }: { dealId: string; d
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
+  // The whole pipeline, scrollable; typing narrows it. Past deals go last.
   const q = query.trim().toLowerCase()
-  const results = useMemo(
-    () => (q ? deals.filter((d) => d.id !== dealId && d.company_name.toLowerCase().includes(q)).slice(0, 8) : []),
-    [q, deals, dealId]
-  )
+  const results = useMemo(() => {
+    const matching = deals.filter((d) => d.id !== dealId && (!q || d.company_name.toLowerCase().includes(q)))
+    return [...matching.filter((d) => !PAST.includes(d.status)), ...matching.filter((d) => PAST.includes(d.status))]
+  }, [q, deals, dealId])
 
   function merge(target: DealOption) {
     if (!confirm(explain(dealName, target.company_name))) return
@@ -43,22 +46,26 @@ export function MergeDealButton({ dealId, dealName, deals }: { dealId: string; d
         Merge…
       </button>
       {open && (
-        <div className="absolute right-0 z-20 mt-2 w-80 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
+        <div className="absolute right-0 z-20 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
           <p className="text-xs text-slate-600">
             Merge this deal into another one (for duplicates). Everything moves to the deal you pick, and this one is
             removed.
           </p>
           <input
-            autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search deals…"
+            placeholder="Pick a deal below, or type to narrow…"
             className="mt-2 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
           />
-          {results.length > 0 && (
-            <ul className="mt-2 max-h-60 overflow-y-auto">
-              {results.map((d) => (
+          {results.length === 0 ? (
+            <p className="mt-2 text-xs text-slate-400">No deals match.</p>
+          ) : (
+            <ul className="mt-2 max-h-72 divide-y divide-slate-50 overflow-y-auto rounded-md border border-slate-100">
+              {results.map((d, i) => (
                 <li key={d.id}>
+                  {PAST.includes(d.status) && (i === 0 || !PAST.includes(results[i - 1].status)) && (
+                    <p className="bg-slate-50 px-2 py-1 text-[11px] font-medium uppercase text-slate-400">Past deals</p>
+                  )}
                   <button
                     type="button"
                     disabled={pending}

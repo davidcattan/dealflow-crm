@@ -46,6 +46,8 @@ export default async function InboxPage() {
   const dealOptions = [...(dealRows ?? [])]
     .sort((a, b) => Number(['dead', 'old', 'closed'].includes(a.status)) - Number(['dead', 'old', 'closed'].includes(b.status)))
     .map((d) => ({ id: d.id as string, name: d.company_name as string }))
+  // Connected mailboxes — a teammate's email filed as incoming can be re-filed.
+  const teamEmails = new Set((connections ?? []).map((c) => String(c.account_email).toLowerCase()))
 
   return (
     <div className="space-y-6">
@@ -182,6 +184,12 @@ export default async function InboxPage() {
                         {m.summary && <p className="mt-0.5 line-clamp-2">{m.summary}</p>}
                         {(m.classification === 'error' ||
                           (m.classification === 'lender_reply' && !m.deal_id)) && <RetryButton messageId={m.id} />}
+                        {m.classification !== 'sent' &&
+                          m.classification !== 'error' &&
+                          teamEmails.has(String(m.from_email ?? '').toLowerCase()) &&
+                          String(m.mailbox ?? '').toLowerCase() !== String(m.from_email ?? '').toLowerCase() && (
+                            <RetryButton messageId={m.id} label="Re-file as sent email" />
+                          )}
                         {m.classification === 'lender_reply' && m.deal_id && !m.lender_id && (
                           <LinkLender messageId={m.id} dealId={m.deal_id} />
                         )}

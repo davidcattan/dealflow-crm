@@ -5,8 +5,8 @@ import { useState } from 'react'
 import { readJsonResponse } from '@/lib/fetch-json'
 
 // Re-reads one email (about 3–5¢) — for replies that couldn't be matched
-// to a deal, or emails that errored.
-export function RetryButton({ messageId }: { messageId: string }) {
+// to a deal, or emails that errored. Re-filing a teammate's sent email is free.
+export function RetryButton({ messageId, label = 'Retry' }: { messageId: string; label?: string }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -33,7 +33,7 @@ export function RetryButton({ messageId }: { messageId: string }) {
         disabled={busy}
         className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
       >
-        {busy ? 'Retrying…' : 'Retry'}
+        {busy ? 'Working…' : label}
       </button>
       {error && <span className="ml-2 text-xs text-red-600">{error}</span>}
     </span>

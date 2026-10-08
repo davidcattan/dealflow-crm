@@ -210,9 +210,12 @@ export type InboxMessage = {
   hasAttachments: boolean
   bodyPreview: string
   bodyText: string
+  // To + CC.
+  to: { email: string; name: string }[]
 }
 
-const MESSAGE_SELECT = '$select=id,internetMessageId,conversationId,subject,from,receivedDateTime,hasAttachments,bodyPreview,body'
+const MESSAGE_SELECT =
+  '$select=id,internetMessageId,conversationId,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,bodyPreview,body'
 // Plain-text bodies are far smaller than HTML for the AI to read.
 const TEXT_BODY = { headers: { Prefer: 'outlook.body-content-type="text"' } }
 
@@ -236,7 +239,15 @@ function toInboxMessage(m: Record<string, unknown>): InboxMessage {
     hasAttachments: Boolean(m.hasAttachments),
     bodyPreview: (m.bodyPreview as string) ?? '',
     bodyText: text.slice(0, 8000),
+    to: recipients(m),
   }
+}
+
+type Rcpt = { emailAddress?: { address?: string; name?: string } }
+function recipients(m: Record<string, unknown>) {
+  return [...((m.toRecipients as Rcpt[]) ?? []), ...((m.ccRecipients as Rcpt[]) ?? [])]
+    .map((r) => ({ email: (r.emailAddress?.address ?? '').toLowerCase(), name: r.emailAddress?.name ?? '' }))
+    .filter((r) => r.email)
 }
 
 // Inbox messages received after `sinceIso`, OLDEST first, capped at `top`.
@@ -334,16 +345,13 @@ export async function listSentMessagesSince(accessToken: string, sinceIso: strin
     accessToken,
     TEXT_BODY
   )
-  type Rcpt = { emailAddress?: { address?: string; name?: string } }
   return (json.value as Array<Record<string, unknown>>).map((m) => ({
     id: m.id as string,
     internetMessageId: (m.internetMessageId as string | undefined) ?? null,
     conversationId: m.conversationId as string,
     subject: (m.subject as string) ?? '',
     sentDateTime: m.sentDateTime as string,
-    to: [...((m.toRecipients as Rcpt[]) ?? []), ...((m.ccRecipients as Rcpt[]) ?? [])]
-      .map((r) => ({ email: (r.emailAddress?.address ?? '').toLowerCase(), name: r.emailAddress?.name ?? '' }))
-      .filter((r) => r.email),
+    to: recipients(m),
     bodyText: toInboxMessage({ ...m, from: null }).bodyText,
   }))
 }

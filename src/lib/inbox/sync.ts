@@ -505,8 +505,16 @@ async function syncMailbox(
     ...(byInternetId ?? []).map((r) => r.internet_message_id as string),
   ])
 
+  // Emails a teammate sent to outsiders (e.g. David replying to a lender
+  // with Eli on CC) belong to the sender's Sent folder, which files them
+  // as sent emails. Reading them here as incoming mail would mis-file them.
+  const teammates = await connectedMailboxes(supabase)
+
   for (const message of messages) {
-    const already = seen.has(message.id) || (message.internetMessageId ? seen.has(message.internetMessageId) : false)
+    const already =
+      seen.has(message.id) ||
+      (message.internetMessageId ? seen.has(message.internetMessageId) : false) ||
+      isTeammateOutgoing(message, teammates, ctx.accountEmail)
     if (!already) {
       const outcome = await processMessage(supabase, ctx, message)
       await supabase.from('inbox_messages').insert({ ...baseRecord(message, connection.account_email), ...outcome.record })
@@ -527,6 +535,17 @@ async function syncMailbox(
   }
 }
 
+async function connectedMailboxes(supabase: SupabaseClient) {
+  const { data } = await supabase.from('outlook_connections').select('account_email')
+  return new Set((data ?? []).map((c) => String(c.account_email).toLowerCase()))
+}
+
+// Sent by another connected mailbox, to at least one person outside the firm.
+function isTeammateOutgoing(message: InboxMessage, teammates: Set<string>, accountEmail: string) {
+  if (message.from === accountEmail || !teammates.has(message.from)) return false
+  const firm = message.from.split('@')[1]
+  return message.to.some((r) => !r.email.endsWith(`@${firm}`))
+}
 
 // Reads one mailbox's Sent folder and files emails on deals: sends to
 // lenders put the lender on "Lenders sent to" (and are logged + shown in
@@ -672,6 +691,29 @@ export async function reprocessInboxMessage(supabase: SupabaseClient, inboxMessa
   const source = connections.find((c) => row.mailbox && c.account_email.toLowerCase() === String(row.mailbox).toLowerCase()) ?? connections[0]
   const ctx = await loadContext(supabase, source?.id)
   const message = await getInboxMessage(ctx.accessToken, row.graph_message_id)
+
+  // A teammate's email to a lender/borrower that was read as incoming mail:
+  // re-file it as a sent email (free — no AI).
+  if (isTeammateOutgoing(message, await connectedMailboxes(supabase), ctx.accountEmail)) {
+    await supabase.from('inbox_messages').delete().eq('id', row.id)
+    await fileSentMessage(
+      supabase,
+      ctx,
+      message.from,
+      {
+        id: message.id,
+        internetMessageId: message.internetMessageId,
+        conversationId: message.conversationId,
+        subject: message.subject,
+        sentDateTime: message.receivedDateTime,
+        to: message.to,
+        bodyText: message.bodyText,
+      },
+      message.from.split('@')[1]
+    )
+    return { classification: 'sent' }
+  }
+
   const outcome = await processMessage(supabase, ctx, message)
 
   await supabase
