@@ -20,6 +20,7 @@ export type MatchWithLender = {
   draftBody: string | null
   draftStatus: 'none' | 'drafted' | 'sent'
   outlookDraftCreatedAt: string | null
+  draftGeneratedAt?: string | null
 }
 
 export type DealDoc = { id: string; name: string; size: number | null }
@@ -51,6 +52,7 @@ function DraftEmail({
   attachmentAdvice,
   includeIntro,
   onToggleIntro,
+  staleNote,
 }: {
   dealId: string
   matchId: string
@@ -70,6 +72,7 @@ function DraftEmail({
   attachmentAdvice: AttachmentAdvice
   includeIntro: boolean
   onToggleIntro: (v: boolean) => void
+  staleNote: string | null
 }) {
   const [showAttachments, setShowAttachments] = useState(false)
   const [open, setOpen] = useState(false)
@@ -243,6 +246,14 @@ function DraftEmail({
           )}
         </div>
       )}
+      {staleNote && (
+        <p className="mt-1 text-xs font-medium text-amber-800">
+          {staleNote}{' '}
+          <button type="button" onClick={() => onRedraft('short')} disabled={redrafting} className="underline disabled:opacity-50">
+            {redrafting ? 'Redrafting…' : 'Redraft to match'}
+          </button>
+        </p>
+      )}
       {outlookDraftCreatedAt && (
         <p className="mt-1 text-xs text-amber-700">
           Created in Outlook {new Date(outlookDraftCreatedAt).toLocaleString()}
@@ -351,6 +362,7 @@ export function MatchingPanel({
   documents,
   mailboxes,
   defaultMailboxId,
+  latestPitch,
 }: {
   dealId: string
   matches: MatchWithLender[]
@@ -362,6 +374,7 @@ export function MatchingPanel({
   documents: DealDoc[]
   mailboxes: Mailbox[]
   defaultMailboxId: string | null
+  latestPitch: { at: string; lenderId: string; lenderName: string } | null
 }) {
   // Which Outlook gets the drafts: your own by default; a different pick is
   // remembered in this browser.
@@ -669,6 +682,13 @@ export function MatchingPanel({
                   attachmentAdvice={attachmentAdvice}
                   includeIntro={includeIntro}
                   onToggleIntro={toggleIntro}
+                  staleNote={
+                    latestPitch &&
+                    latestPitch.lenderId !== m.lender_id &&
+                    (!m.draftGeneratedAt || m.draftGeneratedAt < latestPitch.at)
+                      ? `You emailed ${latestPitch.lenderName} about this deal on ${new Date(latestPitch.at).toLocaleDateString()} — this draft is older.`
+                      : null
+                  }
                 />
               )}
               {draftingId === m.id && (

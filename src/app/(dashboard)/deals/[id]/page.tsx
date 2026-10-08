@@ -65,7 +65,7 @@ export default async function DealDetailPage({
       supabase
         .from('deal_matches')
         .select(
-          'id, lender_id, score, reasoning, selected, created_at, draft_subject, draft_body, draft_status, outlook_draft_created_at, lenders(name)'
+          'id, lender_id, score, reasoning, selected, created_at, draft_subject, draft_body, draft_status, draft_generated_at, outlook_draft_created_at, lenders(name)'
         )
         .eq('deal_id', id)
         .order('score', { ascending: false }),
@@ -73,6 +73,26 @@ export default async function DealDetailPage({
 
   if (!deal) notFound()
   const step = (await loadNextSteps(supabase, [id])).get(id) ?? null
+  // Your latest email to a lender on this deal (from the Sent folders) —
+  // drafts written before it get a "Redraft to match" nudge.
+  const { data: lastPitchRow } = await supabase
+    .from('inbox_messages')
+    .select('received_at, lender_id, lenders(name)')
+    .eq('deal_id', id)
+    .eq('classification', 'sent')
+    .not('lender_id', 'is', null)
+    .order('received_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const latestPitch = lastPitchRow
+    ? {
+        at: lastPitchRow.received_at as string,
+        lenderId: lastPitchRow.lender_id as string,
+        lenderName:
+          ((Array.isArray(lastPitchRow.lenders) ? lastPitchRow.lenders[0] : lastPitchRow.lenders) as { name?: string } | null)?.name ??
+          'a lender',
+      }
+    : null
 
   const {
     data: { user },
@@ -161,6 +181,7 @@ export default async function DealDetailPage({
       draftBody: m.draft_body,
       draftStatus: m.draft_status as 'none' | 'drafted' | 'sent',
       outlookDraftCreatedAt: m.outlook_draft_created_at,
+      draftGeneratedAt: m.draft_generated_at,
     }
   })
   const lastMatchRunAt =
@@ -490,6 +511,7 @@ export default async function DealDetailPage({
         documents={docsWithUrls.map((d) => ({ id: d.id, name: d.file_name, size: d.file_size }))}
         mailboxes={mailboxes}
         defaultMailboxId={defaultMailboxId}
+        latestPitch={latestPitch}
         loanTypeRecommendation={
           (deal as { loan_type_recommendation?: LoanTypeRecommendation | null }).loan_type_recommendation ?? null
         }

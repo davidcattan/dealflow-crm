@@ -4,6 +4,7 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { createClient } from '@/lib/supabase/server'
 import { logUsage } from '@/lib/usage'
 import { DraftEmailSchema, type DraftStyle } from './draft-schema'
+import { ownText } from '@/lib/outlook/own-text'
 import { buildDealProfile } from './deal-profile'
 import type { Deal, DealUpdate } from '@/lib/types'
 
@@ -137,6 +138,35 @@ export async function draftSubmissionEmail(
   const documentNames = (documents ?? []).map((d) => d.file_name)
   const sender = await loadSender(supabase, deal.rep_name)
 
+  // What the broker actually sent lenders (from the Sent folders): the
+  // latest pitch on THIS deal is the model for every other lender's draft;
+  // a couple from other deals show the broker's own voice.
+  const [{ data: dealSends }, { data: otherSends }] = await Promise.all([
+    supabase
+      .from('inbox_messages')
+      .select('body_text, received_at, lender_id, lenders(name)')
+      .eq('deal_id', dealId)
+      .eq('classification', 'sent')
+      .not('lender_id', 'is', null)
+      .neq('lender_id', lenderId)
+      .order('received_at', { ascending: false })
+      .limit(1),
+    supabase
+      .from('inbox_messages')
+      .select('body_text')
+      .eq('classification', 'sent')
+      .not('lender_id', 'is', null)
+      .neq('deal_id', dealId)
+      .order('received_at', { ascending: false })
+      .limit(2),
+  ])
+  const pitch = dealSends?.[0]
+  const pitchText = pitch?.body_text ? ownText(pitch.body_text).slice(0, 3500) : null
+  const pitchLender = pitch ? ((Array.isArray(pitch.lenders) ? pitch.lenders[0] : pitch.lenders) as { name?: string } | null)?.name : null
+  const styleExamples = (otherSends ?? [])
+    .map((r) => (r.body_text ? ownText(r.body_text).slice(0, 1200) : ''))
+    .filter((t) => t.length > 80)
+
   const client = new Anthropic()
 
   const structured = await client.messages.parse({
@@ -159,6 +189,12 @@ export async function draftSubmissionEmail(
             ? `--- Attachments ---\nThe broker picks which of these to attach: ${documentNames.join(', ')}. Short style: just say "package attached". Long style: name the main kinds in a few words.`
             : `--- Attachments ---\nNothing is attached — don't mention attachments.`,
           '',
+          pitchText
+            ? `--- The broker's own email to ${pitchLender ?? 'another lender'} about this deal (sent ${String(pitch?.received_at ?? '').slice(0, 10)}) ---\n${pitchText}\n\nThis is how the broker actually pitched THIS deal. Use it as the template: keep its facts, numbers, framing, structure, length and tone, including any corrections it makes to the deal profile (the broker's email is newer and wins any conflict). Change only what is specific to this lender — the greeting and why it fits this lender — and keep it a fresh email, not a forward. The selling rules above still apply: leave out internal diligence details even if that email included them.`
+            : null,
+          styleExamples.length
+            ? `--- Examples of the broker's writing on other deals (match the voice and length only — don't copy their facts) ---\n${styleExamples.join('\n---\n')}`
+            : null,
           `Sender's name for the sign-off: ${sender.name}`,
           includeIntro && sender.intro
             ? `--- Introduction ---\nThe sender's own introduction of themselves and their firm is inserted automatically right after the greeting. Do NOT introduce the sender or the firm yourself, and don't count it toward the word limit.`

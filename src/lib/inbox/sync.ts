@@ -17,6 +17,7 @@ import { recordSubmission } from '@/lib/deals/submissions'
 import { detectSentDrafts } from '@/lib/outlook/sent-tracking'
 import { notify } from '@/lib/notifications'
 import { addresses } from '@/lib/deals/duplicates'
+import { ownText } from '@/lib/outlook/own-text'
 import type { Snapshot } from '@/lib/snapshot/schema'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
 
@@ -500,10 +501,6 @@ async function syncMailbox(
   }
 }
 
-// The new part of a sent email (what we wrote, not the quoted thread).
-function ownText(body: string) {
-  return body.split(/\n\s*(From:|-----Original Message|On .{5,80} wrote:|________________)/)[0].trim()
-}
 
 // Reads one mailbox's Sent folder and files emails on deals: sends to
 // lenders put the lender on "Lenders sent to" (and are logged + shown in
