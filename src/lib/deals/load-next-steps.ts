@@ -67,3 +67,27 @@ export async function loadNextSteps(supabase: SupabaseClient, dealIds: string[])
   }
   return out
 }
+
+// When anything last happened on each deal: an edit, a logged update, an
+// email in or out, or a lender status change. (The deal's own updated_at
+// only moves when its details are edited.)
+export async function loadLastActivity(supabase: SupabaseClient, dealIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  if (dealIds.length === 0) return out
+  const [{ data: deals }, { data: updates }, { data: subs }, { data: emails }] = await Promise.all([
+    supabase.from('deals').select('id, updated_at').in('id', dealIds),
+    supabase.from('deal_updates').select('deal_id, created_at').in('deal_id', dealIds).order('created_at', { ascending: false }).limit(3000),
+    supabase.from('deal_submissions').select('deal_id, last_activity_at').in('deal_id', dealIds),
+    supabase.from('inbox_messages').select('deal_id, received_at').in('deal_id', dealIds).order('received_at', { ascending: false }).limit(3000),
+  ])
+  const bump = (id: string, at: string | null | undefined) => {
+    if (!at) return
+    const cur = out.get(id)
+    if (!cur || at > cur) out.set(id, at)
+  }
+  for (const d of deals ?? []) bump(d.id, d.updated_at)
+  for (const u of updates ?? []) bump(u.deal_id, u.created_at)
+  for (const s of subs ?? []) bump(s.deal_id, s.last_activity_at)
+  for (const e of emails ?? []) bump(e.deal_id as string, e.received_at as string)
+  return out
+}

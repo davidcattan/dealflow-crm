@@ -12,7 +12,7 @@ import { PipelineFilterBar } from './filter-bar'
 import { SearchBar } from '@/components/search-bar'
 import { matchesSearch } from '@/lib/search'
 import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
-import { loadNextSteps } from '@/lib/deals/load-next-steps'
+import { loadNextSteps, loadLastActivity } from '@/lib/deals/load-next-steps'
 import { PipelineTable } from './pipeline-table'
 
 function stageHref(
@@ -144,11 +144,10 @@ export default async function PipelinePage({
       .in('status', ['closed', 'dead', 'old']),
   ])
 
-  const deals = (rawDeals ?? []) as PipelineDeal[]
-  const nextSteps = await loadNextSteps(
-    supabase,
-    deals.map((d) => d.id)
-  )
+  const ids = (rawDeals ?? []).map((d) => d.id as string)
+  const [nextSteps, lastActivity] = await Promise.all([loadNextSteps(supabase, ids), loadLastActivity(supabase, ids)])
+  // "Updated" = last activity of any kind, not just edits to the deal itself.
+  const deals = ((rawDeals ?? []) as PipelineDeal[]).map((d) => ({ ...d, updated_at: lastActivity.get(d.id) ?? d.updated_at }))
 
   const defaultOrdered = deals.slice().sort((a, b) => {
     const stageDiff =
