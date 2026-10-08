@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { NewLenderForm } from './new-lender-form'
 import { LenderFilterBar } from './filter-bar'
-import { formatCompactCurrency } from '@/lib/format'
+import { formatCompactCurrency, parseCompactCurrency } from '@/lib/format'
 import { LENDER_TYPE_GROUPS, lenderTypeKeys, type LenderTypeKey } from '@/lib/lenders/type-groups'
 
 function formatAmount(n: number | null) {
@@ -42,9 +42,9 @@ const SORT_CONFIG: Record<
 export default async function LendersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; sort?: string; type?: string }>
+  searchParams: Promise<{ q?: string; sort?: string; type?: string; size?: string; unsized?: string }>
 }) {
-  const { q, sort, type } = await searchParams
+  const { q, sort, type, size, unsized } = await searchParams
   const sortKey: SortKey = sort && sort in SORT_CONFIG ? (sort as SortKey) : 'name_asc'
   const sortConfig = SORT_CONFIG[sortKey]
 
@@ -73,7 +73,20 @@ export default async function LendersPage({
     .map((o) => ({ ...o, count: withKeys.filter((l) => l.typeKeys.includes(o.key)).length }))
     .filter((o) => o.count > 0)
   const activeType = typeOptions.some((o) => o.key === type) ? (type as LenderTypeKey) : null
-  const lenders = activeType ? withKeys.filter((l) => l.typeKeys.includes(activeType)) : withKeys
+  const byType = activeType ? withKeys.filter((l) => l.typeKeys.includes(activeType)) : withKeys
+
+  // Deal-size filter: lenders whose loan range fits the amount. A missing
+  // minimum (or 0 = "No minimum") means no floor; a missing/0 max means no cap.
+  // Lenders with no size at all are left out unless asked for.
+  const dealSize = parseCompactCurrency(size ?? null)
+  const hasSize = (l: (typeof byType)[number]) => l.min_loan_amount !== null || (l.max_loan_amount ?? 0) > 0
+  const fits = (l: (typeof byType)[number]) =>
+    (l.min_loan_amount === null || l.min_loan_amount <= dealSize!) &&
+    (!l.max_loan_amount || l.max_loan_amount >= dealSize!)
+  const unsizedCount = dealSize ? byType.filter((l) => !hasSize(l)).length : 0
+  const lenders = dealSize
+    ? byType.filter((l) => (hasSize(l) ? fits(l) : unsized === '1'))
+    : byType
 
   return (
     <div className="space-y-6">
@@ -81,8 +94,8 @@ export default async function LendersPage({
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Lenders</h1>
           <p className="mt-1 text-sm text-slate-500">
-            {activeType || q
-              ? `${lenders.length} of ${withKeys.length} lenders`
+            {activeType || q || dealSize
+              ? `${lenders.length} of ${withKeys.length} lenders${dealSize ? ` that can do ${formatCompactCurrency(dealSize)}` : ''}`
               : 'Your lender network and their mandates.'}
           </p>
         </div>
@@ -95,7 +108,7 @@ export default async function LendersPage({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <LenderFilterBar typeOptions={typeOptions} />
+        <LenderFilterBar typeOptions={typeOptions} unsizedCount={unsizedCount} />
         <NewLenderForm />
       </div>
 
@@ -142,7 +155,7 @@ export default async function LendersPage({
                   colSpan={4}
                   className="px-4 py-10 text-center text-slate-400"
                 >
-                  {q || activeType
+                  {q || activeType || dealSize
                     ? 'No lenders match these filters.'
                     : 'No lenders yet. Add your first one above.'}
                 </td>
