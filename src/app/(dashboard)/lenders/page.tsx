@@ -27,6 +27,10 @@ type SortKey =
   | 'recent'
   | 'size_desc'
   | 'size_asc'
+  | 'type_asc'
+  | 'type_desc'
+  | 'status_asc'
+  | 'status_desc'
 
 const SORT_CONFIG: Record<
   SortKey,
@@ -42,6 +46,11 @@ const SORT_CONFIG: Record<
   // Loan size sorts are done below (by the largest amount the lender does).
   size_desc: { column: 'name', ascending: true },
   size_asc: { column: 'name', ascending: true },
+  // Type and status sorts are done below too.
+  type_asc: { column: 'name', ascending: true },
+  type_desc: { column: 'name', ascending: true },
+  status_asc: { column: 'name', ascending: true },
+  status_desc: { column: 'name', ascending: true },
 }
 
 // The biggest loan a lender does: its max if set, otherwise its minimum.
@@ -95,27 +104,54 @@ export default async function LendersPage({
     .filter((o) => o.count > 0)
   const activeType = typeOptions.some((o) => o.key === type) ? (type as LenderTypeKey) : null
   const filtered = activeType ? withKeys.filter((l) => l.typeKeys.includes(activeType)) : withKeys
-  // Loan size order; lenders with no size listed always go last.
-  const lenders =
-    sortKey === 'size_desc' || sortKey === 'size_asc'
-      ? [...filtered].sort((a, b) => {
-          const x = loanSize(a)
-          const y = loanSize(b)
-          if (x === null && y === null) return a.name.localeCompare(b.name)
-          if (x === null) return 1
-          if (y === null) return -1
-          return sortKey === 'size_desc' ? y - x : x - y
-        })
-      : filtered
+  // Loan size, type and status orders (blanks always last).
+  const typeText = (l: (typeof filtered)[number]) =>
+    (l.asset_types?.length ? l.asset_types.join(', ') : l.lending_type ?? '').trim()
+  const lenders = [...filtered]
+  if (sortKey === 'size_desc' || sortKey === 'size_asc') {
+    lenders.sort((a, b) => {
+      const x = loanSize(a)
+      const y = loanSize(b)
+      if (x === null && y === null) return a.name.localeCompare(b.name)
+      if (x === null) return 1
+      if (y === null) return -1
+      return sortKey === 'size_desc' ? y - x : x - y
+    })
+  } else if (sortKey === 'type_asc' || sortKey === 'type_desc') {
+    const dir = sortKey === 'type_asc' ? 1 : -1
+    lenders.sort((a, b) => {
+      const x = typeText(a)
+      const y = typeText(b)
+      const blank = (t: string) => !t || t === '?'
+      if (blank(x) || blank(y)) return blank(x) && blank(y) ? a.name.localeCompare(b.name) : blank(x) ? 1 : -1
+      return dir * x.localeCompare(y)
+    })
+  } else if (sortKey === 'status_asc' || sortKey === 'status_desc') {
+    const dir = sortKey === 'status_asc' ? 1 : -1
+    lenders.sort((a, b) => dir * String(a.status).localeCompare(String(b.status)) || a.name.localeCompare(b.name))
+  }
 
-  // Clicking the "Loan size" header flips between largest-first and smallest-first.
-  const sizeSortHref = (() => {
+  // Column headers sort; clicking the active one flips the direction.
+  const sortHref = (key: 'name' | 'size' | 'type' | 'status', firstDir: 'asc' | 'desc') => {
     const params = new URLSearchParams()
     if (q) params.set('q', q)
     if (type) params.set('type', type)
-    params.set('sort', sortKey === 'size_desc' ? 'size_asc' : 'size_desc')
+    const active = sortKey === `${key}_asc` || sortKey === `${key}_desc`
+    params.set('sort', active ? (sortKey.endsWith('_asc') ? `${key}_desc` : `${key}_asc`) : `${key}_${firstDir}`)
     return `/lenders?${params.toString()}`
-  })()
+  }
+  const arrow = (key: string) => {
+    const active = sortKey === `${key}_asc` || sortKey === `${key}_desc`
+    return (
+      <span className={active ? 'text-slate-800' : 'text-slate-300'}>{active && sortKey.endsWith('_asc') ? '▲' : '▼'}</span>
+    )
+  }
+  const header = (label: string, key: 'name' | 'size' | 'type' | 'status', firstDir: 'asc' | 'desc') => (
+    <Link href={sortHref(key, firstDir)} className="inline-flex items-center gap-1 hover:text-slate-800" title={`Sort by ${label.toLowerCase()}`}>
+      {label}
+      {arrow(key)}
+    </Link>
+  )
 
   return (
     <div className="space-y-6">
@@ -128,34 +164,24 @@ export default async function LendersPage({
               : 'Your lender network and their mandates.'}
           </p>
         </div>
-        <Link
-          href="/lenders/import"
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-        >
-          Import from file
-        </Link>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <Link href="/lenders/import" className="hidden text-slate-500 hover:underline sm:inline">
+            Import
+          </Link>
+          <NewLenderForm />
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <LenderFilterBar typeOptions={typeOptions} suggestions={suggestions} />
-        <NewLenderForm />
-      </div>
+      <LenderFilterBar typeOptions={typeOptions} suggestions={suggestions} />
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              <th className="px-4 py-3">Lender</th>
-              <th className="px-4 py-3">
-                <Link href={sizeSortHref} className="inline-flex items-center gap-1 hover:text-slate-800" title="Sort by loan size">
-                  Loan size
-                  <span className={sortKey === 'size_desc' || sortKey === 'size_asc' ? 'text-slate-800' : 'text-slate-300'}>
-                    {sortKey === 'size_asc' ? '▲' : '▼'}
-                  </span>
-                </Link>
-              </th>
-              <th className="hidden px-4 py-3 sm:table-cell">Type</th>
-              <th className="hidden px-4 py-3 sm:table-cell">Status</th>
+              <th className="px-4 py-3">{header('Lender', 'name', 'asc')}</th>
+              <th className="px-4 py-3">{header('Loan size', 'size', 'desc')}</th>
+              <th className="hidden px-4 py-3 sm:table-cell">{header('Type', 'type', 'asc')}</th>
+              <th className="hidden px-4 py-3 sm:table-cell">{header('Status', 'status', 'asc')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
