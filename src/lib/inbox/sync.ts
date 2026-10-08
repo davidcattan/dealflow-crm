@@ -74,18 +74,35 @@ function dealHints(d: {
   return [...new Set(hints)].slice(0, 6)
 }
 
-// Free backup when the AI can't place an email: a deal whose address or
-// related company name appears in the email. Only a single clear match counts.
+// Distinctive words of a deal name ("2nd Round Pick Holdings" → 2nd,
+// round, pick). Generic words don't count.
+const NAME_FILLER = new Set(['inc', 'llc', 'ltd', 'co', 'corp', 'company', 'holdings', 'group', 'the', 'and', 'of', 'services', 'solutions', 'capital', 'partners', 'enterprises', 'international', 'usa', 'america'])
+function nameTokens(name: string) {
+  return name
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t && !NAME_FILLER.has(t) && (t.length >= 3 || /\d/.test(t)))
+}
+
+// Free backup when the AI can't place an email: a deal whose address,
+// related company names, or own name (all its distinctive words, in any
+// order — "Alchemist Dealer" finds "Dealer Alchemist") appears in the
+// email. Only a single clear match counts.
 function findDealByText(deals: (Deal & { ref: string })[], text: string): (Deal & { ref: string }) | null {
   const lower = text.toLowerCase()
+  const words = new Set(lower.split(/[^a-z0-9]+/).filter(Boolean))
   const emailAddresses = addresses(text)
-  const hits = deals.filter((d) =>
-    (d.hints ?? []).some((h) => {
+  const hits = deals.filter((d) => {
+    const byHint = (d.hints ?? []).some((h) => {
       const hint = h.toLowerCase()
       if (/^\d/.test(hint)) return emailAddresses.has(hint)
       return hint.length >= 8 && lower.includes(hint)
     })
-  )
+    if (byHint) return true
+    if (INACTIVE.includes(d.status)) return false
+    const tokens = nameTokens(d.company_name)
+    return tokens.length >= 2 ? tokens.every((t) => words.has(t)) : tokens.length === 1 && tokens[0].length >= 7 && words.has(tokens[0])
+  })
   return hits.length === 1 ? hits[0] : null
 }
 type Lender = { id: string; name: string; contact_email: string | null; mandate_notes: string | null; website?: string | null }
