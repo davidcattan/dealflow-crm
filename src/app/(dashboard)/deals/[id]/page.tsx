@@ -5,7 +5,6 @@ import {
   deleteDocument,
   deleteDeal,
   addDealUpdate,
-  deleteDealUpdate,
   setDealStatusQuick,
 } from './actions'
 import { ConfirmButton } from '@/components/confirm-button'
@@ -20,6 +19,7 @@ import { DocumentUploader } from './document-uploader'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
+import { UpdateRow } from './update-row'
 import { SubmissionsPanel, type SubmissionRow, type TimelineItem } from './submissions-panel'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
 import { loadDealEmails, emailsToText } from '@/lib/deals/deal-emails'
@@ -393,32 +393,13 @@ export default async function DealDetailPage({
 
         {updates && updates.length > 0 ? (
           <ul className="divide-y divide-slate-100">
-            {(updates as DealUpdate[]).map((u) => (
-              <li key={u.id} className="flex items-start justify-between gap-3 py-3 text-sm">
-                <div>
-                  <span className="mr-2 font-medium text-slate-700">
-                    {u.entry_date
-                      ? new Date(`${u.entry_date}T00:00:00`).toLocaleDateString()
-                      : new Date(u.created_at).toLocaleDateString()}
-                  </span>
-                  {(u as DealUpdate & { lender_id?: string | null }).lender_id && (
-                    <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
-                      {lenderNameById.get((u as DealUpdate & { lender_id?: string | null }).lender_id as string) ?? 'Lender'}
-                    </span>
-                  )}
-                  <span className="text-slate-600">{u.note}</span>
-                </div>
-                <form action={deleteDealUpdate}>
-                  <input type="hidden" name="deal_id" value={deal.id} />
-                  <input type="hidden" name="update_id" value={u.id} />
-                  <ConfirmButton
-                    confirmMessage="Delete this update? This cannot be undone."
-                    className="shrink-0 text-xs text-red-500 hover:underline"
-                  >
-                    Delete
-                  </ConfirmButton>
-                </form>
-              </li>
+            {(updates as (DealUpdate & { lender_id?: string | null })[]).map((u) => (
+              <UpdateRow
+                key={u.id}
+                dealId={deal.id}
+                update={u}
+                lenderName={u.lender_id ? (lenderNameById.get(u.lender_id) ?? 'Lender') : null}
+              />
             ))}
           </ul>
         ) : (

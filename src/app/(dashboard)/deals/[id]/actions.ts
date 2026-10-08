@@ -309,3 +309,22 @@ export async function addFoundLender(
   revalidatePath('/lenders')
   return { id: created.id as string }
 }
+
+// Fix an update's text or date (e.g. something the inbox logged wrong).
+export async function editDealUpdate(dealId: string, updateId: string, note: string, entryDate: string | null) {
+  const text = note.trim()
+  if (!updateId || !text) return
+  const supabase = await createClient()
+  await supabase
+    .from('deal_updates')
+    .update({ note: text, ...(entryDate && /^\d{4}-\d{2}-\d{2}$/.test(entryDate) ? { entry_date: entryDate } : {}) })
+    .eq('id', updateId)
+  revalidatePath(`/deals/${dealId}`)
+}
+
+export async function removeDealUpdate(dealId: string, updateId: string) {
+  if (!updateId) return
+  const supabase = await createClient()
+  await supabase.from('deal_updates').delete().eq('id', updateId)
+  revalidatePath(`/deals/${dealId}`)
+}

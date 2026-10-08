@@ -9,6 +9,7 @@ import {
   SUBMISSION_STYLES,
   type SubmissionStatus,
 } from '@/lib/deals/submission-status'
+import { editDealUpdate, removeDealUpdate } from './actions'
 import {
   addLenderNote,
   addNewLenderSubmission,
@@ -263,7 +264,7 @@ function LenderCard({ dealId, sub, items }: { dealId: string; sub: SubmissionRow
                   <span className="text-slate-600">{it.text}</span>
                 </>
               ) : (
-                <span className="text-slate-600">{it.text}</span>
+                <NoteText dealId={dealId} item={it} />
               )}
             </li>
           ))}
@@ -399,3 +400,61 @@ export function SubmissionsPanel({
     </section>
   )
 }
+
+// A note on a lender's timeline, with quiet Edit / × controls.
+function NoteText({ dealId, item }: { dealId: string; item: TimelineItem }) {
+  const updateId = item.id.replace(/^note-/, '')
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(item.text)
+  const [pending, startTransition] = useTransition()
+
+  if (editing) {
+    return (
+      <span className="mt-1 flex gap-2">
+        <input
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-0.5 text-sm"
+        />
+        <button
+          type="button"
+          disabled={pending || !text.trim()}
+          onClick={() =>
+            startTransition(async () => {
+              await editDealUpdate(dealId, updateId, text, null)
+              setEditing(false)
+            })
+          }
+          className="text-xs font-medium text-slate-700 hover:underline disabled:opacity-50"
+        >
+          Save
+        </button>
+        <button type="button" onClick={() => setEditing(false)} className="text-xs text-slate-500 hover:underline">
+          Cancel
+        </button>
+      </span>
+    )
+  }
+  return (
+    <span className="group text-slate-600">
+      {item.text}
+      <span className="ml-2 inline-flex gap-2 text-xs sm:hidden sm:group-hover:inline-flex">
+        <button type="button" onClick={() => setEditing(true)} className="text-slate-400 hover:text-slate-700 hover:underline">
+          Edit
+        </button>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            if (confirm('Delete this note?')) startTransition(() => removeDealUpdate(dealId, updateId))
+          }}
+          className="text-slate-400 hover:text-red-600 hover:underline"
+        >
+          Delete
+        </button>
+      </span>
+    </span>
+  )
+}
+
