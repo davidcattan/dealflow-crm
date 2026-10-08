@@ -19,7 +19,7 @@ import { DocumentUploader } from './document-uploader'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
-import { mailboxLabel } from '@/lib/outlook/mailbox-label'
+import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
 import { UpdateRow } from './update-row'
 import { SubmissionsPanel, type SubmissionRow, type TimelineItem } from './submissions-panel'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
@@ -147,6 +147,7 @@ export default async function DealDetailPage({
       text: (m.summary as string | null) ?? '',
       subject: m.subject as string | null,
       where: mailboxLabel(m.mailbox as string | null, m.classification === 'sent'),
+      sentBy: m.classification === 'sent' ? (mailboxOwner(m.mailbox as string | null) ?? 'We') : null,
     })),
     ...((updates ?? []) as (DealUpdate & { lender_id?: string | null })[])
       .filter((u) => u.lender_id && u.source !== 'email')

@@ -638,15 +638,33 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
 
   if (dealId) {
     if (lenderIds.length) {
+      const sender = mailboxOwner(mailbox) ?? 'We'
       for (const lenderId of lenderIds) {
         const lender = ctx.lenderById.get(lenderId)
-        await recordSubmission(supabase, { dealId, lenderId, conversationId: m.conversationId, sentOn: m.sentDateTime.slice(0, 10) })
+        // Answering a lender that asked for more info puts the ball back in
+        // their court.
+        const { data: current } = await supabase
+          .from('deal_submissions')
+          .select('status')
+          .eq('deal_id', dealId)
+          .eq('lender_id', lenderId)
+          .maybeSingle()
+        const answered = current?.status === 'needs_more_info'
+        await recordSubmission(supabase, {
+          dealId,
+          lenderId,
+          conversationId: m.conversationId,
+          sentOn: m.sentDateTime.slice(0, 10),
+          ...(answered ? { status: 'sent' as const } : {}),
+        })
         ctx.threadByConversation.set(m.conversationId, { dealId, lenderId })
         await supabase.from('deal_updates').insert({
           deal_id: dealId,
           lender_id: lenderId,
           entry_date: m.sentDateTime.slice(0, 10),
-          note: `Email sent to ${lender?.name ?? 'lender'}: "${m.subject}".`,
+          note: answered
+            ? `${sender} replied to ${lender?.name ?? 'the lender'} with the info they asked for.`
+            : `Email sent to ${lender?.name ?? 'lender'}: "${m.subject}".`,
           source: 'email',
         })
         await notify(supabase, {

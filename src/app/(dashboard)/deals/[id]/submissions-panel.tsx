@@ -37,6 +37,8 @@ export type TimelineItem = {
   subject?: string | null
   // e.g. "in Eli's inbox" — whose mailbox the email was in.
   where?: string | null
+  // Set on emails we sent, e.g. "David" — shown as "David replied".
+  sentBy?: string | null
 }
 
 // How often the page re-reads the deal while it's open, so replies the
@@ -257,7 +259,15 @@ function LenderCard({ dealId, sub, items }: { dealId: string; sub: SubmissionRow
           {visible.map((it) => (
             <li key={it.id} className="text-sm">
               <span className="mr-2 text-xs text-slate-400">{shortDate(it.at)}</span>
-              {it.kind === 'email' ? (
+              {it.kind === 'email' && it.sentBy ? (
+                <>
+                  <span className="mr-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700">
+                    {it.sentBy} {/^re:/i.test(it.subject ?? '') ? 'replied' : 'sent'}
+                  </span>
+                  {it.subject && <span className="font-medium text-slate-700">{it.subject} — </span>}
+                  <span className="text-slate-600">{it.text}</span>
+                </>
+              ) : it.kind === 'email' ? (
                 <>
                   <span className="mr-1 rounded bg-violet-50 px-1.5 py-0.5 text-[11px] font-medium text-violet-700">
                     Email
