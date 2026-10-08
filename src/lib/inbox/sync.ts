@@ -360,13 +360,13 @@ async function notifyOutcome(
         return notify(supabase, {
           kind: 'needs_review',
           title: `Lender reply needs a deal: ${lenderName ?? sender}${tag}`,
-          body: `"${message.subject}" — couldn't tell which deal it's about. Open Settings → Inbox to retry or file it. ${summary ?? ''}`.trim(),
+          body: `"${message.subject}" — couldn't tell which deal it's about. Open the Inbox page to file it on a deal. ${summary ?? ''}`.trim(),
           lenderId,
         })
       }
       return notify(supabase, { kind: 'lender_reply', title: `${lenderName ?? sender} replied on ${dealName}${tag}`, body: `${summary ?? ''} (${action})`, dealId, lenderId })
     case 'error':
-      return notify(supabase, { kind: 'needs_review', title: `Couldn't process an email from ${sender}${tag}`, body: `"${message.subject}" — ${action}. Retry it in Settings → Inbox.` })
+      return notify(supabase, { kind: 'needs_review', title: `Couldn't process an email from ${sender}${tag}`, body: `"${message.subject}" — ${action}. Retry it on the Inbox page.` })
     default:
       return
   }

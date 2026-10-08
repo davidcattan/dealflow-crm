@@ -70,6 +70,16 @@ export default async function LendersPage({
     query = query.ilike('name', `%${q}%`)
   }
 
+  // Every lender, for the type-ahead suggestions under the search box.
+  const { data: suggestionRows } = await supabase.from('lenders').select('id, name, lending_type, contact_name').order('name')
+  const suggestions = (suggestionRows ?? []).map((l) => ({
+    id: l.id as string,
+    label: l.name as string,
+    sublabel: (l.lending_type as string | null) ?? null,
+    searchText: (l.contact_name as string | null) ?? null,
+    href: `/lenders/${l.id}`,
+  }))
+
   const { data: allLenders } = await query.order(sortConfig.column, {
     ascending: sortConfig.ascending,
     nullsFirst: sortConfig.nullsFirst,
@@ -127,7 +137,7 @@ export default async function LendersPage({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <LenderFilterBar typeOptions={typeOptions} />
+        <LenderFilterBar typeOptions={typeOptions} suggestions={suggestions} />
         <NewLenderForm />
       </div>
 

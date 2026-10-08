@@ -14,6 +14,7 @@ import { matchesSearch } from '@/lib/search'
 import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 import { loadNextSteps, loadLastActivity } from '@/lib/deals/load-next-steps'
 import { PipelineTable } from './pipeline-table'
+import { NewDealForm } from '../deals/new-deal-form'
 
 function stageHref(
   status: string | null,
@@ -223,15 +224,19 @@ export default async function PipelinePage({
             )}
           </p>
         </div>
-        {resolvedCount ? (
-          <Link
-            href="/deals"
-            className="text-sm text-slate-500 hover:underline"
-          >
-            {resolvedCount} closed / dead / old — view all deals
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          {resolvedCount ? (
+            <Link href="/deals?view=past" className="text-slate-500 hover:underline">
+              Past deals ({resolvedCount})
+            </Link>
+          ) : null}
+          <Link href="/deals/import" className="hidden text-slate-500 hover:underline sm:inline">
+            Import
           </Link>
-        ) : null}
+        </div>
       </div>
+
+      <NewDealForm />
 
       <div className="flex flex-wrap gap-2">
         {counts.map(({ status, count }) => {

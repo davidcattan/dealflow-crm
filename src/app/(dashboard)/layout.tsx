@@ -34,14 +34,14 @@ export default async function DashboardLayout({
               <Link href="/pipeline" className="whitespace-nowrap hover:text-slate-900">
                 Pipeline
               </Link>
-              <Link href="/deals" className="whitespace-nowrap hover:text-slate-900">
-                Deals
-              </Link>
               <Link href="/lenders" className="whitespace-nowrap hover:text-slate-900">
                 Lenders
               </Link>
               <Link href="/activity" className="whitespace-nowrap hover:text-slate-900">
                 Activity
+              </Link>
+              <Link href="/inbox" className="whitespace-nowrap hover:text-slate-900">
+                Inbox
               </Link>
               <Link href="/usage" className="whitespace-nowrap hover:text-slate-900">
                 Usage

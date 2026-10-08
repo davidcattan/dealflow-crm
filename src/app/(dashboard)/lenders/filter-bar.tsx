@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { SearchBar, type SearchSuggestion } from '@/components/search-bar'
 
 const SORT_OPTIONS = [
   { value: 'name_asc', label: 'Name (A–Z)' },
@@ -14,7 +15,13 @@ const SORT_OPTIONS = [
   { value: 'recent', label: 'Recently added' },
 ]
 
-export function LenderFilterBar({ typeOptions }: { typeOptions: { key: string; label: string; count: number }[] }) {
+export function LenderFilterBar({
+  typeOptions,
+  suggestions,
+}: {
+  typeOptions: { key: string; label: string; count: number }[]
+  suggestions: SearchSuggestion[]
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -34,23 +41,7 @@ export function LenderFilterBar({ typeOptions }: { typeOptions: { key: string; l
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          const input = e.currentTarget.elements.namedItem(
-            'q'
-          ) as HTMLInputElement
-          updateParams({ q: input.value })
-        }}
-      >
-        <input
-          type="text"
-          name="q"
-          defaultValue={q}
-          placeholder="Search by lender name…"
-          className="w-64 rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-        />
-      </form>
+      <SearchBar placeholder="Search lenders…" suggestions={suggestions} />
 
       <select
         value={type}

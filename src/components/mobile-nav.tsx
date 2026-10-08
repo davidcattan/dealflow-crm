@@ -22,6 +22,8 @@ const ICONS = {
   pipeline: 'M3.75 6h16.5M3.75 12h16.5m-16.5 6h10.5',
   deals: 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.06-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.38a1.5 1.5 0 0 1-1.06-.44Z',
   bell: 'M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0',
+  lenders:
+    'M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21',
   more: 'M6.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm6 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm6 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z',
 }
 
@@ -61,7 +63,7 @@ export function MobileNav({ unread, health, email }: { unread: number; health: I
   }, [pathname])
 
   const is = (p: string) => (p === '/' ? pathname === '/' : pathname.startsWith(p))
-  const moreActive = ['/lenders', '/usage', '/settings'].some(is) || pathname === '/'
+  const moreActive = ['/inbox', '/usage', '/settings'].some(is) || pathname === '/'
 
   return (
     <>
@@ -70,8 +72,8 @@ export function MobileNav({ unread, health, email }: { unread: number; health: I
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="flex items-stretch">
-          <Tab href="/pipeline" label="Pipeline" icon={ICONS.pipeline} active={is('/pipeline')} />
-          <Tab href="/deals" label="Deals" icon={ICONS.deals} active={is('/deals')} />
+          <Tab href="/pipeline" label="Pipeline" icon={ICONS.pipeline} active={is('/pipeline') || is('/deals')} />
+          <Tab href="/lenders" label="Lenders" icon={ICONS.lenders} active={is('/lenders')} />
           <button
             type="button"
             onClick={() => window.dispatchEvent(new Event(OPEN_ASK_AI_EVENT))}
@@ -102,14 +104,14 @@ export function MobileNav({ unread, health, email }: { unread: number; health: I
           >
             <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-slate-200" />
             <SheetLink href="/" onClick={() => setMoreOpen(false)}>Dashboard</SheetLink>
-            <SheetLink href="/lenders" onClick={() => setMoreOpen(false)}>Lenders</SheetLink>
-            <SheetLink href="/usage" onClick={() => setMoreOpen(false)}>Usage &amp; AI spend</SheetLink>
-            <SheetLink href="/settings" onClick={() => setMoreOpen(false)}>
-              Settings
+            <SheetLink href="/inbox" onClick={() => setMoreOpen(false)}>
+              Inbox
               <span className="ml-2 text-sm text-slate-400">
-                · Inbox {health.level === 'ok' ? 'live' : health.level === 'paused' ? 'paused overnight' : health.level}
+                · {health.level === 'ok' ? 'live' : health.level === 'paused' ? 'paused overnight' : health.level}
               </span>
             </SheetLink>
+            <SheetLink href="/usage" onClick={() => setMoreOpen(false)}>Usage &amp; AI spend</SheetLink>
+            <SheetLink href="/settings" onClick={() => setMoreOpen(false)}>Settings</SheetLink>
             <div className="my-2 border-t border-slate-100" />
             <form action={logout}>
               <button type="submit" className="w-full rounded-lg px-4 py-3 text-left text-base text-red-600 active:bg-slate-100">

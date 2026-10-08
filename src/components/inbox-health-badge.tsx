@@ -21,7 +21,7 @@ const LABEL: Record<InboxHealth['level'], string> = {
 export function InboxHealthBadge({ health }: { health: InboxHealth }) {
   return (
     <Link
-      href="/settings#inbox"
+      href="/inbox"
       title={`${health.headline}${health.detail ? ` — ${health.detail}` : ''}`}
       className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-slate-200 px-2.5 py-0.5 text-xs text-slate-600 hover:bg-slate-50"
     >

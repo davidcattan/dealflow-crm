@@ -27,7 +27,7 @@ export async function getInboxHealth(supabase: SupabaseClient): Promise<InboxHea
   ])
 
   if (!state?.auto_sync_enabled) {
-    return { level: 'off', headline: 'Automatic inbox check is off', detail: 'Turn it on in Settings → Inbox.', lastAutoAt: null }
+    return { level: 'off', headline: 'Automatic inbox check is off', detail: 'Turn it on in the Inbox page.', lastAutoAt: null }
   }
   // Overnight pause, plus a few minutes' grace for the first morning run.
   const now = new Date()
