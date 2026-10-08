@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { InboxControls } from './inbox-controls'
 import { RetryButton } from './retry-button'
+import { AssignToDeal } from './assign-to-deal'
 import { DisconnectButton } from './disconnect-button'
 import { EmailProfile } from './email-profile'
 import { getInboxHealth } from '@/lib/inbox/health'
@@ -30,7 +31,7 @@ export default async function SettingsPage({
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  const [{ data: connections }, { data: syncState }, { data: recent }, health, { data: runs }] = await Promise.all([
+  const [{ data: connections }, { data: syncState }, { data: recent }, health, { data: runs }, { data: dealRows }] = await Promise.all([
     supabase
       .from('outlook_connections')
       .select('id, account_email, connected_by, created_at, updated_at, email_intro, email_signature')
@@ -47,7 +48,12 @@ export default async function SettingsPage({
       .select('id, kind, started_at, finished_at, summary, error')
       .order('started_at', { ascending: false })
       .limit(12),
+    supabase.from('deals').select('id, company_name, status, updated_at').order('updated_at', { ascending: false }),
   ])
+  // Active deals first, then the rest — for "Add to deal".
+  const dealOptions = [...(dealRows ?? [])]
+    .sort((a, b) => Number(['dead', 'old', 'closed'].includes(a.status)) - Number(['dead', 'old', 'closed'].includes(b.status)))
+    .map((d) => ({ id: d.id as string, name: d.company_name as string }))
 
   return (
     <div className="space-y-6">
@@ -204,7 +210,7 @@ export default async function SettingsPage({
         )}
 
         {recent && recent.length > 0 && (
-          <div className="mt-5 overflow-hidden rounded-lg border border-slate-200">
+          <div className="mt-5 rounded-lg border border-slate-200">
             <table className="w-full table-fixed text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
@@ -240,13 +246,13 @@ export default async function SettingsPage({
                         {(m.classification === 'error' ||
                           (m.classification === 'lender_reply' && !m.deal_id)) && <RetryButton messageId={m.id} />}
                       </td>
-                      <td className="truncate px-3 py-2">
+                      <td className={`px-3 py-2 ${m.deal_id ? "truncate" : ""}`}>
                         {m.deal_id ? (
                           <Link href={`/deals/${m.deal_id}`} className="text-slate-800 hover:underline">
                             {deal?.company_name ?? 'Open deal'}
                           </Link>
                         ) : (
-                          <span className="text-slate-400">—</span>
+                          <AssignToDeal messageId={m.id} deals={dealOptions} />
                         )}
                       </td>
                     </tr>

@@ -52,7 +52,7 @@ const INSTRUCTIONS = `You are sorting the inbox of an asset-based lending debt b
 Only use facts stated in the email. Never invent a company, amount or contact. If it is ambiguous whether this is a real deal, choose other.`
 
 export type ClassifyContext = {
-  deals: { ref: string; company_name: string; contact_name: string | null; status: string }[]
+  deals: { ref: string; company_name: string; contact_name: string | null; status: string; hints?: string[] }[]
   senderLenderName: string | null
   threadDealCompany: string | null
   threadLenderName: string | null
@@ -78,8 +78,13 @@ export async function classifyEmail(
       ? `The sender is a colleague at the user's own brokerage firm (@${context.internalFirmDomain}) — NOT a lender. Never classify their email as lender_reply. If it is about a deal in the list (e.g. asking a borrower for documents), classify it as new_deal with existing_deal_ref set and describe what was asked or done; otherwise other.`
       : null,
     context.deals.length > 0
-      ? `Deals in the CRM (status in brackets; "old" deals may still be live):\n${context.deals
-          .map((d) => `${d.ref}: ${d.company_name}${d.contact_name ? ` (contact: ${d.contact_name})` : ''} [${d.status}]`)
+      ? `Deals in the CRM (status in brackets; "old" deals may still be live). "also:" lists the deal's property addresses, related companies/trusts and contact email — an email mentioning any of those is about that deal:\n${context.deals
+          .map(
+            (d) =>
+              `${d.ref}: ${d.company_name}${d.contact_name ? ` (contact: ${d.contact_name})` : ''} [${d.status}]${
+                d.hints?.length ? ` — also: ${d.hints.join('; ')}` : ''
+              }`
+          )
           .join('\n')}`
       : 'There are no deals in the CRM.',
   ].filter(Boolean)

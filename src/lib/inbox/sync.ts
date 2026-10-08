@@ -14,6 +14,8 @@ import { OUTCOME_LABELS, type EmailClassification } from './classify-schema'
 import { recordSubmission } from '@/lib/deals/submissions'
 import { detectSentDrafts } from '@/lib/outlook/sent-tracking'
 import { notify } from '@/lib/notifications'
+import { addresses } from '@/lib/deals/duplicates'
+import type { Snapshot } from '@/lib/snapshot/schema'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
 
 // Deal-worthy attachment types; everything else (calendar invites, vCards,
@@ -44,7 +46,45 @@ export type SyncSummary = {
 }
 
 type Counter = 'newDeals' | 'dealUpdates' | 'lenderReplies' | 'other' | 'errors'
-type Deal = { id: string; company_name: string; contact_name: string | null; status: string }
+type Deal = { id: string; company_name: string; contact_name: string | null; status: string; hints?: string[] }
+
+const INACTIVE = ['dead', 'closed', 'old']
+
+// Other names a deal goes by — property addresses, the companies/trusts in
+// its snapshot, the contact's email — so an email that mentions any of
+// them can be tied to the deal even if it never says the deal's name.
+function dealHints(d: {
+  status: string
+  contact_email?: string | null
+  description?: string | null
+  notes?: string | null
+  deal_type?: string | null
+  snapshot?: unknown
+}): string[] {
+  if (INACTIVE.includes(d.status)) return []
+  const snap = d.snapshot as Snapshot | null | undefined
+  const entityNames = (snap?.entities ?? [])
+    .map((e) => e.name.split(/\s+[—–(]|\s+-\s+/)[0].trim())
+    .filter((n) => n.length >= 5 && !/personal|guarantor|^subject property/i.test(n))
+  const text = [d.description, d.notes, d.deal_type, ...(snap?.entities ?? []).map((e) => e.name)].join(' ')
+  const hints = [...addresses(text), ...entityNames, d.contact_email ?? ''].filter(Boolean)
+  return [...new Set(hints)].slice(0, 6)
+}
+
+// Free backup when the AI can't place an email: a deal whose address or
+// related company name appears in the email. Only a single clear match counts.
+function findDealByText(deals: (Deal & { ref: string })[], text: string): (Deal & { ref: string }) | null {
+  const lower = text.toLowerCase()
+  const emailAddresses = addresses(text)
+  const hits = deals.filter((d) =>
+    (d.hints ?? []).some((h) => {
+      const hint = h.toLowerCase()
+      if (/^\d/.test(hint)) return emailAddresses.has(hint)
+      return hint.length >= 8 && lower.includes(hint)
+    })
+  )
+  return hits.length === 1 ? hits[0] : null
+}
 type Lender = { id: string; name: string; contact_email: string | null; mandate_notes: string | null }
 
 type Context = {
@@ -83,7 +123,10 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
   const { accessToken, accountEmail } = await getValidAccessToken(supabase, connectionId)
   const [{ data: deals }, { data: lenders }, { data: contacts }, { data: matchThreads }, { data: submissionThreads }] =
     await Promise.all([
-      supabase.from('deals').select('id, company_name, contact_name, status').order('created_at', { ascending: false }),
+      supabase
+        .from('deals')
+        .select('id, company_name, contact_name, contact_email, status, description, notes, deal_type, snapshot')
+        .order('created_at', { ascending: false }),
       supabase.from('lenders').select('id, name, contact_email, mandate_notes'),
       supabase.from('lender_contacts').select('lender_id, email'),
       supabase
@@ -97,7 +140,14 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
     ])
   const threads = [...(matchThreads ?? []), ...(submissionThreads ?? [])]
 
-  const refDeals = (deals ?? []).map((d, i) => ({ ...d, ref: `D${i + 1}` }))
+  const refDeals = (deals ?? []).map((d, i) => ({
+    id: d.id as string,
+    company_name: d.company_name as string,
+    contact_name: d.contact_name as string | null,
+    status: d.status as string,
+    hints: dealHints(d),
+    ref: `D${i + 1}`,
+  }))
   const lenderByEmail = new Map<string, string>()
   for (const l of lenders ?? []) if (l.contact_email) lenderByEmail.set(l.contact_email.toLowerCase(), l.id)
   for (const c of contacts ?? []) if (c.email) lenderByEmail.set(c.email.toLowerCase(), c.lender_id)
@@ -143,6 +193,7 @@ async function processMessage(
           company_name: d.company_name,
           contact_name: d.contact_name,
           status: d.status,
+          hints: d.hints,
         })),
         senderLenderName: senderLenderId ? (ctx.lenderById.get(senderLenderId)?.name ?? null) : null,
         internalFirmDomain: internalDomain,
@@ -473,7 +524,11 @@ async function act({
 
   if (kind === 'lender_reply') {
     const reply = classification.lender_reply
-    const dealId = thread?.dealId ?? (reply?.deal_ref ? ctx.dealByRef.get(reply.deal_ref)?.id : undefined) ?? null
+    const dealId =
+      thread?.dealId ??
+      (reply?.deal_ref ? ctx.dealByRef.get(reply.deal_ref)?.id : undefined) ??
+      findDealByText(ctx.deals, `${message.subject}\n${message.bodyText}`)?.id ??
+      null
     const lenderId = thread?.lenderId ?? senderLenderId
     const lender = lenderId ? ctx.lenderById.get(lenderId) : undefined
     const outcomeLabel = reply ? OUTCOME_LABELS[reply.outcome] : 'Replied'
@@ -547,7 +602,10 @@ async function act({
 
   if (kind === 'new_deal' && classification.new_deal) {
     const d = classification.new_deal
-    const existing = d.existing_deal_ref ? ctx.dealByRef.get(d.existing_deal_ref) : undefined
+    const existing =
+      (d.existing_deal_ref ? ctx.dealByRef.get(d.existing_deal_ref) : undefined) ??
+      findDealByText(ctx.deals, `${message.subject}\n${message.bodyText}`) ??
+      undefined
 
     let dealId: string
     let counter: Counter
@@ -620,4 +678,73 @@ async function act({
     counter: 'other',
     record: { classification: 'other', summary: classification.reason, action_taken: 'No action' },
   }
+}
+
+// A person files an email on a deal by hand (no AI). Logs it on the deal,
+// saves its attachments, and for a lender reply puts the lender on the
+// deal's "Lenders sent to" list and remembers the thread so later replies
+// match on their own.
+export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMessageId: string, dealId: string) {
+  const { data: row } = await supabase
+    .from('inbox_messages')
+    .select('id, graph_message_id, mailbox, classification, from_email, subject, summary, lender_id, conversation_id, body_text')
+    .eq('id', inboxMessageId)
+    .single()
+  if (!row) throw new Error('Email record not found')
+  const { data: deal } = await supabase.from('deals').select('id, company_name').eq('id', dealId).single()
+  if (!deal) throw new Error('Deal not found')
+
+  const { data: lender } = row.lender_id
+    ? await supabase.from('lenders').select('id, name').eq('id', row.lender_id).single()
+    : { data: null }
+  const isLenderReply = row.classification === 'lender_reply'
+  const who = lender?.name ?? row.from_email ?? 'someone'
+  const summary = row.summary ? ` ${row.summary}` : ''
+
+  await supabase.from('deal_updates').insert({
+    deal_id: dealId,
+    lender_id: lender?.id ?? null,
+    entry_date: today(),
+    note: isLenderReply ? `Lender reply — ${who}:${summary}` : `Email from ${who}: "${row.subject ?? ''}".${summary}`,
+    source: 'email',
+  })
+
+  const actions = [`Filed on deal by hand`]
+  if (isLenderReply && lender) {
+    await recordSubmission(supabase, { dealId, lenderId: lender.id, conversationId: row.conversation_id })
+    actions.push('lender added to "Lenders sent to"')
+  }
+
+  // Attachments and full text from Outlook (free) — best effort.
+  let bodyText = row.body_text as string | null
+  try {
+    const connections = await listConnections(supabase)
+    const source =
+      connections.find((c) => row.mailbox && c.account_email.toLowerCase() === String(row.mailbox).toLowerCase()) ?? connections[0]
+    if (source) {
+      const { accessToken } = await getValidAccessToken(supabase, source.id)
+      const message = await getInboxMessage(accessToken, row.graph_message_id)
+      bodyText = bodyText ?? message.bodyText
+      if (message.hasAttachments) {
+        const saved = await saveAttachments(supabase, dealId, await getMessageAttachments(accessToken, message.id))
+        if (saved) actions.push(`${saved} attachment${saved === 1 ? '' : 's'} saved`)
+      }
+    }
+  } catch {
+    // Email no longer reachable in Outlook — the log entry is still made.
+  }
+
+  await supabase
+    .from('inbox_messages')
+    .update({ deal_id: dealId, body_text: bodyText, action_taken: actions.join(', ') })
+    .eq('id', row.id)
+
+  await notify(supabase, {
+    kind: isLenderReply ? 'lender_reply' : 'deal_update',
+    title: isLenderReply ? `${who} replied on ${deal.company_name}` : `Deal updated: ${deal.company_name}`,
+    body: `${row.subject ? `"${row.subject}" — ` : ''}${row.summary ?? ''} (filed by hand)`,
+    dealId,
+    lenderId: lender?.id ?? null,
+  })
+  return actions.join(', ')
 }

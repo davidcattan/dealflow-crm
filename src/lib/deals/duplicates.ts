@@ -29,7 +29,7 @@ const SUFFIX: Record<string, string> = {
 }
 
 // "6224 Mount Salem Cir" → "6224 mount salem cir"
-function addresses(text: string): Set<string> {
+export function addresses(text: string): Set<string> {
   const out = new Set<string>()
   for (const m of text.matchAll(STREET)) {
     const suffix = m[3].toLowerCase()
