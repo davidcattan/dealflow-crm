@@ -5,6 +5,8 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 const SORT_OPTIONS = [
   { value: 'name_asc', label: 'Name (A–Z)' },
   { value: 'name_desc', label: 'Name (Z–A)' },
+  { value: 'size_desc', label: 'Loan size (largest first)' },
+  { value: 'size_asc', label: 'Loan size (smallest first)' },
   { value: 'min_loan_asc', label: 'Min loan (low–high)' },
   { value: 'min_loan_desc', label: 'Min loan (high–low)' },
   { value: 'max_loan_asc', label: 'Max loan (low–high)' },
@@ -12,13 +14,7 @@ const SORT_OPTIONS = [
   { value: 'recent', label: 'Recently added' },
 ]
 
-export function LenderFilterBar({
-  typeOptions,
-  unsizedCount,
-}: {
-  typeOptions: { key: string; label: string; count: number }[]
-  unsizedCount: number
-}) {
+export function LenderFilterBar({ typeOptions }: { typeOptions: { key: string; label: string; count: number }[] }) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -26,8 +22,6 @@ export function LenderFilterBar({
   const q = searchParams.get('q') ?? ''
   const sort = searchParams.get('sort') ?? 'name_asc'
   const type = searchParams.get('type') ?? ''
-  const size = searchParams.get('size') ?? ''
-  const unsized = searchParams.get('unsized') === '1'
 
   function updateParams(next: Record<string, string>) {
     const params = new URLSearchParams(searchParams.toString())
@@ -58,25 +52,6 @@ export function LenderFilterBar({
         />
       </form>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          const input = e.currentTarget.elements.namedItem('size') as HTMLInputElement
-          updateParams({ size: input.value.trim() })
-        }}
-        className="flex items-center gap-1"
-      >
-        <input
-          key={size}
-          type="text"
-          name="size"
-          defaultValue={size}
-          placeholder="Deal size, e.g. 2M"
-          title="Shows lenders whose loan range fits this amount (press Enter)"
-          className="w-40 rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-        />
-      </form>
-
       <select
         value={type}
         onChange={(e) => updateParams({ type: e.target.value })}
@@ -103,21 +78,9 @@ export function LenderFilterBar({
         ))}
       </select>
 
-      {size && unsizedCount > 0 && (
-        <label className="flex items-center gap-1.5 text-xs text-slate-500">
-          <input
-            type="checkbox"
-            checked={unsized}
-            onChange={(e) => updateParams({ unsized: e.target.checked ? '1' : '' })}
-            className="rounded border-slate-300"
-          />
-          Include {unsizedCount} with no size listed
-        </label>
-      )}
-
-      {(q || type || size) && (
+      {(q || type) && (
         <button
-          onClick={() => updateParams({ q: '', type: '', size: '', unsized: '' })}
+          onClick={() => updateParams({ q: '', type: '' })}
           className="text-sm text-slate-500 hover:underline"
         >
           Clear filters
