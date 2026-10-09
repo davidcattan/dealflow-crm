@@ -2,8 +2,9 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 // /api/cron is called by Vercel with no user session; those routes check
-// CRON_SECRET themselves instead.
-const PUBLIC_PATHS = ['/login', '/auth', '/api/cron', '/manifest.webmanifest']
+// CRON_SECRET themselves instead. /api/shortcut is the iPhone shortcut,
+// which checks its personal key; /shortcut holds the file to install it.
+const PUBLIC_PATHS = ['/login', '/auth', '/api/cron', '/api/shortcut', '/shortcut/', '/manifest.webmanifest']
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request })

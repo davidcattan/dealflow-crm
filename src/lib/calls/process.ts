@@ -70,6 +70,17 @@ type Transcript = {
   utterances?: { speaker: string; text: string }[] | null
 }
 
+// Background safety net (the scheduled job): moves along any call from the
+// last day that's still processing, e.g. one sent from the phone shortcut.
+export async function advancePendingCalls(supabase: SupabaseClient) {
+  const { data } = await supabase
+    .from('deal_calls')
+    .select('id')
+    .in('status', ['uploaded', 'transcribing', 'summarizing'])
+    .gte('created_at', new Date(Date.now() - 86_400_000).toISOString())
+  for (const c of data ?? []) await advanceCall(supabase, c.id as string).catch(() => {})
+}
+
 // Moves a call along: checks the transcript, then writes the notes.
 // Safe to call repeatedly (the page polls it while a call is processing).
 export async function advanceCall(supabase: SupabaseClient, callId: string) {

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { DisconnectButton } from './disconnect-button'
 import { EmailProfile } from './email-profile'
+import { ShortcutKeys } from './shortcut-keys'
 
 export default async function SettingsPage({
   searchParams,
@@ -13,16 +14,24 @@ export default async function SettingsPage({
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  const { data: connections } = await supabase
-    .from('outlook_connections')
-    .select('id, account_email, connected_by, created_at, updated_at, email_intro, email_signature')
-    .order('created_at', { ascending: true })
+  const [{ data: connections }, { data: keys }] = await Promise.all([
+    supabase
+      .from('outlook_connections')
+      .select('id, account_email, connected_by, created_at, updated_at, email_intro, email_signature')
+      .order('created_at', { ascending: true }),
+    // Your own shortcut keys (empty until migration 034 is run).
+    supabase
+      .from('api_keys')
+      .select('id, label, created_at, last_used_at')
+      .is('revoked_at', null)
+      .order('created_at', { ascending: false }),
+  ])
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Settings</h1>
-        <p className="mt-1 text-sm text-slate-500">Mailbox connections and your email intro &amp; signature.</p>
+        <p className="mt-1 text-sm text-slate-500">Mailbox connections, your email intro &amp; signature, and the iPhone shortcut.</p>
       </div>
 
       {outlook_connected && (
@@ -84,6 +93,18 @@ export default async function SettingsPage({
           Sign in with your own work email. Connecting a mailbox that&apos;s already listed just refreshes it — it never
           removes anyone else&apos;s.
         </p>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">iPhone shortcut — send recordings from Voice Memos</h2>
+        <p className="mb-4 mt-1 text-sm text-slate-600">
+          Adds <span className="font-medium">Send to JED CRM</span> to your iPhone&apos;s Share menu, so a Voice Memo (or a
+          WhatsApp voice note) goes straight onto a deal as a call. Each person makes their own key.
+        </p>
+        <ShortcutKeys
+          keys={(keys ?? []) as { id: string; label: string; created_at: string; last_used_at: string | null }[]}
+          installUrl="/shortcut/Send-to-JED-CRM.shortcut"
+        />
       </section>
 
       <p className="text-sm text-slate-500">

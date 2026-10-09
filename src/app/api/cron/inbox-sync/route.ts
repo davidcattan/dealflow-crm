@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { runInboxSync, type SyncSummary } from '@/lib/inbox/sync'
 import { startRun, finishRun } from '@/lib/inbox/run-log'
 import { isQuietHours } from '@/lib/inbox/quiet-hours'
+import { advancePendingCalls } from '@/lib/calls/process'
 
 // Needs Fluid Compute on Vercel Pro (max 800s).
 export const maxDuration = 800
@@ -17,14 +18,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Paused overnight; the first run after 7am catches up.
-  if (isQuietHours()) {
-    return NextResponse.json({ skipped: 'Overnight pause (10pm–7am ET)' })
-  }
-
   const supabase = createAdminClient()
   if (!supabase) {
     return NextResponse.json({ skipped: 'SUPABASE_SERVICE_ROLE_KEY is not configured' })
+  }
+
+  // Finish any recorded calls still processing (cheap; runs even overnight).
+  await advancePendingCalls(supabase).catch((err) => console.error('Pending calls failed', err))
+
+  // Paused overnight; the first run after 7am catches up.
+  if (isQuietHours()) {
+    return NextResponse.json({ skipped: 'Overnight pause (10pm–7am ET)' })
   }
 
   const { data: state } = await supabase.from('inbox_sync_state').select('auto_sync_enabled').eq('id', 1).single()
