@@ -5,7 +5,18 @@
 
 export type NextStepUrgency = 'you' | 'follow_up' | 'waiting' | 'done'
 
-// rank: how pressing it is across all deals (1 = most) — the To do list's order.
+// rank: how pressing it is across all deals — the To do list's order and
+// sections (see TODO_GROUPS): 1 answer lenders, 2 call to-dos, 3 borrower /
+// missing docs, 4 send out, 5 everyone passed, 6 lender follow-ups, 9+ waiting.
+export const TODO_GROUPS: Record<number, string> = {
+  1: 'Answer lenders',
+  2: 'From your calls',
+  3: 'Borrowers & missing docs',
+  4: 'Send out deals',
+  5: 'Everyone passed',
+  6: 'Follow up with lenders',
+}
+
 export type NextStep = { urgency: NextStepUrgency; text: string; detail?: string; rank?: number }
 
 export type NextStepInput = {
@@ -45,17 +56,12 @@ export function nextStep(d: NextStepInput): NextStep {
   const termSheets = by('term_sheet')
   if (termSheets.length) return { rank: 1, urgency: 'you', text: `Review the term sheet from ${names(termSheets.map((s) => s.lender))} with the borrower` }
 
-  if (d.callStep) {
-    const day = new Date(d.callStep.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' })
-    return { rank: 2, urgency: 'you', text: d.callStep.text, detail: `From your call on ${day}` }
-  }
-
   const needInfo = by('needs_more_info')
   if (needInfo.length) {
     const first = needInfo[0]
     const asked = d.requestsByLender?.[first.lender]
     return {
-      rank: 3,
+      rank: 1,
       urgency: 'you',
       text: `Send ${names(needInfo.map((s) => s.lender))} what they asked for`,
       detail: asked ? `${first.lender} asked for: ${asked}` : undefined,
@@ -63,18 +69,24 @@ export function nextStep(d: NextStepInput): NextStep {
   }
 
   const interested = by('interested')
-  if (interested.length) return { rank: 4, urgency: 'you', text: `Set up a call with ${names(interested.map((s) => s.lender))} — interested` }
+  if (interested.length) return { rank: 1, urgency: 'you', text: `Set up a call with ${names(interested.map((s) => s.lender))} — interested` }
+
+  // Your to-dos from a recent call come right after answering lenders.
+  if (d.callStep) {
+    const day = new Date(d.callStep.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' })
+    return { rank: 2, urgency: 'you', text: d.callStep.text, detail: `From your call on ${day}` }
+  }
 
   if (d.underwritingQueued) {
     return { rank: 9, urgency: 'waiting', text: 'Underwriting queued — tell Claude Code "process the underwriting queue"' }
   }
 
   if (subs.length === 0) {
-    if (d.docCount === 0) return { rank: 7, urgency: 'you', text: 'Get documents from the borrower' }
-    if (!d.hasUnderwriting) return { rank: 7, urgency: 'you', text: `Underwrite the deal (${d.docCount} document${d.docCount === 1 ? '' : 's'} in)` }
-    if (d.matchCount === 0) return { rank: 7, urgency: 'you', text: 'Find matching lenders' }
+    if (d.docCount === 0) return { rank: 3, urgency: 'you', text: 'Get documents from the borrower' }
+    if (!d.hasUnderwriting) return { rank: 4, urgency: 'you', text: `Underwrite the deal (${d.docCount} document${d.docCount === 1 ? '' : 's'} in)` }
+    if (d.matchCount === 0) return { rank: 4, urgency: 'you', text: 'Find matching lenders' }
     return {
-      rank: 6,
+      rank: 4,
       urgency: 'you',
       text: `Send to your top lenders${d.draftCount ? ` (${d.draftCount} draft${d.draftCount === 1 ? '' : 's'} ready)` : ''}`,
     }
@@ -86,14 +98,17 @@ export function nextStep(d: NextStepInput): NextStep {
     return {
       rank: 5,
       urgency: 'you',
-      text: subs.length === 1 ? `${subs[0].lender} passed — find new lenders` : `All ${subs.length} lenders passed — find new lenders`,
+      text:
+        subs.length === 1
+          ? `${subs[0].lender} passed — find new lenders, or mark the deal dead`
+          : `All ${subs.length} lenders passed — find new lenders, or mark the deal dead`,
     }
   }
 
   const overdue = waiting.filter((s) => daysSince(s.lastActivityAt) >= FOLLOW_UP_AFTER_DAYS)
   if (overdue.length) {
     const days = Math.max(...overdue.map((s) => daysSince(s.lastActivityAt)))
-    return { rank: 8, urgency: 'follow_up', text: `Follow up with ${names(overdue.map((s) => s.lender))} — no reply in ${days} days` }
+    return { rank: 6, urgency: 'follow_up', text: `Follow up with ${names(overdue.map((s) => s.lender))} — no reply in ${days} days` }
   }
 
   const sentDays = Math.max(...waiting.map((s) => daysSince(s.sentOn ?? s.lastActivityAt)))

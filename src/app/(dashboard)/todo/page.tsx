@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { loadLastActivity, loadNextSteps } from '@/lib/deals/load-next-steps'
-import { URGENCY_STYLES, type NextStep } from '@/lib/deals/next-step'
+import { TODO_GROUPS, URGENCY_STYLES, type NextStep } from '@/lib/deals/next-step'
 
 // "What do I need to do next?" — every active deal's next step in one list,
 // most pressing first. Worked out from the deals themselves (no AI, free);
@@ -62,42 +62,38 @@ export default async function TodoPage() {
     // Most pressing kind first; within a kind, whatever's been sitting longest.
     .sort((a, b) => (a.step.rank ?? 9) - (b.step.rank ?? 9) || a.lastActivity.localeCompare(b.lastActivity))
 
-  const doNow = items.filter((i) => i.step.urgency === 'you')
-  const followUp = items.filter((i) => i.step.urgency === 'follow_up')
-  const waiting = items.filter((i) => i.step.urgency === 'waiting' || i.step.urgency === 'done')
+  // Sections in the team's order of importance; numbered straight through.
+  const todo = items.filter((i) => (i.step.rank ?? 9) <= 6)
+  const waiting = items.filter((i) => (i.step.rank ?? 9) > 6)
+  const sections = Object.entries(TODO_GROUPS)
+    .map(([rank, title]) => ({ rank: Number(rank), title, items: todo.filter((i) => i.step.rank === Number(rank)) }))
+    .filter((g) => g.items.length)
+  // Each item's number in the whole list.
+  const number = new Map(sections.flatMap((g) => g.items).map((i, idx) => [i.id, idx + 1]))
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">To do</h1>
         <p className="mt-1 text-sm text-slate-500">
-          {doNow.length + followUp.length
-            ? `${doNow.length + followUp.length} thing${doNow.length + followUp.length === 1 ? '' : 's'} to do across your deals, most important first.`
+          {todo.length
+            ? `${todo.length} thing${todo.length === 1 ? '' : 's'} to do across your deals, most important first.`
             : 'Nothing needs you right now — every deal is waiting on someone else.'}
         </p>
       </div>
 
-      {doNow.length > 0 && (
-        <section className="space-y-2.5">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-red-700">Do now ({doNow.length})</h2>
+      {sections.map((g) => (
+        <section key={g.rank} className="space-y-2.5">
+          <h2 className={`text-xs font-semibold uppercase tracking-wide ${g.rank === 6 ? 'text-amber-700' : 'text-slate-700'}`}>
+            {g.title} ({g.items.length})
+          </h2>
           <ol className="space-y-2.5">
-            {doNow.map((i, idx) => (
-              <Row key={i.id} item={i} n={idx + 1} />
+            {g.items.map((i) => (
+              <Row key={i.id} item={i} n={number.get(i.id)} />
             ))}
           </ol>
         </section>
-      )}
-
-      {followUp.length > 0 && (
-        <section className="space-y-2.5">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-700">Follow up ({followUp.length})</h2>
-          <ul className="space-y-2.5">
-            {followUp.map((i) => (
-              <Row key={i.id} item={i} />
-            ))}
-          </ul>
-        </section>
-      )}
+      ))}
 
       {waiting.length > 0 && (
         <details className="group space-y-2.5">
