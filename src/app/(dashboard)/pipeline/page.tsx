@@ -153,7 +153,7 @@ export default async function PipelinePage({
     supabase
       .from('deals')
       .select(
-        'id, company_name, industry, loan_type, status, updated_at, created_at, contact_name, rep_name, notes, activity_score, deal_matches(score), deal_submissions(status)'
+        'id, company_name, industry, loan_type, status, updated_at, created_at, contact_name, rep_name, notes, activity_score, source_message_id, deal_matches(score), deal_submissions(status)'
       )
       .in('status', PIPELINE_QUERY_STATUSES)
       .order('updated_at', { ascending: false }),
@@ -164,7 +164,20 @@ export default async function PipelinePage({
   ])
 
   const ids = (rawDeals ?? []).map((d) => d.id as string)
-  const [nextSteps, lastActivity] = await Promise.all([loadNextSteps(supabase, ids), loadLastActivity(supabase, ids)])
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const [nextSteps, lastActivity, { data: views, error: viewsError }] = await Promise.all([
+    loadNextSteps(supabase, ids),
+    loadLastActivity(supabase, ids),
+    supabase.from('deal_views').select('deal_id').eq('user_id', user?.id ?? '').in('deal_id', ids.concat('00000000-0000-0000-0000-000000000000')),
+  ])
+  // Deals the inbox created that you haven't opened yet (none until
+  // migration 032 is run).
+  const seen = new Set((views ?? []).map((v) => v.deal_id as string))
+  const unseenFromEmail = new Set(
+    viewsError ? [] : (rawDeals ?? []).filter((d) => d.source_message_id && !seen.has(d.id as string)).map((d) => d.id as string)
+  )
   // "Updated" = last activity of any kind, not just edits to the deal itself.
   const deals = ((rawDeals ?? []) as PipelineDeal[]).map((d) => ({ ...d, updated_at: lastActivity.get(d.id) ?? d.updated_at }))
 
@@ -240,6 +253,12 @@ export default async function PipelinePage({
             ) : (
               <>
                 {deals.length} active deal{deals.length === 1 ? '' : 's'}
+                {unseenFromEmail.size > 0 && (
+                  <span className="text-sky-700">
+                    {' '}
+                    · {unseenFromEmail.size} new from email
+                  </span>
+                )}
               </>
             )}
           </p>
@@ -300,6 +319,7 @@ export default async function PipelinePage({
           lenders: lenderSummary(deal),
           updatedLabel: daysAgo(deal.updated_at),
           step: nextSteps.get(deal.id) ?? null,
+          newFromEmail: unseenFromEmail.has(deal.id),
         }))}
         emptyText={
           activeStage || industryParam || loanTypeParam || q ? 'No deals match this filter.' : 'No active deals right now.'

@@ -16,6 +16,19 @@ export type PipelineRow = {
   lenders: string | null
   updatedLabel: string
   step: NextStep | null
+  // Created from an email and you haven't opened it yet.
+  newFromEmail?: boolean
+}
+
+function NewFromEmail() {
+  return (
+    <span
+      title="Imported from email — this tag goes away once you open the deal"
+      className="shrink-0 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-800"
+    >
+      New from email
+    </span>
+  )
 }
 
 function Chevron({ open }: { open: boolean }) {
@@ -107,6 +120,11 @@ export function PipelineTable({ rows, emptyText, sort = '' }: { rows: PipelineRo
                           <Link href={`/deals/${r.id}`} title={r.company_name} className="truncate font-medium text-slate-800 hover:underline">
                             {r.company_name}
                           </Link>
+                          {r.newFromEmail && (
+                            <span className="ml-2">
+                              <NewFromEmail />
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="hidden px-4 py-2 text-slate-600 sm:table-cell">
@@ -185,6 +203,11 @@ function PhoneCards({ rows, emptyText }: { rows: PipelineRow[]; emptyText: strin
                   {STATUS_LABELS[displayStatus(r.status as DealStatus)]}
                 </span>
               </div>
+              {r.newFromEmail && (
+                <p className="mt-1">
+                  <NewFromEmail />
+                </p>
+              )}
               <p className="mt-0.5 text-sm text-slate-500">
                 {[r.loan_type, r.updatedLabel].filter(Boolean).join(' · ')}
               </p>

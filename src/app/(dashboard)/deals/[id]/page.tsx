@@ -101,6 +101,12 @@ export default async function DealDetailPage({
   const {
     data: { user },
   } = await supabase.auth.getUser()
+  // Opening the deal clears its "New from email" tag on the Pipeline.
+  if (user) {
+    await supabase
+      .from('deal_views')
+      .upsert({ user_id: user.id, deal_id: id }, { onConflict: 'user_id,deal_id', ignoreDuplicates: true })
+  }
   const [{ data: submissionRows }, { data: lenderRows }, { data: lenderEmails }, dealEmails, duplicates, { data: allDeals }, { data: mailboxRows }, { data: callRows }] = await Promise.all([
     supabase
       .from('deal_submissions')
