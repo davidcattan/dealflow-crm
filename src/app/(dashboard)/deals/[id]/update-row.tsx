@@ -14,6 +14,7 @@ export function UpdateRow({
   lenderName: string | null
 }) {
   const [editing, setEditing] = useState(false)
+  const [open, setOpen] = useState(false)
   const [note, setNote] = useState(update.note)
   const [date, setDate] = useState(update.entry_date ?? update.created_at.slice(0, 10))
   const [pending, startTransition] = useTransition()
@@ -68,14 +69,15 @@ export function UpdateRow({
     )
   }
 
+  // Phones: one line each; tap to read the rest (and get Edit / Delete).
   return (
-    <li className="flex items-start justify-between gap-3 py-3 text-sm">
-      <div className="min-w-0">
+    <li className="flex items-start justify-between gap-3 py-3 text-sm max-sm:flex-col max-sm:gap-1.5 max-sm:py-2.5">
+      <div className={`min-w-0 max-sm:w-full max-sm:cursor-pointer ${open ? '' : 'max-sm:line-clamp-1'}`} onClick={() => setOpen((v) => !v)}>
         <span className="mr-2 font-medium text-slate-700">{shownDate}</span>
         {lenderName && <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">{lenderName}</span>}
-        <span className="text-slate-600 [overflow-wrap:anywhere]">{update.note}</span>
+        <span className="whitespace-pre-line text-slate-600 [overflow-wrap:anywhere]">{update.note}</span>
       </div>
-      <div className="flex shrink-0 gap-3 text-xs">
+      <div className={`flex shrink-0 gap-3 text-xs ${open ? '' : 'max-sm:hidden'}`}>
         <button type="button" onClick={() => setEditing(true)} className="text-slate-500 hover:underline">
           Edit
         </button>

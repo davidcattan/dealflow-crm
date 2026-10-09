@@ -254,7 +254,7 @@ export function CallRecorder({ target, whoOptions, hint }: { target: CallTarget;
             className="hidden"
             onChange={(e) => e.target.files?.[0] && uploadFile(e.target.files[0])}
           />
-          <span className="text-xs text-slate-400">{hint}</span>
+          <span className="text-xs text-slate-400 max-sm:hidden">{hint}</span>
         </div>
       )}
       {(error || (here || rec.state === 'idle' ? rec.error : null)) && (
@@ -436,6 +436,7 @@ function EditNotes({
 function CallCard({ call, whoOptions }: { call: CallRow; whoOptions?: WhoOptions }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(
     () => new Set(call.suggestions.map((s) => s.key).filter((k) => !call.applied.includes(k))),
   )
@@ -514,12 +515,13 @@ function CallCard({ call, whoOptions }: { call: CallRow; whoOptions?: WhoOptions
 
   const open = call.suggestions.filter((s) => !call.applied.includes(s.key))
   return (
-    <div className="rounded-lg border border-slate-200 p-4 text-sm">
+    <div className="rounded-lg border border-slate-200 p-4 text-sm max-sm:p-3.5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="font-medium text-slate-900">
+        {/* Phones: tap the title to open the call; it starts as one line. */}
+        <span className="font-medium text-slate-900 max-sm:cursor-pointer" onClick={() => setExpanded((v) => !v)}>
           📞 {notes.title} {meta}
         </span>
-        <span className="flex gap-3">
+        <span className={`flex gap-3 ${expanded ? '' : 'max-sm:hidden'}`}>
           {!editing && (
             <button type="button" onClick={() => setEditing(true)} className="text-xs text-slate-400 hover:text-slate-700">
               Edit
@@ -530,6 +532,17 @@ function CallCard({ call, whoOptions }: { call: CallRow; whoOptions?: WhoOptions
           </button>
         </span>
       </div>
+      {!expanded && (
+        <button type="button" onClick={() => setExpanded(true)} className="mt-1 block w-full text-left sm:hidden">
+          <span className="line-clamp-1 text-slate-600">{notes.summary}</span>
+          {open.length > 0 && (
+            <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+              {open.length} suggested update{open.length === 1 ? '' : 's'} to review
+            </span>
+          )}
+        </button>
+      )}
+      <div className={expanded ? '' : 'max-sm:hidden'}>
       {editing ? (
         <EditNotes call={call} notes={notes} whoOptions={whoOptions} onDone={() => setEditing(false)} />
       ) : (
@@ -618,6 +631,7 @@ function CallCard({ call, whoOptions }: { call: CallRow; whoOptions?: WhoOptions
           )}
         </div>
       )}
+      </div>
     </div>
   )
 }

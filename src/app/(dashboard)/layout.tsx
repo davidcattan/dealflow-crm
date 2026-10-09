@@ -34,6 +34,9 @@ export default async function DashboardLayout({
               <Link href="/" className="whitespace-nowrap hover:text-slate-900">
                 Dashboard
               </Link>
+              <Link href="/todo" className="whitespace-nowrap hover:text-slate-900">
+                To do
+              </Link>
               <Link href="/pipeline" className="whitespace-nowrap hover:text-slate-900">
                 Pipeline
               </Link>

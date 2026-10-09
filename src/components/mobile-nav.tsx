@@ -24,6 +24,7 @@ const ICONS = {
   bell: 'M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0',
   lenders:
     'M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21',
+  todo: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
   more: 'M6.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm6 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm6 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z',
 }
 
@@ -73,6 +74,7 @@ export function MobileNav({ unread, health, email }: { unread: number; health: I
       >
         <div className="flex items-stretch">
           <Tab href="/pipeline" label="Pipeline" icon={ICONS.pipeline} active={is('/pipeline') || is('/deals')} />
+          <Tab href="/todo" label="To do" icon={ICONS.todo} active={is('/todo')} />
           <Tab href="/lenders" label="Lenders" icon={ICONS.lenders} active={is('/lenders')} />
           <button
             type="button"

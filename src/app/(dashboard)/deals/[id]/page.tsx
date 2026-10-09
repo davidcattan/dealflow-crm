@@ -219,17 +219,20 @@ export default async function DealDetailPage({
         )
       : null
 
-  const docsWithUrls = await Promise.all(
-    ((documents ?? []) as DocumentRecord[]).map(async (doc) => {
-      const { data } = await supabase.storage
-        .from('borrower-documents')
-        .createSignedUrl(doc.storage_path, 60 * 10)
-      const { data: dl } = await supabase.storage
-        .from('borrower-documents')
-        .createSignedUrl(doc.storage_path, 60 * 60, { download: doc.file_name })
-      return { ...doc, url: data?.signedUrl ?? null, downloadUrl: dl?.signedUrl ?? null }
-    })
-  )
+  // Open links for every document in one request; download links are made
+  // when clicked.
+  const docList = (documents ?? []) as DocumentRecord[]
+  const { data: viewUrls } = docList.length
+    ? await supabase.storage.from('borrower-documents').createSignedUrls(
+        docList.map((d) => d.storage_path),
+        60 * 10
+      )
+    : { data: [] as { signedUrl: string | null }[] }
+  const docsWithUrls = docList.map((doc, i) => ({
+    ...doc,
+    url: viewUrls?.[i]?.signedUrl ?? null,
+    downloadUrl: `/api/deals/${deal.id}/documents/${doc.id}/download`,
+  }))
 
   const isPast = ['dead', 'old', 'closed'].includes(deal.status)
   const dealActions = (
@@ -457,7 +460,7 @@ export default async function DealDetailPage({
               className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
-          <div className="flex-1">
+          <div className="flex-1 max-sm:order-first max-sm:basis-full">
             <label className="block text-xs font-medium text-slate-600">
               Note
             </label>
@@ -505,19 +508,19 @@ export default async function DealDetailPage({
           <ul className="mt-4 divide-y divide-slate-100">
             {dealEmails.map((e) => (
               <li key={e.id} className="py-3 text-sm">
-                <details>
+                <details className="group">
                   <summary className="cursor-pointer list-none">
                     <span className="mr-2 text-xs text-slate-400">
                       {e.received_at ? new Date(e.received_at).toLocaleDateString() : ''}
                     </span>
                     <span className="font-medium text-slate-800">{e.subject || '(no subject)'}</span>
-                    <span className="text-slate-500"> — {e.from_email}</span>
+                    <span className="text-slate-500 max-sm:hidden"> — {e.from_email}</span>
                     {mailboxLabel(e.mailbox, e.classification === 'sent') && (
                       <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
                         {mailboxLabel(e.mailbox, e.classification === 'sent')}
                       </span>
                     )}
-                    {e.summary && <p className="mt-1 text-slate-600">{e.summary}</p>}
+                    {e.summary && <p className="mt-1 text-slate-600 max-sm:line-clamp-1 max-sm:group-open:line-clamp-none">{e.summary}</p>}
                     <span className="mt-1 inline-block text-xs text-slate-400 hover:underline">
                       {e.body_text ? 'Show full email' : 'Full text not stored (read before this was added)'}
                     </span>

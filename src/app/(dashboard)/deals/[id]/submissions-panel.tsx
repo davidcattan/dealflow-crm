@@ -207,12 +207,31 @@ function LenderCard({ dealId, sub, items }: { dealId: string; sub: SubmissionRow
   const [showAll, setShowAll] = useState(false)
   const [note, setNote] = useState('')
   const [pending, startTransition] = useTransition()
+  // Phones: one glanceable line per lender; tap to open the rest.
+  const [open, setOpen] = useState(false)
   const visible = showAll ? items : items.slice(0, 3)
+  const latest = items[0]
 
   return (
-    <li className="rounded-lg border border-slate-200 p-4">
+    <li className="rounded-lg border border-slate-200 p-4 max-sm:p-0">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="block w-full px-3.5 py-3 text-left sm:hidden">
+        <span className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate font-medium text-slate-900">{sub.lender_name}</span>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${SUBMISSION_STYLES[sub.status]}`}>
+            {SUBMISSION_LABELS[sub.status]}
+          </span>
+          <span className={`shrink-0 text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
+        </span>
+        {!open && latest && (
+          <span className="mt-0.5 block truncate text-xs text-slate-500">
+            {shortDate(latest.at)} · {latest.subject ? `${latest.subject} — ` : ''}
+            {latest.text}
+          </span>
+        )}
+      </button>
+      <div className={`max-sm:border-t max-sm:border-slate-100 max-sm:px-3.5 max-sm:pb-3.5 max-sm:pt-3 ${open ? '' : 'max-sm:hidden'}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2 max-sm:hidden">
           <Link href={`/lenders/${sub.lender_id}`} className="truncate font-medium text-slate-800 hover:underline">
             {sub.lender_name}
           </Link>
@@ -256,9 +275,8 @@ function LenderCard({ dealId, sub, items }: { dealId: string; sub: SubmissionRow
 
       {items.length > 0 && (
         <ul className="mt-3 space-y-2 border-l-2 border-slate-100 pl-3">
-          {visible.map((it, i) => (
-            // Phones show just the latest line until "Show all".
-            <li key={it.id} className={`text-sm ${!showAll && i > 0 ? 'max-sm:hidden' : ''}`}>
+          {visible.map((it) => (
+            <li key={it.id} className="text-sm">
               <span className="mr-2 text-xs text-slate-400">{shortDate(it.at)}</span>
               {it.kind === 'email' && it.sentBy ? (
                 <>
@@ -284,11 +302,11 @@ function LenderCard({ dealId, sub, items }: { dealId: string; sub: SubmissionRow
           ))}
         </ul>
       )}
-      {items.length > 1 && (
+      {items.length > 3 && (
         <button
           type="button"
           onClick={() => setShowAll((v) => !v)}
-          className={`mt-2 text-xs text-slate-500 hover:underline ${items.length > 3 ? '' : 'sm:hidden'}`}
+          className="mt-2 text-xs text-slate-500 hover:underline"
         >
           {showAll ? 'Show less' : `Show all ${items.length} updates`}
         </button>
@@ -317,6 +335,7 @@ function LenderCard({ dealId, sub, items }: { dealId: string; sub: SubmissionRow
           Add
         </button>
       </form>
+      </div>
     </li>
   )
 }
