@@ -2,10 +2,11 @@
 
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { STATUS_COLORS, STATUS_LABELS, displayStatus, type DealStatus } from '@/lib/types'
 import type { NextStep } from '@/lib/deals/next-step'
 import { StatusSelect } from './status-select'
+import { updateDealStage } from './actions'
 
 export type PipelineRow = {
   id: string
@@ -33,7 +34,12 @@ function NewFromEmail() {
 
 function Chevron({ open }: { open: boolean }) {
   return (
-    <svg viewBox="0 0 20 20" fill="currentColor" className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true">
+    <svg
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`}
+      aria-hidden="true"
+    >
       <path d="M7.2 4.2a1 1 0 0 1 1.4 0l5.1 5.1a1 1 0 0 1 0 1.4l-5.1 5.1a1 1 0 1 1-1.4-1.4L11.6 10 7.2 5.6a1 1 0 0 1 0-1.4Z" />
     </svg>
   )
@@ -41,7 +47,17 @@ function Chevron({ open }: { open: boolean }) {
 
 // A column header you click to sort; click again to flip. ▼/▲ shows the
 // active sort, a faint arrow the others.
-function SortHeader({ label, keyName, sort, firstDir = 'asc' }: { label: string; keyName: string; sort: string; firstDir?: 'asc' | 'desc' }) {
+function SortHeader({
+  label,
+  keyName,
+  sort,
+  firstDir = 'asc',
+}: {
+  label: string
+  keyName: string
+  sort: string
+  firstDir?: 'asc' | 'desc'
+}) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const active = sort === `${keyName}_asc` || sort === `${keyName}_desc`
@@ -49,15 +65,62 @@ function SortHeader({ label, keyName, sort, firstDir = 'asc' }: { label: string;
   const params = new URLSearchParams(searchParams.toString())
   params.set('sort', next)
   return (
-    <Link href={`${pathname}?${params.toString()}`} className="inline-flex items-center gap-1 hover:text-slate-800" title={`Sort by ${label.toLowerCase()}`}>
+    <Link
+      href={`${pathname}?${params.toString()}`}
+      className="inline-flex items-center gap-1 hover:text-slate-800"
+      title={`Sort by ${label.toLowerCase()}`}
+    >
       {label}
       <span className={active ? 'text-slate-800' : 'text-slate-300'}>{active && sort.endsWith('_asc') ? '▲' : '▼'}</span>
     </Link>
   )
 }
 
-export function PipelineTable({ rows, emptyText, sort = '' }: { rows: PipelineRow[]; emptyText: string; sort?: string }) {
+export function PipelineTable({
+  rows: allRows,
+  emptyText,
+  sort = '',
+}: {
+  rows: PipelineRow[]
+  emptyText: string
+  sort?: string
+}) {
   const [openIds, setOpenIds] = useState<Set<string>>(new Set())
+  // Deals just marked dead disappear right away; Undo brings them back.
+  const [hidden, setHidden] = useState<Set<string>>(new Set())
+  const [undo, setUndo] = useState<{ id: string; name: string; status: DealStatus } | null>(null)
+  const [, startTransition] = useTransition()
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rows = allRows.filter((r) => !hidden.has(r.id))
+
+  useEffect(
+    () => () => {
+      if (undoTimer.current) clearTimeout(undoTimer.current)
+    },
+    [],
+  )
+
+  function markDead(r: PipelineRow) {
+    setHidden((h) => new Set(h).add(r.id))
+    setUndo({ id: r.id, name: r.company_name, status: r.status as DealStatus })
+    if (undoTimer.current) clearTimeout(undoTimer.current)
+    undoTimer.current = setTimeout(() => setUndo(null), 8000)
+    startTransition(() => updateDealStage(r.id, 'dead'))
+  }
+
+  function undoDead() {
+    if (!undo) return
+    const { id, status } = undo
+    setUndo(null)
+    startTransition(async () => {
+      await updateDealStage(id, status)
+      setHidden((h) => {
+        const next = new Set(h)
+        next.delete(id)
+        return next
+      })
+    })
+  }
 
   const toggle = (id: string) =>
     setOpenIds((s) => {
@@ -69,7 +132,19 @@ export function PipelineTable({ rows, emptyText, sort = '' }: { rows: PipelineRo
 
   return (
     <div className="space-y-2">
-      <PhoneCards rows={rows} emptyText={emptyText} />
+      {undo && (
+        <div className="fixed inset-x-0 bottom-24 z-50 flex justify-center px-4 sm:bottom-6">
+          <div className="flex items-center gap-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm text-white shadow-lg">
+            <span>
+              <span className="font-medium">{undo.name}</span> marked dead
+            </span>
+            <button type="button" onClick={undoDead} className="font-semibold text-sky-300 hover:text-sky-200">
+              Undo
+            </button>
+          </div>
+        </div>
+      )}
+      <PhoneCards rows={rows} emptyText={emptyText} onDead={markDead} />
 
       <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm sm:block">
         <table className="w-full table-fixed text-left text-sm">
@@ -88,7 +163,7 @@ export function PipelineTable({ rows, emptyText, sort = '' }: { rows: PipelineRo
               <th className="hidden w-[12%] truncate px-4 py-2.5 sm:table-cell">
                 <SortHeader label="Updated" keyName="updated" sort={sort} firstDir="desc" />
               </th>
-              <th className="w-[5%] px-2 py-2.5" aria-label="Next step" />
+              <th className="w-[8%] px-2 py-2.5" aria-label="Actions" />
             </tr>
           </thead>
           {rows.length === 0 ? (
@@ -100,52 +175,70 @@ export function PipelineTable({ rows, emptyText, sort = '' }: { rows: PipelineRo
               </tr>
             </tbody>
           ) : (
-              rows.map((r) => {
-                const open = openIds.has(r.id)
-                return (
-                  <tbody
-                    key={r.id}
-                    onClick={(e) => {
-                      // Clicking empty space opens/closes the next step;
-                      // links, the stage dropdown and buttons keep working.
-                      if (!r.step || (e.target as HTMLElement).closest('a, button, select, input, label')) return
-                      toggle(r.id)
-                    }}
-                    className={`border-t border-slate-100 first:border-t-0 ${r.step ? 'cursor-pointer' : ''} ${open ? 'bg-slate-50/70' : 'hover:bg-slate-50'}`}
-                  >
-                    <tr>
-                      <td className="px-4 py-2">
-                        <div className="flex min-w-0 items-center">
-                          <span className={`mr-2 inline-block h-2 w-2 shrink-0 rounded-full ${STATUS_COLORS[r.status as DealStatus]}`} />
-                          <Link href={`/deals/${r.id}`} title={r.company_name} className="truncate font-medium text-slate-800 hover:underline">
-                            {r.company_name}
-                          </Link>
-                          {r.newFromEmail && (
-                            <span className="ml-2">
-                              <NewFromEmail />
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="hidden px-4 py-2 text-slate-600 sm:table-cell">
-                        <div className="truncate" title={r.loan_type ?? undefined}>
-                          {r.loan_type ?? '—'}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2">
-                        <StatusSelect dealId={r.id} status={r.status as DealStatus} />
-                      </td>
-                      <td className="px-4 py-2">
-                        {r.lenders ? (
-                          <span className="block truncate text-slate-600" title={r.lenders}>
-                            {r.lenders}
+            rows.map((r) => {
+              const open = openIds.has(r.id)
+              return (
+                <tbody
+                  key={r.id}
+                  onClick={(e) => {
+                    // Clicking empty space opens/closes the next step;
+                    // links, the stage dropdown and buttons keep working.
+                    if (!r.step || (e.target as HTMLElement).closest('a, button, select, input, label')) return
+                    toggle(r.id)
+                  }}
+                  className={`group border-t border-slate-100 first:border-t-0 ${r.step ? 'cursor-pointer' : ''} ${open ? 'bg-slate-50/70' : 'hover:bg-slate-50'}`}
+                >
+                  <tr>
+                    <td className="px-4 py-2">
+                      <div className="flex min-w-0 items-center">
+                        <span
+                          className={`mr-2 inline-block h-2 w-2 shrink-0 rounded-full ${STATUS_COLORS[r.status as DealStatus]}`}
+                        />
+                        <Link
+                          href={`/deals/${r.id}`}
+                          title={r.company_name}
+                          className="truncate font-medium text-slate-800 hover:underline"
+                        >
+                          {r.company_name}
+                        </Link>
+                        {r.newFromEmail && (
+                          <span className="ml-2">
+                            <NewFromEmail />
                           </span>
-                        ) : (
-                          <span className="text-slate-400">—</span>
                         )}
-                      </td>
-                      <td className="hidden truncate px-4 py-2 text-slate-500 sm:table-cell">{r.updatedLabel}</td>
-                      <td className="px-2 py-2 text-right">
+                      </div>
+                    </td>
+                    <td className="hidden px-4 py-2 text-slate-600 sm:table-cell">
+                      <div className="truncate" title={r.loan_type ?? undefined}>
+                        {r.loan_type ?? '—'}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2">
+                      <StatusSelect dealId={r.id} status={r.status as DealStatus} />
+                    </td>
+                    <td className="px-4 py-2">
+                      {r.lenders ? (
+                        <span className="block truncate text-slate-600" title={r.lenders}>
+                          {r.lenders}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className="hidden truncate px-4 py-2 text-slate-500 sm:table-cell">{r.updatedLabel}</td>
+                    <td className="px-2 py-2 text-right">
+                      <span className="inline-flex items-center justify-end gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => markDead(r)}
+                          title="Mark dead (you can undo)"
+                          aria-label={`Mark ${r.company_name} dead`}
+                          className="rounded p-1 text-slate-300 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100"
+                        >
+                          <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
+                            <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                          </svg>
+                        </button>
                         {r.step && (
                           <button
                             type="button"
@@ -157,26 +250,33 @@ export function PipelineTable({ rows, emptyText, sort = '' }: { rows: PipelineRo
                             <Chevron open={open} />
                           </button>
                         )}
+                      </span>
+                    </td>
+                  </tr>
+                  {open && r.step && (
+                    <tr>
+                      <td colSpan={6} className="px-4 pb-2.5 pt-0">
+                        <div className="flex items-baseline gap-2 pl-4">
+                          <span className="text-slate-300">→</span>
+                          <div className="min-w-0">
+                            <p
+                              className={
+                                r.step.urgency === 'you' || r.step.urgency === 'follow_up'
+                                  ? 'font-medium text-slate-900'
+                                  : 'text-slate-500'
+                              }
+                            >
+                              {r.step.text}
+                            </p>
+                            {r.step.detail && <p className="text-xs text-slate-500">{r.step.detail}</p>}
+                          </div>
+                        </div>
                       </td>
                     </tr>
-                    {open && r.step && (
-                      <tr>
-                        <td colSpan={6} className="px-4 pb-2.5 pt-0">
-                          <div className="flex items-baseline gap-2 pl-4">
-                            <span className="text-slate-300">→</span>
-                            <div className="min-w-0">
-                              <p className={r.step.urgency === 'you' || r.step.urgency === 'follow_up' ? 'font-medium text-slate-900' : 'text-slate-500'}>
-                                {r.step.text}
-                              </p>
-                              {r.step.detail && <p className="text-xs text-slate-500">{r.step.detail}</p>}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                )
-              })
+                  )}
+                </tbody>
+              )
+            })
           )}
         </table>
       </div>
@@ -185,9 +285,73 @@ export function PipelineTable({ rows, emptyText, sort = '' }: { rows: PipelineRo
 }
 
 // Phones: one tappable card per deal instead of a squeezed table.
-function PhoneCards({ rows, emptyText }: { rows: PipelineRow[]; emptyText: string }) {
+const SWIPE_OPEN = 104
+
+// A phone card you can swipe left to reveal "Mark dead".
+function SwipeCard({ onDead, children }: { onDead: () => void; children: React.ReactNode }) {
+  const [x, setX] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const start = useRef<{ x: number; y: number; base: number; horizontal: boolean | null } | null>(null)
+  const moved = useRef(false)
+
+  return (
+    <div className="relative overflow-hidden rounded-xl">
+      <button
+        type="button"
+        onClick={onDead}
+        className="absolute inset-y-0 right-0 flex items-center justify-center bg-red-600 text-sm font-semibold text-white"
+        style={{ width: SWIPE_OPEN }}
+        tabIndex={x ? 0 : -1}
+      >
+        Mark dead
+      </button>
+      <div
+        className={`relative ${dragging ? '' : 'transition-transform duration-200'}`}
+        style={{ transform: `translateX(${x}px)` }}
+        onTouchStart={(e) => {
+          const t = e.touches[0]
+          start.current = { x: t.clientX, y: t.clientY, base: x, horizontal: null }
+          moved.current = false
+        }}
+        onTouchMove={(e) => {
+          const s = start.current
+          if (!s) return
+          const t = e.touches[0]
+          const dx = t.clientX - s.x
+          const dy = t.clientY - s.y
+          // Decide once per gesture: sideways swipe vs. scrolling the list.
+          if (s.horizontal === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) s.horizontal = Math.abs(dx) > Math.abs(dy)
+          if (!s.horizontal) return
+          moved.current = true
+          setDragging(true)
+          setX(Math.max(-SWIPE_OPEN - 24, Math.min(0, s.base + dx)))
+        }}
+        onTouchEnd={() => {
+          setDragging(false)
+          setX((cur) => (cur < -SWIPE_OPEN / 2 ? -SWIPE_OPEN : 0))
+          start.current = null
+        }}
+        onClickCapture={(e) => {
+          // A swipe (or tapping an open card) shouldn't open the deal.
+          if (moved.current || x !== 0) {
+            e.preventDefault()
+            e.stopPropagation()
+            if (!moved.current) setX(0)
+          }
+          moved.current = false
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function PhoneCards({ rows, emptyText, onDead }: { rows: PipelineRow[]; emptyText: string; onDead: (r: PipelineRow) => void }) {
   if (rows.length === 0) {
-    return <p className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-400 sm:hidden">{emptyText}</p>
+    return (
+      <p className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-400 sm:hidden">{emptyText}</p>
+    )
   }
   return (
     <ul className="space-y-2.5 sm:hidden">
@@ -195,30 +359,35 @@ function PhoneCards({ rows, emptyText }: { rows: PipelineRow[]; emptyText: strin
         const yours = r.step && (r.step.urgency === 'you' || r.step.urgency === 'follow_up')
         return (
           <li key={r.id}>
-            <Link href={`/deals/${r.id}`} className="block rounded-xl border border-slate-200 bg-white p-4 shadow-sm active:bg-slate-50">
-              <div className="flex items-start justify-between gap-3">
-                <p className="min-w-0 text-base font-semibold leading-snug text-slate-900">{r.company_name}</p>
-                <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">
-                  <span className={`h-1.5 w-1.5 rounded-full ${STATUS_COLORS[r.status as DealStatus]}`} />
-                  {STATUS_LABELS[displayStatus(r.status as DealStatus)]}
-                </span>
-              </div>
-              {r.newFromEmail && (
-                <p className="mt-1">
-                  <NewFromEmail />
-                </p>
-              )}
-              <p className="mt-0.5 text-sm text-slate-500">
-                {[r.loan_type, r.updatedLabel].filter(Boolean).join(' · ')}
-              </p>
-              {r.lenders && <p className="mt-2 text-sm text-slate-700">Lenders: {r.lenders}</p>}
-              {r.step && (
-                <p className={`mt-2 border-t border-slate-100 pt-2 text-sm ${yours ? 'font-medium text-slate-900' : 'text-slate-500'}`}>
-                  <span className="text-slate-400">Next → </span>
-                  {r.step.text}
-                </p>
-              )}
-            </Link>
+            <SwipeCard onDead={() => onDead(r)}>
+              <Link
+                href={`/deals/${r.id}`}
+                className="block rounded-xl border border-slate-200 bg-white p-4 shadow-sm active:bg-slate-50"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="min-w-0 text-base font-semibold leading-snug text-slate-900">{r.company_name}</p>
+                  <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">
+                    <span className={`h-1.5 w-1.5 rounded-full ${STATUS_COLORS[r.status as DealStatus]}`} />
+                    {STATUS_LABELS[displayStatus(r.status as DealStatus)]}
+                  </span>
+                </div>
+                {r.newFromEmail && (
+                  <p className="mt-1">
+                    <NewFromEmail />
+                  </p>
+                )}
+                <p className="mt-0.5 text-sm text-slate-500">{[r.loan_type, r.updatedLabel].filter(Boolean).join(' · ')}</p>
+                {r.lenders && <p className="mt-2 text-sm text-slate-700">Lenders: {r.lenders}</p>}
+                {r.step && (
+                  <p
+                    className={`mt-2 border-t border-slate-100 pt-2 text-sm ${yours ? 'font-medium text-slate-900' : 'text-slate-500'}`}
+                  >
+                    <span className="text-slate-400">Next → </span>
+                    {r.step.text}
+                  </p>
+                )}
+              </Link>
+            </SwipeCard>
           </li>
         )
       })}
