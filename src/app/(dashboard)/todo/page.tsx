@@ -1,7 +1,7 @@
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { loadLastActivity, loadNextSteps } from '@/lib/deals/load-next-steps'
-import { TODO_GROUPS, URGENCY_STYLES, type NextStep } from '@/lib/deals/next-step'
+import { TODO_GROUPS, type NextStep } from '@/lib/deals/next-step'
+import { TodoList, type TodoItem, type TodoSection } from './todo-list'
 
 // "What do I need to do next?" — every active deal's next step in one list,
 // most pressing first. Worked out from the deals themselves (no AI, free);
@@ -11,38 +11,18 @@ const INACTIVE = ['dead', 'closed', 'old']
 
 type Item = { id: string; name: string; step: NextStep; lastActivity: string }
 
-function ago(iso: string) {
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
-  return days <= 0 ? 'today' : days === 1 ? '1 day' : `${days} days`
+// Whole days since the deal's last activity.
+function daysSince(iso: string) {
+  return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000))
 }
 
-function Row({ item, n }: { item: Item; n?: number }) {
-  const style = URGENCY_STYLES[item.step.urgency]
-  return (
-    <li>
-      <Link
-        href={`/deals/${item.id}`}
-        className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm hover:border-slate-300 active:bg-slate-50 sm:p-4"
-      >
-        {n ? (
-          <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
-            {n}
-          </span>
-        ) : (
-          <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${style.dot}`} />
-        )}
-        <span className="min-w-0 flex-1">
-          <span className="flex items-baseline justify-between gap-2">
-            <span className="truncate text-sm font-semibold text-slate-900">{item.name}</span>
-            <span className="shrink-0 text-[11px] text-slate-400">last activity {ago(item.lastActivity)}</span>
-          </span>
-          <span className="mt-0.5 block text-sm text-slate-700">{item.step.text}</span>
-          {item.step.detail && <span className="mt-0.5 block text-xs text-slate-500">{item.step.detail}</span>}
-        </span>
-      </Link>
-    </li>
-  )
-}
+const toTodo = (i: Item): TodoItem => ({
+  id: i.id,
+  name: i.name,
+  text: i.step.text,
+  detail: i.step.detail ?? null,
+  days: daysSince(i.lastActivity),
+})
 
 export default async function TodoPage() {
   const supabase = await createClient()
@@ -62,52 +42,16 @@ export default async function TodoPage() {
     // Most pressing kind first; within a kind, whatever's been sitting longest.
     .sort((a, b) => (a.step.rank ?? 9) - (b.step.rank ?? 9) || a.lastActivity.localeCompare(b.lastActivity))
 
-  // Sections in the team's order of importance; numbered straight through.
+  // Sections in the team's order of importance; waiting deals at the end.
   const todo = items.filter((i) => (i.step.rank ?? 9) <= 6)
   const waiting = items.filter((i) => (i.step.rank ?? 9) > 6)
-  const sections = Object.entries(TODO_GROUPS)
-    .map(([rank, title]) => ({ rank: Number(rank), title, items: todo.filter((i) => i.step.rank === Number(rank)) }))
+  const sections: TodoSection[] = Object.entries(TODO_GROUPS)
+    .map(([rank, title]) => ({
+      rank: Number(rank),
+      title,
+      items: todo.filter((i) => i.step.rank === Number(rank)).map(toTodo),
+    }))
     .filter((g) => g.items.length)
-  // Each item's number in the whole list.
-  const number = new Map(sections.flatMap((g) => g.items).map((i, idx) => [i.id, idx + 1]))
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">To do</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          {todo.length
-            ? `${todo.length} thing${todo.length === 1 ? '' : 's'} to do across your deals, most important first.`
-            : 'Nothing needs you right now — every deal is waiting on someone else.'}
-        </p>
-      </div>
-
-      {sections.map((g) => (
-        <section key={g.rank} className="space-y-2.5">
-          <h2 className={`text-xs font-semibold uppercase tracking-wide ${g.rank === 6 ? 'text-amber-700' : 'text-slate-700'}`}>
-            {g.title} ({g.items.length})
-          </h2>
-          <ol className="space-y-2.5">
-            {g.items.map((i) => (
-              <Row key={i.id} item={i} n={number.get(i.id)} />
-            ))}
-          </ol>
-        </section>
-      ))}
-
-      {waiting.length > 0 && (
-        <details className="group space-y-2.5">
-          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <span className="transition-transform group-open:rotate-90">›</span>
-            Waiting on others ({waiting.length})
-          </summary>
-          <ul className="mt-2.5 space-y-2.5">
-            {waiting.map((i) => (
-              <Row key={i.id} item={i} />
-            ))}
-          </ul>
-        </details>
-      )}
-    </div>
-  )
+  return <TodoList sections={sections} waiting={waiting.map(toTodo)} />
 }

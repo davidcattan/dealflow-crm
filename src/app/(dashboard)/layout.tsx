@@ -10,6 +10,7 @@ import { AskAiPanel } from '@/components/ask-ai-panel'
 import { MobileNav } from '@/components/mobile-nav'
 import { CallRecorderProvider } from '@/components/call-recorder-provider'
 import { EnterToSave } from '@/components/enter-to-save'
+import { ScrollToTop } from '@/components/scroll-to-top'
 
 export default async function DashboardLayout({
   children,
@@ -92,6 +93,7 @@ export default async function DashboardLayout({
       </main>
       <AskAiPanel />
       <EnterToSave />
+      <ScrollToTop />
       <MobileNav unread={unread} health={health} email={user.email ?? null} />
     </div>
     </CallRecorderProvider>
