@@ -19,6 +19,8 @@ export type NextStepInput = {
   // Latest "Asked for: …" per lender, from logged lender replies.
   requestsByLender?: Record<string, string>
   lastActivityAt: string
+  // Our top to-do from the latest recorded call, if nothing newer happened.
+  callStep?: { text: string; at: string } | null
 }
 
 const FOLLOW_UP_AFTER_DAYS = 5
@@ -41,6 +43,11 @@ export function nextStep(d: NextStepInput): NextStep {
 
   const termSheets = by('term_sheet')
   if (termSheets.length) return { urgency: 'you', text: `Review the term sheet from ${names(termSheets.map((s) => s.lender))} with the borrower` }
+
+  if (d.callStep) {
+    const day = new Date(d.callStep.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' })
+    return { urgency: 'you', text: d.callStep.text, detail: `From your call on ${day}` }
+  }
 
   const needInfo = by('needs_more_info')
   if (needInfo.length) {

@@ -26,6 +26,9 @@ import type { SubmissionStatus } from '@/lib/deals/submission-status'
 import { loadDealEmails, emailsToText } from '@/lib/deals/deal-emails'
 import { findPossibleDuplicates } from '@/lib/deals/duplicates'
 import { MergeDealButton, DuplicateBanner } from './merge-deal'
+import { CallsPanel, type CallRow } from './calls-panel'
+import { callSuggestions } from '@/lib/calls/process'
+import type { CallNotes } from '@/lib/calls/schema'
 import { LenderSearchPanel } from './lender-search-panel'
 import { CollapsibleSection, CollapseAllControls } from '@/components/collapsible-section'
 import { loadNextSteps } from '@/lib/deals/load-next-steps'
@@ -98,7 +101,7 @@ export default async function DealDetailPage({
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  const [{ data: submissionRows }, { data: lenderRows }, { data: lenderEmails }, dealEmails, duplicates, { data: allDeals }, { data: mailboxRows }] = await Promise.all([
+  const [{ data: submissionRows }, { data: lenderRows }, { data: lenderEmails }, dealEmails, duplicates, { data: allDeals }, { data: mailboxRows }, { data: callRows }] = await Promise.all([
     supabase
       .from('deal_submissions')
       .select('id, lender_id, status, sent_on, last_activity_at, lenders(name)')
@@ -115,7 +118,18 @@ export default async function DealDetailPage({
     findPossibleDuplicates(supabase, id),
     supabase.from('deals').select('id, company_name, status').order('company_name'),
     supabase.from('outlook_connections').select('id, account_email, connected_by, created_at').order('created_at'),
+    // Empty until migration 029 is run.
+    supabase
+      .from('deal_calls')
+      .select('id, status, created_at, duration_seconds, transcript, result, applied, error')
+      .eq('deal_id', id)
+      .order('created_at', { ascending: false }),
   ])
+  const calls: CallRow[] = (callRows ?? []).map((c) => ({
+    ...(c as Omit<CallRow, 'suggestions'>),
+    applied: (c.applied as string[] | null) ?? [],
+    suggestions: c.result ? callSuggestions(c.result as CallNotes) : [],
+  }))
   // Drafts go to the mailbox the signed-in user connected most recently,
   // else the newest one. (created_at, not updated_at — updated_at changes on
   // every token refresh.)
@@ -265,6 +279,13 @@ export default async function DealDetailPage({
 
       <CollapsibleSection title="Deal details">
       <DealDetails deal={deal as Deal} />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Calls">
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-sm font-semibold text-slate-900">Calls{calls.length ? ` (${calls.length})` : ''}</h2>
+          <CallsPanel dealId={deal.id} calls={calls} />
+        </section>
       </CollapsibleSection>
 
       <CollapsibleSection title="Documents" phoneClosed closed={(documents ?? []).length > 0}>

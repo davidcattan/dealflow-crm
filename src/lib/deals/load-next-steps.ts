@@ -8,7 +8,7 @@ export async function loadNextSteps(supabase: SupabaseClient, dealIds: string[])
   const out = new Map<string, NextStep>()
   if (dealIds.length === 0) return out
 
-  const [{ data: deals }, { data: docs }, { data: matches }, { data: subs }, { data: updates }] = await Promise.all([
+  const [{ data: deals }, { data: docs }, { data: matches }, { data: subs }, { data: updates }, { data: calls }] = await Promise.all([
     supabase
       .from('deals')
       .select('id, status, created_at, updated_at, snapshot_generated_at, underwriting_generated_at, underwriting_requested_at')
@@ -18,10 +18,18 @@ export async function loadNextSteps(supabase: SupabaseClient, dealIds: string[])
     supabase.from('deal_submissions').select('deal_id, lender_id, status, sent_on, last_activity_at, lenders(name)').in('deal_id', dealIds),
     supabase
       .from('deal_updates')
-      .select('deal_id, lender_id, note, created_at')
+      .select('deal_id, lender_id, note, source, created_at')
       .in('deal_id', dealIds)
       .order('created_at', { ascending: false })
       .limit(2000),
+    // Recorded calls from the last week (empty until migration 029 is run).
+    supabase
+      .from('deal_calls')
+      .select('deal_id, created_at, result')
+      .in('deal_id', dealIds)
+      .eq('status', 'done')
+      .gte('created_at', new Date(Date.now() - 7 * 86_400_000).toISOString())
+      .order('created_at', { ascending: false }),
   ])
 
   const count = <T extends { deal_id: string }>(rows: T[] | null, id: string, pred: (r: T) => boolean = () => true) =>
@@ -43,6 +51,12 @@ export async function loadNextSteps(supabase: SupabaseClient, dealIds: string[])
       if (asked) requestsByLender[lenderName(s)] = asked
     }
 
+    // The latest call's first to-do for us — unless an email came in since.
+    const call = (calls ?? []).find((c) => c.deal_id === d.id)
+    const callTodo = (call?.result as { next_steps?: { text: string; owner: string }[] } | null)?.next_steps?.find((s) => s.owner === 'us')
+    const emailSince = call && myUpdates.some((u) => u.source === 'email' && u.created_at > call.created_at)
+    const callStep = call && callTodo && !emailSince ? { text: callTodo.text, at: call.created_at as string } : null
+
     const activity = [d.updated_at, myUpdates[0]?.created_at, ...mySubs.map((s) => s.last_activity_at)].filter(Boolean) as string[]
     out.set(
       d.id,
@@ -62,6 +76,7 @@ export async function loadNextSteps(supabase: SupabaseClient, dealIds: string[])
         })),
         requestsByLender,
         lastActivityAt: activity.sort().pop() ?? d.updated_at,
+        callStep,
       })
     )
   }
