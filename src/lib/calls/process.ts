@@ -189,7 +189,7 @@ Write the call notes. Stick to what was actually said — never invent numbers, 
 
   // The summary goes on the deal right away (nothing to approve there).
   const today = new Date().toISOString().slice(0, 10)
-  await supabase.from('deal_updates').insert({
+  await insertCallUpdate(supabase, callId, {
     deal_id: dealId,
     entry_date: today,
     note: [`📞 ${notes.title}: ${notes.summary}`, ...notes.key_points.map((p) => `• ${p}`)].join('\n'),
@@ -201,6 +201,35 @@ Write the call notes. Stick to what was actually said — never invent numbers, 
     body: notes.title,
     dealId,
   })
+}
+
+// An update a call adds to the deal, tagged with the call so deleting the
+// call removes it (falls back to untagged before migration 033).
+async function insertCallUpdate(supabase: SupabaseClient, callId: string, row: Record<string, unknown>) {
+  const { error } = await supabase.from('deal_updates').insert({ ...row, call_id: callId })
+  if (error) await supabase.from('deal_updates').insert(row)
+}
+
+// Removes a call, its audio, and the updates it added to the deal.
+// Status / detail changes someone applied from it stay.
+export async function deleteCall(supabase: SupabaseClient, callId: string) {
+  const { data: call } = await supabase.from('deal_calls').select('*').eq('id', callId).single()
+  if (!call) return
+  const paths = [call.storage_path as string, ...(((call.extra_paths as string[] | undefined) ?? []))].filter(Boolean)
+  if (paths.length) await supabase.storage.from('borrower-documents').remove(paths)
+
+  // Updates from before they were tagged with the call: match by text.
+  const notes = call.result as CallNotes | null
+  if (call.deal_id && notes) {
+    const { data: rows } = await supabase.from('deal_updates').select('id, note').eq('deal_id', call.deal_id).eq('source', 'call')
+    const lenderNotes = (notes.lender_updates ?? []).map((u) => `On a call: ${u.note}`)
+    const ids = (rows ?? [])
+      .filter((r) => String(r.note).startsWith(`📞 ${notes.title}:`) || lenderNotes.some((n) => String(r.note).startsWith(n)))
+      .map((r) => r.id as string)
+    if (ids.length) await supabase.from('deal_updates').delete().in('id', ids)
+  }
+  // Tagged updates go with the call (on delete cascade).
+  await supabase.from('deal_calls').delete().eq('id', callId)
 }
 
 // Suggested updates as a flat list, each with a stable key.
@@ -255,7 +284,7 @@ export async function applyCallSuggestions(supabase: SupabaseClient, callId: str
         continue
       }
       if (u.status !== 'no_change') await recordSubmission(supabase, { dealId, lenderId, status: u.status, sentOn: day })
-      await supabase.from('deal_updates').insert({
+      await insertCallUpdate(supabase, callId, {
         deal_id: dealId,
         lender_id: lenderId,
         entry_date: day,

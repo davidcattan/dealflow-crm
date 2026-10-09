@@ -231,7 +231,12 @@ function CallCard({ call }: { call: CallRow }) {
   }
 
   async function remove() {
-    if (!confirm('Delete this call recording and its notes? (Anything already added to the deal stays.)')) return
+    if (
+      !confirm(
+        'Delete this call? The recording, its notes, and the updates it added to the deal are removed. Status or detail changes you applied from it stay as they are.'
+      )
+    )
+      return
     await fetch(`/api/calls/${call.id}`, { method: 'DELETE' })
     router.refresh()
   }

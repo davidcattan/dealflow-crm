@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { deleteCall } from '@/lib/calls/process'
 
-// Deletes a call (e.g. a bad recording) and its audio. Notes it already
-// added to the deal's updates stay.
+// Deletes a call (e.g. a bad recording), its audio, and the notes it added
+// to the deal's updates.
 export async function DELETE(_request: Request, ctx: RouteContext<'/api/calls/[id]'>) {
   const supabase = await createClient()
   const {
@@ -10,11 +12,9 @@ export async function DELETE(_request: Request, ctx: RouteContext<'/api/calls/[i
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await ctx.params
-  const { data: call } = await supabase.from('deal_calls').select('*').eq('id', id).single()
-  if (call?.storage_path) {
-    const paths = [call.storage_path as string, ...(((call.extra_paths as string[] | undefined) ?? []))]
-    await supabase.storage.from('borrower-documents').remove(paths)
-  }
-  await supabase.from('deal_calls').delete().eq('id', id)
+  const { data: call } = await supabase.from('deal_calls').select('deal_id, lender_id').eq('id', id).single()
+  await deleteCall(supabase, id)
+  if (call?.deal_id) revalidatePath(`/deals/${call.deal_id}`)
+  else if (call?.lender_id) revalidatePath(`/lenders/${call.lender_id}`)
   return NextResponse.json({ ok: true })
 }
