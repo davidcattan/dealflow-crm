@@ -23,7 +23,7 @@ export function UpdateRow({
 
   if (editing) {
     return (
-      <li className="space-y-2 py-3 text-sm">
+      <li data-enter-save className="space-y-2 py-3 text-sm">
         <div className="flex flex-wrap gap-2">
           <input
             type="date"
@@ -41,6 +41,7 @@ export function UpdateRow({
         <div className="flex gap-2">
           <button
             type="button"
+            data-save
             disabled={pending || !note.trim()}
             onClick={() =>
               startTransition(async () => {

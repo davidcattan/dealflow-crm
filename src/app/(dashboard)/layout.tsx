@@ -9,6 +9,7 @@ import { unreadCount } from '@/lib/notifications'
 import { AskAiPanel } from '@/components/ask-ai-panel'
 import { MobileNav } from '@/components/mobile-nav'
 import { CallRecorderProvider } from '@/components/call-recorder-provider'
+import { EnterToSave } from '@/components/enter-to-save'
 
 export default async function DashboardLayout({
   children,
@@ -87,6 +88,7 @@ export default async function DashboardLayout({
         {children}
       </main>
       <AskAiPanel />
+      <EnterToSave />
       <MobileNav unread={unread} health={health} email={user.email ?? null} />
     </div>
     </CallRecorderProvider>

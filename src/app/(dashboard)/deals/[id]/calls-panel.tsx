@@ -26,6 +26,8 @@ export type CallRow = {
   suggestions: CallSuggestion[]
   applied: string[]
   error: string | null
+  call_with?: string | null
+  lender_id?: string | null
 }
 
 const PENDING = ['uploaded', 'transcribing', 'summarizing']
@@ -91,6 +93,57 @@ export type WhoOptions = {
   otherLenders: LenderOption[]
 }
 
+// The dropdown value for who a saved call was with.
+function whoValue(call: CallRow) {
+  if (call.call_with === 'lender' && call.lender_id) return `lender:${call.lender_id}`
+  if (call.call_with === 'borrower' || call.call_with === 'broker') return call.call_with
+  return ''
+}
+
+// "with Fairview" / "with Gabby Huguenin" for a call card.
+function whoLabel(call: CallRow, options: WhoOptions) {
+  if (call.call_with === 'borrower') return `with ${options.borrowerName}`
+  if (call.call_with === 'broker') return 'with the referral partner'
+  if (call.call_with === 'lender' && call.lender_id) {
+    const l = [...options.dealLenders, ...options.otherLenders].find((x) => x.id === call.lender_id)
+    return l ? `with ${l.name}` : null
+  }
+  return null
+}
+
+function WhoSelect({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: WhoOptions }) {
+  return (
+    <label className="flex flex-wrap items-center gap-2">
+      Who&apos;s on this call?
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="max-w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal text-slate-800"
+      >
+        <option value="">Not sure — let AI figure it out</option>
+        <option value="borrower">Borrower — {options.borrowerName}</option>
+        <option value="broker">Referral partner / broker</option>
+        {options.dealLenders.length > 0 && (
+          <optgroup label="Lenders on this deal">
+            {options.dealLenders.map((l) => (
+              <option key={l.id} value={`lender:${l.id}`}>
+                {l.name}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        <optgroup label="Other lenders">
+          {options.otherLenders.map((l) => (
+            <option key={l.id} value={`lender:${l.id}`}>
+              {l.name}
+            </option>
+          ))}
+        </optgroup>
+      </select>
+    </label>
+  )
+}
+
 // The Record button. The recording itself runs in CallRecorderProvider
 // (above every page), so it keeps going if you leave this page.
 export function CallRecorder({ target, whoOptions, hint }: { target: CallTarget; whoOptions?: WhoOptions; hint: string }) {
@@ -133,34 +186,9 @@ export function CallRecorder({ target, whoOptions, hint }: { target: CallTarget;
   }
 
   const picker = whoOptions && (
-    <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-      Who&apos;s on this call?
-      <select
-        value={who}
-        onChange={(e) => pickWho(e.target.value)}
-        className="max-w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-800"
-      >
-        <option value="">Not sure — let AI figure it out</option>
-        <option value="borrower">Borrower — {whoOptions.borrowerName}</option>
-        <option value="broker">Referral partner / broker</option>
-        {whoOptions.dealLenders.length > 0 && (
-          <optgroup label="Lenders on this deal">
-            {whoOptions.dealLenders.map((l) => (
-              <option key={l.id} value={`lender:${l.id}`}>
-                {l.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
-        <optgroup label="Other lenders">
-          {whoOptions.otherLenders.map((l) => (
-            <option key={l.id} value={`lender:${l.id}`}>
-              {l.name}
-            </option>
-          ))}
-        </optgroup>
-      </select>
-    </label>
+    <div className="text-sm text-slate-600">
+      <WhoSelect value={who} onChange={pickWho} options={whoOptions} />
+    </div>
   )
 
   return (
@@ -234,12 +262,23 @@ type Owner = Notes['next_steps'][number]['owner']
 
 // Edits a call's title, summary, key points and next steps (its summary in
 // Updates is kept in step).
-function EditNotes({ callId, notes, onDone }: { callId: string; notes: Notes; onDone: () => void }) {
+function EditNotes({
+  call,
+  notes,
+  whoOptions,
+  onDone,
+}: {
+  call: CallRow
+  notes: Notes
+  whoOptions?: WhoOptions
+  onDone: () => void
+}) {
   const router = useRouter()
   const [title, setTitle] = useState(notes.title)
   const [summary, setSummary] = useState(notes.summary)
-  const [points, setPoints] = useState(notes.key_points.join('\n'))
+  const [points, setPoints] = useState(notes.key_points.length ? [...notes.key_points] : [''])
   const [steps, setSteps] = useState(notes.next_steps.map((x) => ({ ...x })))
+  const [who, setWho] = useState(whoValue(call))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const input = 'w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm'
@@ -248,14 +287,15 @@ function EditNotes({ callId, notes, onDone }: { callId: string; notes: Notes; on
     setSaving(true)
     setError(null)
     try {
-      const res = await fetch(`/api/calls/${callId}`, {
+      const res = await fetch(`/api/calls/${call.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           title,
           summary,
-          key_points: points.split('\n'),
+          key_points: points,
           next_steps: steps,
+          ...(whoOptions ? { who: parseWho(who) } : {}),
         }),
       })
       const result = await readJsonResponse(res)
@@ -270,7 +310,12 @@ function EditNotes({ callId, notes, onDone }: { callId: string; notes: Notes; on
   }
 
   return (
-    <div className="mt-2 space-y-3">
+    <div data-enter-save className="mt-2 space-y-3">
+      {whoOptions && (
+        <div className="text-xs font-medium text-slate-600">
+          <WhoSelect value={who} onChange={setWho} options={whoOptions} />
+        </div>
+      )}
       <label className="block text-xs font-medium text-slate-600">
         Title
         <input value={title} onChange={(e) => setTitle(e.target.value)} className={`mt-1 ${input}`} />
@@ -279,15 +324,30 @@ function EditNotes({ callId, notes, onDone }: { callId: string; notes: Notes; on
         Summary
         <textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={4} className={`mt-1 ${input}`} />
       </label>
-      <label className="block text-xs font-medium text-slate-600">
-        Key points <span className="font-normal text-slate-400">(one per line)</span>
-        <textarea
-          value={points}
-          onChange={(e) => setPoints(e.target.value)}
-          rows={Math.max(3, points.split('\n').length + 1)}
-          className={`mt-1 ${input}`}
-        />
-      </label>
+      <div>
+        <p className="text-xs font-medium text-slate-600">Key points</p>
+        <ul className="mt-1 space-y-2">
+          {points.map((point, i) => (
+            <li key={i} className="flex items-center gap-2">
+              <input
+                value={point}
+                onChange={(e) => setPoints(points.map((x, j) => (j === i ? e.target.value : x)))}
+                className={`min-w-0 flex-1 ${input}`}
+              />
+              <button
+                type="button"
+                onClick={() => setPoints(points.filter((_, j) => j !== i))}
+                className="text-xs text-slate-400 hover:text-red-600"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+        <button type="button" onClick={() => setPoints([...points, ''])} className="mt-2 text-xs text-slate-600 hover:underline">
+          + Add key point
+        </button>
+      </div>
       <div>
         <p className="text-xs font-medium text-slate-600">Next steps</p>
         <ul className="mt-1 space-y-2">
@@ -327,9 +387,10 @@ function EditNotes({ callId, notes, onDone }: { callId: string; notes: Notes; on
           + Add next step
         </button>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
+          data-save
           onClick={save}
           disabled={saving || !summary.trim()}
           className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
@@ -339,13 +400,14 @@ function EditNotes({ callId, notes, onDone }: { callId: string; notes: Notes; on
         <button type="button" onClick={onDone} className="rounded-md px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100">
           Cancel
         </button>
+        <span className="text-xs text-slate-400">Enter saves</span>
         {error && <span className="text-xs text-red-600">{error}</span>}
       </div>
     </div>
   )
 }
 
-function CallCard({ call }: { call: CallRow }) {
+function CallCard({ call, whoOptions }: { call: CallRow; whoOptions?: WhoOptions }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(
@@ -398,6 +460,7 @@ function CallCard({ call }: { call: CallRow }) {
     <span className="text-xs text-slate-400">
       {when(call.created_at)}
       {call.duration_seconds ? ` · ${clock(call.duration_seconds)}` : ''}
+      {whoOptions && whoLabel(call, whoOptions) ? ` · ${whoLabel(call, whoOptions)}` : ''}
     </span>
   )
 
@@ -442,7 +505,7 @@ function CallCard({ call }: { call: CallRow }) {
         </span>
       </div>
       {editing ? (
-        <EditNotes callId={call.id} notes={notes} onDone={() => setEditing(false)} />
+        <EditNotes call={call} notes={notes} whoOptions={whoOptions} onDone={() => setEditing(false)} />
       ) : (
         <>
           <p className="mt-2 text-slate-700">{notes.summary}</p>
@@ -583,7 +646,7 @@ export function CallsPanel({
     <div className="space-y-4">
       <CallRecorder target={target} whoOptions={whoOptions} hint={hint} />
       {calls.map((c) => (
-        <CallCard key={`${c.id}-${c.status}-${c.applied.length}`} call={c} />
+        <CallCard key={`${c.id}-${c.status}-${c.applied.length}`} call={c} whoOptions={whoOptions} />
       ))}
     </div>
   )

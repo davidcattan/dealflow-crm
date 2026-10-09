@@ -75,7 +75,7 @@ function ContactForm({
     />
   )
   return (
-    <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+    <div data-enter-save className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {field('name', 'Name (optional)')}
         {field('title', 'Role, e.g. "General inbox", "VP Originations"')}
@@ -91,6 +91,7 @@ function ContactForm({
       <div className="flex gap-2">
         <button
           type="button"
+          data-save
           disabled={saving}
           onClick={() => onSave(v)}
           className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"

@@ -340,7 +340,7 @@ export function SnapshotEditor({
   }
 
   return (
-    <div className="mt-4 space-y-4 rounded-lg border border-slate-300 bg-slate-50 p-4">
+    <div data-enter-save className="mt-4 space-y-4 rounded-lg border border-slate-300 bg-slate-50 p-4">
       <p className="text-xs text-slate-500">
         Edit any figure or line directly. Saving is free — this only rewrites the stored snapshot, no AI call.
       </p>
@@ -465,6 +465,7 @@ export function SnapshotEditor({
 
       <div className="flex gap-2">
         <button
+          data-save
           onClick={save}
           disabled={saving}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"

@@ -232,7 +232,10 @@ export async function deleteCall(supabase: SupabaseClient, callId: string) {
   await supabase.from('deal_calls').delete().eq('id', callId)
 }
 
-export type CallNotesEdit = Pick<CallNotes, 'title' | 'summary' | 'key_points' | 'next_steps'>
+export type CallNotesEdit = Pick<CallNotes, 'title' | 'summary' | 'key_points' | 'next_steps'> & {
+  // Deal calls only: who the call was with.
+  who?: { callWith: 'borrower' | 'lender' | 'broker' | null; lenderId: string | null }
+}
 
 function summaryNote(n: CallNotesEdit) {
   return [`📞 ${n.title}: ${n.summary}`, ...n.key_points.map((p) => `• ${p}`)].join('\n')
@@ -251,7 +254,13 @@ export async function editCallNotes(supabase: SupabaseClient, callId: string, ed
   }
   await supabase
     .from('deal_calls')
-    .update({ result: { ...before, ...clean }, updated_at: new Date().toISOString() })
+    .update({
+      result: { ...before, ...clean },
+      ...(call.deal_id && edit.who
+        ? { call_with: edit.who.callWith, lender_id: edit.who.callWith === 'lender' ? edit.who.lenderId : null }
+        : {}),
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', callId)
 
   if (call.deal_id) {

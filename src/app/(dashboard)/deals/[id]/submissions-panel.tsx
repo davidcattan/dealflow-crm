@@ -423,7 +423,7 @@ function NoteText({ dealId, item }: { dealId: string; item: TimelineItem }) {
 
   if (editing) {
     return (
-      <span className="mt-1 flex gap-2">
+      <span data-enter-save className="mt-1 flex gap-2">
         <input
           autoFocus
           value={text}
@@ -432,6 +432,7 @@ function NoteText({ dealId, item }: { dealId: string; item: TimelineItem }) {
         />
         <button
           type="button"
+          data-save
           disabled={pending || !text.trim()}
           onClick={() =>
             startTransition(async () => {

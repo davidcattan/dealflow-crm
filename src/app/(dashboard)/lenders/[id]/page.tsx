@@ -23,7 +23,7 @@ export default async function LenderDetailPage({
     // Calls filed on this lender (not on a deal). Empty until migration 030.
     supabase
       .from('deal_calls')
-      .select('id, status, created_at, duration_seconds, transcript, result, applied, error')
+      .select('id, status, created_at, duration_seconds, transcript, result, applied, error, call_with, lender_id')
       .eq('lender_id', id)
       .is('deal_id', null)
       .order('created_at', { ascending: false }),

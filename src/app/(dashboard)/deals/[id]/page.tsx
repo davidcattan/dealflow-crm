@@ -127,7 +127,7 @@ export default async function DealDetailPage({
     // Empty until migration 029 is run.
     supabase
       .from('deal_calls')
-      .select('id, status, created_at, duration_seconds, transcript, result, applied, error')
+      .select('id, status, created_at, duration_seconds, transcript, result, applied, error, call_with, lender_id')
       .eq('deal_id', id)
       .order('created_at', { ascending: false }),
   ])

@@ -31,7 +31,7 @@ export function EmailProfile({
   const suggestedSignature = `${name}\nJED Capital Group`
 
   return (
-    <div className="mt-2">
+    <div data-enter-save className="mt-2">
       <button type="button" onClick={() => setOpen((v) => !v)} className="text-xs text-slate-600 hover:underline">
         {open ? 'Hide' : 'Edit'} email intro &amp; signature
         {!intro && !signature && <span className="ml-1 text-amber-700">(not set)</span>}
@@ -66,7 +66,9 @@ export function EmailProfile({
                 </button>
               )}
             </div>
+            {/* A signature is several lines, so Enter adds a line here. */}
             <textarea
+              data-enter="off"
               value={signatureText}
               onChange={(e) => setSignatureText(e.target.value)}
               rows={4}
@@ -77,6 +79,7 @@ export function EmailProfile({
           <div className="flex items-center gap-3">
             <button
               type="button"
+              data-save
               disabled={pending}
               onClick={() =>
                 startTransition(async () => {
