@@ -285,6 +285,7 @@ function LoanTypeRecommender({
   savedRecommendation: LoanTypeRecommendation | null
 }) {
   const router = useRouter()
+  const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [freshReasoning, setReasoning] = useState<string | null>(null)
@@ -316,13 +317,13 @@ function LoanTypeRecommender({
   }
 
   return (
-    <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+    <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4 max-sm:p-3.5" onClick={() => setOpen(true)}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-slate-800">
             Loan type: {currentLoanType ?? 'not set'}
           </p>
-          <p className="text-xs text-slate-500">
+          <p className={`text-xs text-slate-500 ${open ? '' : 'max-sm:hidden'}`}>
             Uses underwriting, documents, and notes to suggest the best-fit
             loan type before matching.
           </p>
@@ -330,7 +331,7 @@ function LoanTypeRecommender({
         <button
           onClick={run}
           disabled={loading}
-          className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+          className={`shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50 ${open ? '' : 'max-sm:hidden'}`}
         >
           {loading
             ? 'Analyzing…'
@@ -344,7 +345,8 @@ function LoanTypeRecommender({
           <ErrorText message={error} />
         </p>
       )}
-      {reasoning && <p className="mt-2 text-sm text-slate-600">{reasoning}</p>}
+      {/* Phones: two lines until tapped. */}
+      {reasoning && <p className={`mt-2 text-sm text-slate-600 ${open ? '' : 'max-sm:line-clamp-2'}`}>{reasoning}</p>}
     </div>
   )
 }
@@ -471,6 +473,16 @@ export function MatchingPanel({
       // Ignore.
     }
   }, [])
+  // Phones: which matches are opened up.
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set())
+  const toggleOpen = (id: string) =>
+    setOpenIds((cur) => {
+      const next = new Set(cur)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
   function toggleIntro(v: boolean) {
     setIncludeIntro(v)
     try {
@@ -597,14 +609,32 @@ export function MatchingPanel({
           {matches.map((m) => (
             <li
               key={m.id}
-              className={`rounded-lg border p-4 ${
+              className={`rounded-lg border p-4 max-sm:p-0 ${
                 m.selected
                   ? 'border-slate-900 bg-slate-50'
                   : 'border-slate-200'
               }`}
             >
+              {/* Phones: one line per lender; tap for the reasoning, buttons and draft. */}
+              <button
+                type="button"
+                onClick={() => toggleOpen(m.id)}
+                className="flex w-full items-center gap-2 px-3.5 py-3 text-left sm:hidden"
+              >
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${matchScoreColor(m.score)}`} />
+                <span className="min-w-0 flex-1 truncate font-medium text-slate-900">{m.lender_name}</span>
+                {sentLenderIds.includes(m.lender_id) && (
+                  <span className="shrink-0 rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700">Sent</span>
+                )}
+                {m.draftStatus === 'drafted' && !sentLenderIds.includes(m.lender_id) && (
+                  <span className="shrink-0 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700">Draft</span>
+                )}
+                <span className="shrink-0 text-xs text-slate-500">{m.score}</span>
+                <span className={`shrink-0 text-slate-400 transition-transform ${openIds.has(m.id) ? 'rotate-90' : ''}`}>›</span>
+              </button>
+              <div className={`max-sm:border-t max-sm:border-slate-100 max-sm:px-3.5 max-sm:pb-3.5 max-sm:pt-3 ${openIds.has(m.id) ? '' : 'max-sm:hidden'}`}>
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 max-sm:hidden">
                   <span
                     className={`h-2.5 w-2.5 shrink-0 rounded-full ${matchScoreColor(m.score)}`}
                   />
@@ -713,6 +743,7 @@ export function MatchingPanel({
                   ))}
                 </div>
               )}
+              </div>
             </li>
           ))}
         </ul>

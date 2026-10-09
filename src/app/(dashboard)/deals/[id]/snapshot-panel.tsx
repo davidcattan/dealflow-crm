@@ -8,6 +8,7 @@ import { readJsonResponse } from '@/lib/fetch-json'
 import { ErrorText } from '@/components/error-text'
 import { SnapshotEditor } from './snapshot-editor'
 import { ManualUnderwriting, type ManualDoc } from './manual-underwriting'
+import { formatCompactCurrency } from '@/lib/format'
 
 const money = (n: number | null | undefined) =>
   n === null || n === undefined
@@ -24,7 +25,30 @@ function PeriodsTable({
   showSource: boolean
 }) {
   return (
-    <table className="w-full text-left text-sm">
+    <>
+    {/* Phones: one small block per period instead of a wide table. */}
+    <div className="space-y-2 sm:hidden">
+      {periods.map((p) => (
+        <div key={p.label} className="rounded-md bg-slate-50 px-3 py-2">
+          <p className="text-xs font-semibold text-slate-700">{p.label}</p>
+          <div className="mt-1 grid grid-cols-3 gap-2 text-xs">
+            <span>
+              <span className="block text-slate-400">Revenue</span>
+              <span className="font-medium text-slate-800">{short(p.revenue)}</span>
+            </span>
+            <span>
+              <span className="block text-slate-400">EBITDA</span>
+              <span className="font-medium text-slate-800">{short(p.ebitda)}</span>
+            </span>
+            <span>
+              <span className="block text-slate-400">Net income</span>
+              <span className="font-medium text-slate-800">{short(p.net_income)}</span>
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+    <table className="hidden w-full text-left text-sm sm:table">
       <thead className="text-xs uppercase text-slate-500">
         <tr>
           <th className="py-1 pr-3">Period</th>
@@ -46,12 +70,23 @@ function PeriodsTable({
         ))}
       </tbody>
     </table>
+    </>
   )
 }
 
-function Line({ items }: { items: [string, string][] }) {
+// "AR: $X | Equipment: $Y" on computers; a two-column list on phones.
+function Line({ items, compact }: { items: [string, string][]; compact?: [string, string][] }) {
   return (
-    <p className="text-sm text-slate-700">
+    <>
+    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm sm:hidden">
+      {(compact ?? items).map(([label, value]) => (
+        <span key={label} className="min-w-0">
+          <span className="block text-xs text-slate-400">{label}</span>
+          <span className="font-medium text-slate-800 [overflow-wrap:anywhere]">{value}</span>
+        </span>
+      ))}
+    </div>
+    <p className="hidden text-sm text-slate-700 sm:block">
       {items.map(([label, value], i) => (
         <span key={label}>
           {i > 0 && <span className="mx-2 text-slate-300">|</span>}
@@ -59,6 +94,28 @@ function Line({ items }: { items: [string, string][] }) {
         </span>
       ))}
     </p>
+    </>
+  )
+}
+
+// "$32.1M", or "($38.3M)" for a loss.
+const short = (n: number | null | undefined) =>
+  n !== null && n !== undefined && n < 0 ? `(${formatCompactCurrency(-n)})` : formatCompactCurrency(n)
+
+// Phones: a section that starts closed, with a one-line summary.
+function PhoneFold({ title, glance, children, className = '' }: { title: string; glance?: string; children: React.ReactNode; className?: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className={className}>
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-start gap-2 text-left sm:hidden">
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold text-slate-900">{title}</span>
+          {glance && !open && <span className="mt-0.5 block text-xs text-slate-500">{glance}</span>}
+        </span>
+        <span className={`mt-0.5 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
+      </button>
+      <div className={`space-y-2 ${open ? 'max-sm:mt-2' : 'max-sm:hidden'}`}>{children}</div>
+    </div>
   )
 }
 
@@ -90,6 +147,8 @@ export function SnapshotPanel({
   const [copied, setCopied] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [editing, setEditing] = useState(false)
+  // Phones: Edit / Re-run / the free-underwriting box stay tucked away.
+  const [tools, setTools] = useState(false)
 
   async function build() {
     setConfirming(false)
@@ -138,7 +197,8 @@ export function SnapshotPanel({
                 rel="noopener noreferrer"
                 className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
               >
-                Open printable one-pager
+                <span className="sm:hidden">One-pager</span>
+                <span className="hidden sm:inline">Open printable one-pager</span>
               </a>
               <button
                 onClick={copy}
@@ -148,16 +208,21 @@ export function SnapshotPanel({
               </button>
               <button
                 onClick={() => setEditing((v) => !v)}
-                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                className={`rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 ${tools ? '' : 'max-sm:hidden'}`}
               >
                 {editing ? 'Close editor' : 'Edit'}
               </button>
             </>
           )}
+          {snapshot && (
+            <button type="button" onClick={() => setTools((v) => !v)} className="px-1 text-sm text-slate-500 underline sm:hidden">
+              {tools ? 'Fewer options' : 'More'}
+            </button>
+          )}
           <button
             onClick={() => setConfirming(true)}
             disabled={busy || confirming}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className={`rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 ${snapshot && !tools ? 'max-sm:hidden' : ''}`}
           >
             {busy ? 'Analyzing…' : snapshot ? 'Re-run underwriting (paid)' : 'Run underwriting (paid)'}
           </button>
@@ -188,6 +253,7 @@ export function SnapshotPanel({
         <SnapshotEditor dealId={dealId} snapshot={snapshot} onDone={() => setEditing(false)} />
       )}
 
+      <div className={snapshot && !tools ? 'max-sm:hidden' : ''}>
       <ManualUnderwriting
         dealId={dealId}
         prompt={manualPrompt}
@@ -197,6 +263,7 @@ export function SnapshotPanel({
         hasUnderwriting={hasReportUnderwriting}
         hasSnapshot={Boolean(snapshot)}
       />
+      </div>
 
       {error && (
         <p className="mt-3 text-sm text-red-600">
@@ -205,10 +272,20 @@ export function SnapshotPanel({
       )}
 
       {snapshot && !editing && (
-        <div className="mt-5 space-y-6">
+        <div className="mt-5 space-y-6 max-sm:mt-4 max-sm:space-y-3">
           {snapshot.entities.map((e) => (
-            <div key={e.name} className="space-y-2 rounded-lg border border-slate-200 p-4">
-              <h3 className="font-semibold text-slate-900">{e.name}</h3>
+            <div key={e.name} className="rounded-lg border border-slate-200 p-4 max-sm:p-3.5">
+              <h3 className="hidden font-semibold text-slate-900 sm:block">{e.name}</h3>
+              <PhoneFold
+                title={e.name}
+                glance={[
+                  e.periods[0] && `${e.periods[0].label}: rev ${short(e.periods[0].revenue)}, EBITDA ${short(e.periods[0].ebitda)}`,
+                  `debt ${short(e.liabilities.total_debt)}`,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+                className="sm:mt-2"
+              >
               <p className="text-sm text-slate-600">{e.about}</p>
               <Line items={[['Owner', e.owner], ['Industry', e.industry]]} />
               <PeriodsTable periods={e.periods} showSource />
@@ -219,11 +296,20 @@ export function SnapshotPanel({
                   ['Real estate', money(e.assets.real_estate)],
                   ['Inventory', money(e.assets.inventory)],
                 ]}
+                compact={[
+                  ['AR', short(e.assets.accounts_receivable)],
+                  ['Equipment', short(e.assets.equipment)],
+                  ['Real estate', short(e.assets.real_estate)],
+                  ['Inventory', short(e.assets.inventory)],
+                ]}
               />
               <p className="text-xs text-slate-400">
                 Assets as of {e.assets.as_of} — {e.assets.source}
               </p>
-              <Line items={[['AP', money(e.liabilities.accounts_payable)], ['Total debt', money(e.liabilities.total_debt)]]} />
+              <Line
+                items={[['AP', money(e.liabilities.accounts_payable)], ['Total debt', money(e.liabilities.total_debt)]]}
+                compact={[['AP', short(e.liabilities.accounts_payable)], ['Total debt', short(e.liabilities.total_debt)]]}
+              />
               <ul className="ml-4 list-disc text-sm text-slate-700">
                 {e.liabilities.debts.map((d, i) => (
                   <li key={`${d.lender}-${i}`}>
@@ -236,12 +322,18 @@ export function SnapshotPanel({
               <p className="text-xs text-slate-400">
                 Liabilities as of {e.liabilities.as_of} — {e.liabilities.source}
               </p>
+              </PhoneFold>
             </div>
           ))}
 
           {snapshot.combined && (
-            <div className="space-y-2 rounded-lg border border-slate-300 bg-slate-50 p-4">
-              <h3 className="font-semibold text-slate-900">Combined</h3>
+            <div className="rounded-lg border border-slate-300 bg-slate-50 p-4 max-sm:p-3.5">
+              <h3 className="hidden font-semibold text-slate-900 sm:block">Combined</h3>
+              <PhoneFold
+                title="Combined"
+                glance={`total debt ${short(snapshot.combined.total_debt)}`}
+                className="sm:mt-2"
+              >
               <PeriodsTable periods={snapshot.combined.periods} showSource={false} />
               <Line
                 items={[
@@ -260,28 +352,42 @@ export function SnapshotPanel({
                 ]}
               />
               {snapshot.combined.note && <p className="text-xs text-slate-500">{snapshot.combined.note}</p>}
+              </PhoneFold>
             </div>
           )}
 
-          <div className="rounded-lg border border-slate-200 p-4 text-sm text-slate-700">
-            <span className="font-semibold text-slate-900">Coverage: </span>
-            {snapshot.coverage.dscr === null ? '—' : `${snapshot.coverage.dscr.toFixed(2)}x`} (debt service{' '}
-            {money(snapshot.coverage.annual_debt_service)}, EBITDA {money(snapshot.coverage.ebitda_used)}){' '}
-            <span className="text-slate-500">— {snapshot.coverage.note}</span>
+          <div className="rounded-lg border border-slate-200 p-4 text-sm text-slate-700 max-sm:p-3.5">
+            <div className="hidden sm:block">
+              <span className="font-semibold text-slate-900">Coverage: </span>
+              {snapshot.coverage.dscr === null ? '—' : `${snapshot.coverage.dscr.toFixed(2)}x`} (debt service{' '}
+              {money(snapshot.coverage.annual_debt_service)}, EBITDA {money(snapshot.coverage.ebitda_used)}){' '}
+              <span className="text-slate-500">— {snapshot.coverage.note}</span>
+            </div>
+            <PhoneFold
+              title={`Coverage (DSCR): ${snapshot.coverage.dscr === null ? '—' : `${snapshot.coverage.dscr.toFixed(2)}x`}`}
+              glance={`Debt service ${short(snapshot.coverage.annual_debt_service)} · EBITDA ${short(snapshot.coverage.ebitda_used)}`}
+              className="sm:hidden"
+            >
+              <p className="text-slate-600">{snapshot.coverage.note}</p>
+            </PhoneFold>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <h3 className="text-xs font-semibold uppercase text-slate-500">Flags</h3>
+            <div className="max-sm:rounded-lg max-sm:border max-sm:border-slate-200 max-sm:p-3.5">
+              <h3 className="hidden text-xs font-semibold uppercase text-slate-500 sm:block">Flags</h3>
+              <PhoneFold title={`Flags (${snapshot.flags.length})`} glance={snapshot.flags[0]}>
               <ul className="mt-1 list-disc space-y-1 pl-4 text-sm text-slate-700">
                 {snapshot.flags.length > 0 ? snapshot.flags.map((f, i) => <li key={i}>{f}</li>) : <li className="list-none text-slate-400">None noted</li>}
               </ul>
+              </PhoneFold>
             </div>
-            <div>
-              <h3 className="text-xs font-semibold uppercase text-slate-500">Documents to request</h3>
+            <div className="max-sm:rounded-lg max-sm:border max-sm:border-slate-200 max-sm:p-3.5">
+              <h3 className="hidden text-xs font-semibold uppercase text-slate-500 sm:block">Documents to request</h3>
+              <PhoneFold title={`Documents to request (${snapshot.request_list.length})`} glance={snapshot.request_list[0]}>
               <ul className="mt-1 list-disc space-y-1 pl-4 text-sm text-slate-700">
                 {snapshot.request_list.length > 0 ? snapshot.request_list.map((r, i) => <li key={i}>{r}</li>) : <li className="list-none text-slate-400">Nothing missing</li>}
               </ul>
+              </PhoneFold>
             </div>
           </div>
         </div>

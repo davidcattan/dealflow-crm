@@ -64,7 +64,7 @@ export function MobileNav({ unread, health, email }: { unread: number; health: I
   }, [pathname])
 
   const is = (p: string) => (p === '/' ? pathname === '/' : pathname.startsWith(p))
-  const moreActive = ['/inbox', '/usage', '/settings'].some(is) || pathname === '/'
+  const moreActive = ['/lenders', '/inbox', '/usage', '/settings'].some(is) || pathname === '/'
 
   return (
     <>
@@ -75,7 +75,6 @@ export function MobileNav({ unread, health, email }: { unread: number; health: I
         <div className="flex items-stretch">
           <Tab href="/pipeline" label="Pipeline" icon={ICONS.pipeline} active={is('/pipeline') || is('/deals')} />
           <Tab href="/todo" label="To do" icon={ICONS.todo} active={is('/todo')} />
-          <Tab href="/lenders" label="Lenders" icon={ICONS.lenders} active={is('/lenders')} />
           <button
             type="button"
             onClick={() => window.dispatchEvent(new Event(OPEN_ASK_AI_EVENT))}
@@ -105,6 +104,7 @@ export function MobileNav({ unread, health, email }: { unread: number; health: I
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-slate-200" />
+            <SheetLink href="/lenders" onClick={() => setMoreOpen(false)}>Lenders</SheetLink>
             <SheetLink href="/" onClick={() => setMoreOpen(false)}>Dashboard</SheetLink>
             <SheetLink href="/inbox" onClick={() => setMoreOpen(false)}>
               Inbox
