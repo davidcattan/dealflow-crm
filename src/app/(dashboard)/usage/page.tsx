@@ -11,6 +11,11 @@ type Row = {
 
 const usd = (n: number) => `$${n.toFixed(2)}`
 
+// "2026-10-09" in New York time, `daysBack` days ago.
+function nyDay(daysBack: number) {
+  return new Date(Date.now() - daysBack * 86_400_000).toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+}
+
 function Table({
   title,
   items,
@@ -47,19 +52,32 @@ export default async function UsagePage() {
   const rows = (data ?? []) as unknown as Row[]
   const total = rows.reduce((s, r) => s + Number(r.cost_usd), 0)
 
-  const group = (key: (r: Row) => string) => {
-    const m = new Map<string, { cost: number; calls: number }>()
+  // Grouped totals, biggest first — or in date order (newest first) when
+  // `sortKey` is given.
+  const group = (key: (r: Row) => string, sortKey?: (r: Row) => string) => {
+    const m = new Map<string, { cost: number; calls: number; sort: string }>()
     for (const r of rows) {
       const k = key(r)
-      const cur = m.get(k) ?? { cost: 0, calls: 0 }
+      const cur = m.get(k) ?? { cost: 0, calls: 0, sort: sortKey ? sortKey(r) : '' }
       cur.cost += Number(r.cost_usd)
       cur.calls += 1
       m.set(k, cur)
     }
-    return [...m.entries()].sort((a, b) => b[1].cost - a[1].cost)
+    return [...m.entries()].sort((a, b) => (sortKey ? b[1].sort.localeCompare(a[1].sort) : b[1].cost - a[1].cost))
   }
 
-  const byDay = group((r) => new Date(r.created_at).toLocaleDateString())
+  // Dates in New York time (the server runs on UTC).
+  const tz = 'America/New_York'
+  const isoDay = (r: Row) => new Date(r.created_at).toLocaleDateString('en-CA', { timeZone: tz })
+  const byMonth = group(
+    (r) => new Date(r.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: tz }),
+    (r) => isoDay(r).slice(0, 7)
+  )
+  const byDay = group(
+    (r) => new Date(r.created_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz }),
+    isoDay
+  ).filter(([, v]) => v.sort >= nyDay(13))
+  const thisMonth = byMonth.find(([, v]) => v.sort === nyDay(0).slice(0, 7))
   const byFeature = group((r) => r.feature)
   const byDeal = group((r) => {
     const d = Array.isArray(r.deals) ? r.deals[0] : r.deals
@@ -88,11 +106,19 @@ export default async function UsagePage() {
         </p>
       ) : (
         <>
-          <p className="text-3xl font-semibold text-slate-900">{usd(total)}
-            <span className="ml-2 text-sm font-normal text-slate-400">tracked so far</span>
-          </p>
+          <div className="flex flex-wrap gap-x-10 gap-y-3">
+            <p className="text-3xl font-semibold text-slate-900">
+              {usd(thisMonth?.[1].cost ?? 0)}
+              <span className="ml-2 text-sm font-normal text-slate-400">this month</span>
+            </p>
+            <p className="text-3xl font-semibold text-slate-400">
+              {usd(total)}
+              <span className="ml-2 text-sm font-normal text-slate-400">all time</span>
+            </p>
+          </div>
           <div className="grid gap-6 md:grid-cols-2">
-            <Table title="By day" items={byDay} />
+            <Table title="By month" items={byMonth} />
+            <Table title="Last 14 days" items={byDay} />
             <Table title="By feature" items={byFeature} />
             <Table title="Most expensive deals" items={byDeal} />
           </div>
