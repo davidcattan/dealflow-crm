@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { readJsonResponse } from '@/lib/fetch-json'
 import type { CallSuggestion } from '@/lib/calls/process'
+import { clock, useCallRecorder } from '@/components/call-recorder-provider'
 
 export type CallRow = {
   id: string
@@ -26,22 +27,8 @@ export type CallRow = {
 
 const PENDING = ['uploaded', 'transcribing', 'summarizing']
 
-function clock(seconds: number) {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}:${String(s).padStart(2, '0')}`
-}
-
 function when(iso: string) {
   return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-}
-
-// Picks a format this browser can record (Chrome: webm, Safari/iPhone: mp4).
-function recorderType() {
-  for (const t of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']) {
-    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t)) return t
-  }
-  return ''
 }
 
 type Who = { callWith: 'borrower' | 'lender' | 'broker' | null; lenderId: string | null }
@@ -53,130 +40,70 @@ function parseWho(value: string): Who {
   return { callWith: null, lenderId: null }
 }
 
-// Where a recording goes: a deal's calls or a lender's.
-export type CallTarget = { uploadUrl: string; pathPrefix: string }
+// Where a recording goes: a deal's calls or a lender's, and how the red
+// "Recording" bar names it.
+export type CallTarget = { uploadUrl: string; pathPrefix: string; label: string; href: string }
 
-async function uploadCall(target: CallTarget, blob: Blob, durationSeconds: number | null, ext: string, who: Who) {
+// An existing recording file (e.g. from Zoom) uploaded by hand.
+async function uploadFileCall(target: CallTarget, file: File, who: Who) {
   const supabase = createClient()
+  const ext = (file.name.split('.').pop() ?? 'audio').toLowerCase().replace(/[^a-z0-9]/g, '') || 'audio'
   const storagePath = `${target.pathPrefix}${Date.now()}.${ext}`
   const { error } = await supabase.storage
     .from('borrower-documents')
-    .upload(storagePath, blob, { contentType: blob.type || undefined })
+    .upload(storagePath, file, { contentType: file.type || undefined })
   if (error) throw new Error(`Upload failed: ${error.message}`)
   const res = await fetch(target.uploadUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ storagePath, durationSeconds, ...who }),
+    body: JSON.stringify({ storagePaths: [storagePath], durationSeconds: null, ...who }),
   })
   const result = await readJsonResponse(res)
   if (!result.ok) throw new Error(result.message)
 }
 
-// Records a call on speaker through this device's microphone.
 export type LenderOption = { id: string; name: string }
 
 // Deal calls ask who's on the call; lender calls already know.
 export type WhoOptions = { borrowerName: string; dealLenders: LenderOption[]; otherLenders: LenderOption[] }
 
+// The Record button. The recording itself runs in CallRecorderProvider
+// (above every page), so it keeps going if you leave this page.
 export function CallRecorder({ target, whoOptions, hint }: { target: CallTarget; whoOptions?: WhoOptions; hint: string }) {
   const router = useRouter()
+  const rec = useCallRecorder()
   const [who, setWho] = useState('')
-  // Read when the recording stops (the dropdown can change mid-call).
-  const whoRef = useRef('')
-  function pickWho(value: string) {
-    whoRef.current = value
-    setWho(value)
-  }
-  const [state, setState] = useState<'idle' | 'starting' | 'recording' | 'uploading'>('idle')
-  const [seconds, setSeconds] = useState(0)
+  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const recorder = useRef<MediaRecorder | null>(null)
-  const chunks = useRef<Blob[]>([])
-  const started = useRef(0)
-  const wakeLock = useRef<{ release: () => Promise<void> } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const here = rec.target?.uploadUrl === target.uploadUrl
+  const busy = rec.state !== 'idle'
 
-  useEffect(() => {
-    if (state !== 'recording') return
-    const t = setInterval(() => setSeconds(Math.round((Date.now() - started.current) / 1000)), 1000)
-    // Don't lose a recording by closing the tab.
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
-    window.addEventListener('beforeunload', warn)
-    return () => {
-      clearInterval(t)
-      window.removeEventListener('beforeunload', warn)
+  function pickWho(value: string) {
+    setWho(value)
+    // Changing it mid-call updates the call being recorded.
+    if (here) {
+      const w = parseWho(value)
+      rec.setWho(w.callWith, w.lenderId)
     }
-  }, [state])
+  }
 
-  async function start() {
+  function start() {
     setError(null)
-    setState('starting')
-    try {
-      // Echo cancellation / noise suppression would filter out the other
-      // person's voice coming through the speaker, so they're off.
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true },
-      })
-      const mimeType = recorderType()
-      const rec = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 32_000 })
-      chunks.current = []
-      rec.ondataavailable = (e) => {
-        if (e.data.size) chunks.current.push(e.data)
-      }
-      rec.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop())
-        wakeLock.current?.release().catch(() => {})
-        wakeLock.current = null
-        const duration = Math.round((Date.now() - started.current) / 1000)
-        const blob = new Blob(chunks.current, { type: rec.mimeType || mimeType || 'audio/webm' })
-        if (duration < 3 || blob.size === 0) {
-          setState('idle')
-          setError('That recording was too short — nothing was saved.')
-          return
-        }
-        setState('uploading')
-        try {
-          await uploadCall(target, blob, duration, blob.type.includes('mp4') ? 'm4a' : 'webm', parseWho(whoRef.current))
-          setState('idle')
-          router.refresh()
-        } catch (err) {
-          setState('idle')
-          setError(err instanceof Error ? err.message : 'Upload failed')
-        }
-      }
-      rec.start(1000)
-      recorder.current = rec
-      started.current = Date.now()
-      setSeconds(0)
-      setState('recording')
-      // Keep the screen (and the recording) awake.
-      try {
-        const nav = navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } }
-        wakeLock.current = (await nav.wakeLock?.request('screen')) ?? null
-      } catch {
-        // Not supported — fine.
-      }
-    } catch (err) {
-      setState('idle')
-      setError(
-        err instanceof Error && err.name === 'NotAllowedError'
-          ? 'Microphone access was blocked. Allow the microphone for this site and try again.'
-          : 'Couldn’t start recording on this device.'
-      )
-    }
+    const w = whoOptions ? parseWho(who) : { callWith: 'lender' as const, lenderId: null }
+    rec.start({ ...target, ...w })
   }
 
   async function uploadFile(file: File) {
     setError(null)
-    setState('uploading')
+    setUploading(true)
     try {
-      const ext = (file.name.split('.').pop() ?? 'audio').toLowerCase().replace(/[^a-z0-9]/g, '')
-      await uploadCall(target, file, null, ext || 'audio', parseWho(who))
+      await uploadFileCall(target, file, whoOptions ? parseWho(who) : { callWith: 'lender', lenderId: null })
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
-      setState('idle')
+      setUploading(false)
       if (fileInput.current) fileInput.current.value = ''
     }
   }
@@ -187,7 +114,6 @@ export function CallRecorder({ target, whoOptions, hint }: { target: CallTarget;
       <select
         value={who}
         onChange={(e) => pickWho(e.target.value)}
-        disabled={state === 'uploading'}
         className="max-w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-800"
       >
         <option value="">Not sure — let AI figure it out</option>
@@ -216,17 +142,13 @@ export function CallRecorder({ target, whoOptions, hint }: { target: CallTarget;
   return (
     <div className="space-y-3">
       {picker}
-      {state === 'recording' ? (
+      {here && rec.state === 'recording' ? (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-          <span className="relative flex h-3 w-3">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-red-600" />
-          </span>
-          <span className="font-mono text-sm font-medium text-red-700">Recording {clock(seconds)}</span>
-          <span className="text-xs text-red-700/80">Keep the call on speaker and this page open.</span>
+          <span className="font-mono text-sm font-medium text-red-700">● Recording {clock(rec.seconds)}</span>
+          <span className="text-xs text-red-700/80">Keep the call on speaker. You can move around the CRM — it keeps recording.</span>
           <button
             type="button"
-            onClick={() => recorder.current?.stop()}
+            onClick={rec.stop}
             className="ml-auto rounded-md bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-700"
           >
             Stop &amp; write notes
@@ -237,16 +159,22 @@ export function CallRecorder({ target, whoOptions, hint }: { target: CallTarget;
           <button
             type="button"
             onClick={start}
-            disabled={state !== 'idle'}
+            disabled={busy || uploading}
             className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
           >
             <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-            {state === 'starting' ? 'Starting…' : state === 'uploading' ? 'Saving recording…' : 'Record call'}
+            {rec.state === 'starting' && here
+              ? 'Starting…'
+              : rec.state === 'uploading' || uploading
+                ? 'Saving recording…'
+                : busy
+                  ? 'Recording another call…'
+                  : 'Record call'}
           </button>
           <button
             type="button"
             onClick={() => fileInput.current?.click()}
-            disabled={state !== 'idle'}
+            disabled={busy || uploading}
             className="text-sm text-slate-500 hover:underline disabled:opacity-50"
           >
             or upload a recording
@@ -261,7 +189,9 @@ export function CallRecorder({ target, whoOptions, hint }: { target: CallTarget;
           <span className="text-xs text-slate-400">{hint}</span>
         </div>
       )}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {(error || (here || rec.state === 'idle' ? rec.error : null)) && (
+        <p className="text-sm text-red-600">{error ?? rec.error}</p>
+      )}
     </div>
   )
 }

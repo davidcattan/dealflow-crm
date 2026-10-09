@@ -10,8 +10,11 @@ export async function DELETE(_request: Request, ctx: RouteContext<'/api/calls/[i
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await ctx.params
-  const { data: call } = await supabase.from('deal_calls').select('storage_path').eq('id', id).single()
-  if (call?.storage_path) await supabase.storage.from('borrower-documents').remove([call.storage_path])
+  const { data: call } = await supabase.from('deal_calls').select('*').eq('id', id).single()
+  if (call?.storage_path) {
+    const paths = [call.storage_path as string, ...(((call.extra_paths as string[] | undefined) ?? []))]
+    await supabase.storage.from('borrower-documents').remove(paths)
+  }
   await supabase.from('deal_calls').delete().eq('id', id)
   return NextResponse.json({ ok: true })
 }

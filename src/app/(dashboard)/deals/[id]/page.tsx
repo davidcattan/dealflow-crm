@@ -286,7 +286,12 @@ export default async function DealDetailPage({
           <h2 className="mb-4 text-sm font-semibold text-slate-900">Calls{calls.length ? ` (${calls.length})` : ''}</h2>
           <CallsPanel
             calls={calls}
-            target={{ uploadUrl: `/api/deals/${deal.id}/calls`, pathPrefix: `calls/${deal.id}/` }}
+            target={{
+              uploadUrl: `/api/deals/${deal.id}/calls`,
+              pathPrefix: `calls/${deal.id}/`,
+              label: deal.company_name,
+              href: `/deals/${deal.id}`,
+            }}
             whoOptions={{
               borrowerName: deal.contact_name || deal.company_name,
               dealLenders: submissions.map((x) => ({ id: x.lender_id, name: x.lender_name })),

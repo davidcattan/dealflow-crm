@@ -8,6 +8,7 @@ import { InboxHealthBadge } from '@/components/inbox-health-badge'
 import { unreadCount } from '@/lib/notifications'
 import { AskAiPanel } from '@/components/ask-ai-panel'
 import { MobileNav } from '@/components/mobile-nav'
+import { CallRecorderProvider } from '@/components/call-recorder-provider'
 
 export default async function DashboardLayout({
   children,
@@ -20,6 +21,7 @@ export default async function DashboardLayout({
 
   return (
     <UnderwritingRunnerProvider>
+    <CallRecorderProvider>
     <div className="flex min-h-screen flex-col bg-slate-50">
       <header className="border-b border-slate-200 bg-white" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3 sm:px-6">
@@ -87,6 +89,7 @@ export default async function DashboardLayout({
       <AskAiPanel />
       <MobileNav unread={unread} health={health} email={user.email ?? null} />
     </div>
+    </CallRecorderProvider>
     </UnderwritingRunnerProvider>
   )
 }

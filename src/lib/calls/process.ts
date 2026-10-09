@@ -27,27 +27,47 @@ async function fail(supabase: SupabaseClient, callId: string, message: string) {
   await supabase.from('deal_calls').update({ status: 'error', error: message, updated_at: new Date().toISOString() }).eq('id', callId)
 }
 
-// Sends the uploaded audio off to be transcribed.
+// Sends the uploaded audio off to be transcribed — one job per piece
+// (a recording that was interrupted and continued has several).
 export async function startTranscription(supabase: SupabaseClient, callId: string) {
-  const { data: call } = await supabase.from('deal_calls').select('id, storage_path').eq('id', callId).single()
+  const { data: call } = await supabase.from('deal_calls').select('*').eq('id', callId).single()
   if (!call) throw new Error('Call not found')
   try {
-    const { data: signed, error } = await supabase.storage.from('borrower-documents').createSignedUrl(call.storage_path, 60 * 60 * 6)
-    if (error || !signed) throw new Error('Couldn’t read the recording')
-    const res = await fetch(ASSEMBLY, {
-      method: 'POST',
-      headers: { authorization: assemblyKey(), 'content-type': 'application/json' },
-      body: JSON.stringify({ audio_url: signed.signedUrl, speaker_labels: true }),
-    })
-    const body = (await res.json()) as { id?: string; error?: string }
-    if (!res.ok || !body.id) throw new Error(body.error ?? `Transcription service error (${res.status})`)
+    const paths = [call.storage_path as string, ...(((call.extra_paths as string[] | undefined) ?? []))]
+    const jobIds: string[] = []
+    for (const path of paths) {
+      const { data: signed, error } = await supabase.storage.from('borrower-documents').createSignedUrl(path, 60 * 60 * 6)
+      if (error || !signed) throw new Error('Couldn’t read the recording')
+      const res = await fetch(ASSEMBLY, {
+        method: 'POST',
+        headers: { authorization: assemblyKey(), 'content-type': 'application/json' },
+        body: JSON.stringify({ audio_url: signed.signedUrl, speaker_labels: true }),
+      })
+      const body = (await res.json()) as { id?: string; error?: string }
+      if (!res.ok || !body.id) throw new Error(body.error ?? `Transcription service error (${res.status})`)
+      jobIds.push(body.id)
+    }
     await supabase
       .from('deal_calls')
-      .update({ status: 'transcribing', transcript_job_id: body.id, error: null, updated_at: new Date().toISOString() })
+      .update({
+        status: 'transcribing',
+        transcript_job_id: jobIds[0],
+        ...(jobIds.length > 1 ? { transcript_job_ids: jobIds } : {}),
+        error: null,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', callId)
   } catch (err) {
     await fail(supabase, callId, err instanceof Error ? err.message : 'Couldn’t start transcription')
   }
+}
+
+type Transcript = {
+  status?: string
+  error?: string
+  text?: string
+  audio_duration?: number
+  utterances?: { speaker: string; text: string }[] | null
 }
 
 // Moves a call along: checks the transcript, then writes the notes.
@@ -63,27 +83,33 @@ export async function advanceCall(supabase: SupabaseClient, callId: string) {
   }
   if (call.status !== 'transcribing') return
 
-  const res = await fetch(`${ASSEMBLY}/${call.transcript_job_id}`, { headers: { authorization: assemblyKey() } })
-  const body = (await res.json()) as {
-    status?: string
-    error?: string
-    text?: string
-    audio_duration?: number
-    utterances?: { speaker: string; text: string }[] | null
+  const jobIds = ((call.transcript_job_ids as string[] | undefined) ?? []).length
+    ? (call.transcript_job_ids as string[])
+    : [call.transcript_job_id as string]
+  const parts: Transcript[] = []
+  for (const jobId of jobIds) {
+    const res = await fetch(`${ASSEMBLY}/${jobId}`, { headers: { authorization: assemblyKey() } })
+    parts.push((await res.json()) as Transcript)
   }
-  if (body.status === 'error') return fail(supabase, callId, body.error ?? 'Transcription failed')
-  if (body.status !== 'completed') return
+  const failed = parts.find((p) => p.status === 'error')
+  if (failed) return fail(supabase, callId, failed.error ?? 'Transcription failed')
+  if (parts.some((p) => p.status !== 'completed')) return
 
-  const transcript = body.utterances?.length
-    ? body.utterances.map((u) => `Speaker ${u.speaker}: ${u.text}`).join('\n')
-    : (body.text ?? '')
+  // Pieces of a continued recording are joined in order.
+  const transcript = parts
+    .map((body) =>
+      body.utterances?.length ? body.utterances.map((u) => `Speaker ${u.speaker}: ${u.text}`).join('\n') : (body.text ?? '')
+    )
+    .filter((t) => t.trim())
+    .join('\n\n[Recording paused here and continued — speaker letters may change after this point]\n\n')
+  const audioSeconds = parts.reduce((n, p) => n + (p.audio_duration ?? 0), 0)
   // Claim the summarizing step so two polls can't both run it.
   const { data: claimed } = await supabase
     .from('deal_calls')
     .update({
       status: 'summarizing',
       transcript,
-      duration_seconds: call.duration_seconds ?? (body.audio_duration ? Math.round(body.audio_duration) : null),
+      duration_seconds: call.duration_seconds ?? (audioSeconds ? Math.round(audioSeconds) : null),
       updated_at: new Date().toISOString(),
     })
     .eq('id', callId)

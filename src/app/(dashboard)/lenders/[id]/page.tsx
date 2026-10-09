@@ -48,7 +48,12 @@ export default async function LenderDetailPage({
         </p>
         <CallsPanel
           calls={calls}
-          target={{ uploadUrl: `/api/lenders/${id}/calls`, pathPrefix: `calls/lender-${id}/` }}
+          target={{
+            uploadUrl: `/api/lenders/${id}/calls`,
+            pathPrefix: `calls/lender-${id}/`,
+            label: (lender as Lender).name,
+            href: `/lenders/${id}`,
+          }}
           hint="Put the call on speaker, then hit record."
         />
       </section>

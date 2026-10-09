@@ -13,19 +13,25 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await ctx.params
-  const { storagePath, durationSeconds, callWith, lenderId } = (await request.json()) as {
+  const { storagePath, storagePaths, durationSeconds, callWith, lenderId } = (await request.json()) as {
     storagePath?: string
+    storagePaths?: string[]
     durationSeconds?: number
     callWith?: 'borrower' | 'lender' | 'broker' | null
     lenderId?: string | null
   }
-  if (!storagePath?.startsWith(`calls/${id}/`)) return NextResponse.json({ error: 'Bad recording path' }, { status: 400 })
+  // A continued recording comes in several pieces, in order.
+  const paths = storagePaths?.length ? storagePaths : storagePath ? [storagePath] : []
+  if (!paths.length || paths.some((x) => !x.startsWith(`calls/${id}/`)))
+    return NextResponse.json({ error: 'Bad recording path' }, { status: 400 })
 
   const { data: call, error } = await supabase
     .from('deal_calls')
     .insert({
       deal_id: id,
-      storage_path: storagePath,
+      storage_path: paths[0],
+      // Only sent when there are pieces, so single recordings work before migration 031.
+      ...(paths.length > 1 ? { extra_paths: paths.slice(1) } : {}),
       duration_seconds: durationSeconds ?? null,
       created_by: user.id,
       call_with: callWith ?? null,
@@ -34,7 +40,7 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
     .select('id')
     .single()
   if (error || !call) {
-    const missingTable = error?.message.includes('deal_calls') || error?.message.includes('call_with')
+    const missingTable = error?.message.includes('deal_calls') || error?.message.includes('call_with') || error?.message.includes('extra_paths')
     return NextResponse.json(
       { error: missingTable ? 'Run migration 029_deal_calls.sql in Supabase first.' : (error?.message ?? 'Couldn’t save the call') },
       { status: 500 }

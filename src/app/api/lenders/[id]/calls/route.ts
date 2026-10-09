@@ -13,15 +13,24 @@ export async function POST(request: Request, ctx: RouteContext<'/api/lenders/[id
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await ctx.params
-  const { storagePath, durationSeconds } = (await request.json()) as { storagePath?: string; durationSeconds?: number }
-  if (!storagePath?.startsWith(`calls/lender-${id}/`)) return NextResponse.json({ error: 'Bad recording path' }, { status: 400 })
+  const { storagePath, storagePaths, durationSeconds } = (await request.json()) as {
+    storagePath?: string
+    storagePaths?: string[]
+    durationSeconds?: number
+  }
+  // A continued recording comes in several pieces, in order.
+  const paths = storagePaths?.length ? storagePaths : storagePath ? [storagePath] : []
+  if (!paths.length || paths.some((x) => !x.startsWith(`calls/lender-${id}/`)))
+    return NextResponse.json({ error: 'Bad recording path' }, { status: 400 })
 
   const { data: call, error } = await supabase
     .from('deal_calls')
     .insert({
       lender_id: id,
       call_with: 'lender',
-      storage_path: storagePath,
+      storage_path: paths[0],
+      // Only sent when there are pieces, so single recordings work before migration 031.
+      ...(paths.length > 1 ? { extra_paths: paths.slice(1) } : {}),
       duration_seconds: durationSeconds ?? null,
       created_by: user.id,
     })
