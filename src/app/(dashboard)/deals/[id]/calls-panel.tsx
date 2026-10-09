@@ -39,7 +39,16 @@ function recorderType() {
   return ''
 }
 
-async function uploadCall(dealId: string, blob: Blob, durationSeconds: number | null, ext: string) {
+type Who = { callWith: 'borrower' | 'lender' | 'broker' | null; lenderId: string | null }
+
+// Dropdown value -> who the call is with.
+function parseWho(value: string): Who {
+  if (value.startsWith('lender:')) return { callWith: 'lender', lenderId: value.slice(7) }
+  if (value === 'borrower' || value === 'broker') return { callWith: value, lenderId: null }
+  return { callWith: null, lenderId: null }
+}
+
+async function uploadCall(dealId: string, blob: Blob, durationSeconds: number | null, ext: string, who: Who) {
   const supabase = createClient()
   const storagePath = `calls/${dealId}/${Date.now()}.${ext}`
   const { error } = await supabase.storage
@@ -49,15 +58,34 @@ async function uploadCall(dealId: string, blob: Blob, durationSeconds: number | 
   const res = await fetch(`/api/deals/${dealId}/calls`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ storagePath, durationSeconds }),
+    body: JSON.stringify({ storagePath, durationSeconds, ...who }),
   })
   const result = await readJsonResponse(res)
   if (!result.ok) throw new Error(result.message)
 }
 
 // Records a call on speaker through this device's microphone.
-export function CallRecorder({ dealId }: { dealId: string }) {
+export type LenderOption = { id: string; name: string }
+
+export function CallRecorder({
+  dealId,
+  borrowerName,
+  dealLenders,
+  otherLenders,
+}: {
+  dealId: string
+  borrowerName: string
+  dealLenders: LenderOption[]
+  otherLenders: LenderOption[]
+}) {
   const router = useRouter()
+  const [who, setWho] = useState('')
+  // Read when the recording stops (the dropdown can change mid-call).
+  const whoRef = useRef('')
+  function pickWho(value: string) {
+    whoRef.current = value
+    setWho(value)
+  }
   const [state, setState] = useState<'idle' | 'starting' | 'recording' | 'uploading'>('idle')
   const [seconds, setSeconds] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -107,7 +135,7 @@ export function CallRecorder({ dealId }: { dealId: string }) {
         }
         setState('uploading')
         try {
-          await uploadCall(dealId, blob, duration, blob.type.includes('mp4') ? 'm4a' : 'webm')
+          await uploadCall(dealId, blob, duration, blob.type.includes('mp4') ? 'm4a' : 'webm', parseWho(whoRef.current))
           setState('idle')
           router.refresh()
         } catch (err) {
@@ -142,7 +170,7 @@ export function CallRecorder({ dealId }: { dealId: string }) {
     setState('uploading')
     try {
       const ext = (file.name.split('.').pop() ?? 'audio').toLowerCase().replace(/[^a-z0-9]/g, '')
-      await uploadCall(dealId, file, null, ext || 'audio')
+      await uploadCall(dealId, file, null, ext || 'audio', parseWho(who))
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
@@ -152,8 +180,41 @@ export function CallRecorder({ dealId }: { dealId: string }) {
     }
   }
 
+  const picker = (
+    <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+      Who&apos;s on this call?
+      <select
+        value={who}
+        onChange={(e) => pickWho(e.target.value)}
+        disabled={state === 'uploading'}
+        className="max-w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-800"
+      >
+        <option value="">Not sure — let AI figure it out</option>
+        <option value="borrower">Borrower — {borrowerName}</option>
+        <option value="broker">Referral partner / broker</option>
+        {dealLenders.length > 0 && (
+          <optgroup label="Lenders on this deal">
+            {dealLenders.map((l) => (
+              <option key={l.id} value={`lender:${l.id}`}>
+                {l.name}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        <optgroup label="Other lenders">
+          {otherLenders.map((l) => (
+            <option key={l.id} value={`lender:${l.id}`}>
+              {l.name}
+            </option>
+          ))}
+        </optgroup>
+      </select>
+    </label>
+  )
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      {picker}
       {state === 'recording' ? (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
           <span className="relative flex h-3 w-3">
@@ -368,7 +429,19 @@ function CallCard({ call }: { call: CallRow }) {
   )
 }
 
-export function CallsPanel({ dealId, calls }: { dealId: string; calls: CallRow[] }) {
+export function CallsPanel({
+  dealId,
+  calls,
+  borrowerName,
+  dealLenders,
+  otherLenders,
+}: {
+  dealId: string
+  calls: CallRow[]
+  borrowerName: string
+  dealLenders: LenderOption[]
+  otherLenders: LenderOption[]
+}) {
   const router = useRouter()
   const pendingIds = calls.filter((c) => PENDING.includes(c.status)).map((c) => c.id).join(',')
 
@@ -403,7 +476,7 @@ export function CallsPanel({ dealId, calls }: { dealId: string; calls: CallRow[]
 
   return (
     <div className="space-y-4">
-      <CallRecorder dealId={dealId} />
+      <CallRecorder dealId={dealId} borrowerName={borrowerName} dealLenders={dealLenders} otherLenders={otherLenders} />
       {calls.map((c) => (
         <CallCard key={`${c.id}-${c.status}-${c.applied.length}`} call={c} />
       ))}

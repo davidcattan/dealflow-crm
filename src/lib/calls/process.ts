@@ -92,17 +92,27 @@ export async function advanceCall(supabase: SupabaseClient, callId: string) {
   if (!transcript.trim()) return fail(supabase, callId, 'No speech was picked up. Was the call on speaker?')
 
   try {
-    await summarizeCall(supabase, call.id, call.deal_id, transcript)
+    await summarizeCall(supabase, call.id, call.deal_id, transcript, {
+      callWith: call.call_with ?? null,
+      lenderId: call.lender_id ?? null,
+    })
   } catch (err) {
     await fail(supabase, callId, err instanceof Error ? err.message : 'Couldn’t write the call notes')
   }
 }
 
-async function summarizeCall(supabase: SupabaseClient, callId: string, dealId: string, transcript: string) {
-  const [{ data: deal }, { data: subs }, { data: updates }] = await Promise.all([
+async function summarizeCall(
+  supabase: SupabaseClient,
+  callId: string,
+  dealId: string,
+  transcript: string,
+  who: { callWith: string | null; lenderId: string | null }
+) {
+  const [{ data: deal }, { data: subs }, { data: updates }, { data: lender }] = await Promise.all([
     supabase.from('deals').select('company_name, contact_name, loan_type, deal_type, notes, status').eq('id', dealId).single(),
     supabase.from('deal_submissions').select('status, lenders(name)').eq('deal_id', dealId),
     supabase.from('deal_updates').select('entry_date, note').eq('deal_id', dealId).order('created_at', { ascending: false }).limit(10),
+    who.lenderId ? supabase.from('lenders').select('name').eq('id', who.lenderId).maybeSingle() : Promise.resolve({ data: null }),
   ])
   if (!deal) throw new Error('Deal not found')
   const lenderName = (l: unknown) => ((Array.isArray(l) ? l[0] : l) as { name?: string } | null)?.name ?? '?'
@@ -115,6 +125,13 @@ async function summarizeCall(supabase: SupabaseClient, callId: string, dealId: s
       (subs ?? []).map((s) => `${lenderName(s.lenders)} (${SUBMISSION_LABELS[s.status as SubmissionStatus] ?? s.status})`).join('; ') || 'none yet'
     }`,
     updates?.length ? `Recent updates:\n${updates.map((u) => `- ${u.entry_date ?? ''} ${u.note}`).join('\n')}` : null,
+    who.callWith === 'borrower'
+      ? `\nTHE BROKER SAYS THIS CALL WAS WITH: the borrower (${deal.contact_name ?? deal.company_name}).`
+      : who.callWith === 'lender'
+        ? `\nTHE BROKER SAYS THIS CALL WAS WITH: the lender "${lender?.name ?? 'unknown'}" — use exactly that name in lender_updates.`
+        : who.callWith === 'broker'
+          ? '\nTHE BROKER SAYS THIS CALL WAS WITH: the referral partner / broker who sent the deal.'
+          : null,
   ]
     .filter(Boolean)
     .join('\n')
@@ -185,7 +202,7 @@ export function callSuggestions(notes: CallNotes): CallSuggestion[] {
 // Applies the ticked suggestions. Returns how many were applied, and any
 // lender it couldn't find in the CRM.
 export async function applyCallSuggestions(supabase: SupabaseClient, callId: string, keys: string[]) {
-  const { data: call } = await supabase.from('deal_calls').select('id, deal_id, result, applied, created_at').eq('id', callId).single()
+  const { data: call } = await supabase.from('deal_calls').select('*').eq('id', callId).single()
   if (!call?.result) throw new Error('These call notes aren’t ready yet')
   const notes = call.result as CallNotes
   const already = new Set((call.applied as string[]) ?? [])
@@ -200,7 +217,9 @@ export async function applyCallSuggestions(supabase: SupabaseClient, callId: str
     if (kind === 'lender') {
       const u = notes.lender_updates[Number(index)]
       if (!u) continue
-      const lenderId = await findLender(supabase, dealId, u.lender_name)
+      // The lender picked before recording, when it's the only one discussed.
+      const picked = call.lender_id && notes.lender_updates.length === 1 ? (call.lender_id as string) : null
+      const lenderId = picked ?? (await findLender(supabase, dealId, u.lender_name))
       if (!lenderId) {
         missing.push(u.lender_name)
         continue

@@ -13,16 +13,28 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await ctx.params
-  const { storagePath, durationSeconds } = (await request.json()) as { storagePath?: string; durationSeconds?: number }
+  const { storagePath, durationSeconds, callWith, lenderId } = (await request.json()) as {
+    storagePath?: string
+    durationSeconds?: number
+    callWith?: 'borrower' | 'lender' | 'broker' | null
+    lenderId?: string | null
+  }
   if (!storagePath?.startsWith(`calls/${id}/`)) return NextResponse.json({ error: 'Bad recording path' }, { status: 400 })
 
   const { data: call, error } = await supabase
     .from('deal_calls')
-    .insert({ deal_id: id, storage_path: storagePath, duration_seconds: durationSeconds ?? null, created_by: user.id })
+    .insert({
+      deal_id: id,
+      storage_path: storagePath,
+      duration_seconds: durationSeconds ?? null,
+      created_by: user.id,
+      call_with: callWith ?? null,
+      lender_id: callWith === 'lender' ? (lenderId ?? null) : null,
+    })
     .select('id')
     .single()
   if (error || !call) {
-    const missingTable = error?.message.includes('deal_calls')
+    const missingTable = error?.message.includes('deal_calls') || error?.message.includes('call_with')
     return NextResponse.json(
       { error: missingTable ? 'Run migration 029_deal_calls.sql in Supabase first.' : (error?.message ?? 'Couldn’t save the call') },
       { status: 500 }

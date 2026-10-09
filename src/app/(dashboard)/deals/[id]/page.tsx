@@ -284,7 +284,15 @@ export default async function DealDetailPage({
       <CollapsibleSection title="Calls">
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-sm font-semibold text-slate-900">Calls{calls.length ? ` (${calls.length})` : ''}</h2>
-          <CallsPanel dealId={deal.id} calls={calls} />
+          <CallsPanel
+            dealId={deal.id}
+            calls={calls}
+            borrowerName={deal.contact_name || deal.company_name}
+            dealLenders={submissions.map((x) => ({ id: x.lender_id, name: x.lender_name }))}
+            otherLenders={((lenderRows ?? []) as { id: string; name: string }[]).filter(
+              (l) => !submissions.some((x) => x.lender_id === l.id)
+            )}
+          />
         </section>
       </CollapsibleSection>
 
