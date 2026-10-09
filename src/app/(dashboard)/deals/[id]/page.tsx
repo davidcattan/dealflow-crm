@@ -33,6 +33,10 @@ import { LenderSearchPanel } from './lender-search-panel'
 import { CollapsibleSection, CollapseAllControls } from '@/components/collapsible-section'
 import { loadNextSteps } from '@/lib/deals/load-next-steps'
 import { NextStepToggle } from '@/components/next-step-toggle'
+import { PhoneTabs } from '@/components/phone-tabs'
+import { PhoneShowMore } from '@/components/phone-show-more'
+import { URGENCY_STYLES } from '@/lib/deals/next-step'
+import { STATUS_COLORS, STATUS_LABELS, displayStatus, type DealStatus } from '@/lib/types'
 import { buildLenderSearchPrompt } from '@/lib/lender-search/prompt'
 import type { LenderSearch } from '@/lib/lender-search/schema'
 
@@ -227,23 +231,9 @@ export default async function DealDetailPage({
     })
   )
 
-  return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">
-            {deal.company_name}
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Added {formatDateOnly(deal.created_at)}
-            {dealSpend > 0 && (
-              <span className="ml-3 text-slate-400">
-                AI spend on this deal: ${dealSpend.toFixed(2)}
-              </span>
-            )}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+  const isPast = ['dead', 'old', 'closed'].includes(deal.status)
+  const dealActions = (
+    <>
           <form action={setDealStatusQuick}>
             <input type="hidden" name="deal_id" value={deal.id} />
             <input
@@ -272,23 +262,73 @@ export default async function DealDetailPage({
               Delete deal
             </ConfirmButton>
           </form>
+    </>
+  )
+
+  return (
+    <div className="space-y-5 sm:space-y-8">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold leading-tight text-slate-900 sm:text-2xl">{deal.company_name}</h1>
+          {/* Phone: status and loan type at a glance. */}
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500 sm:hidden">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-700">
+              <span className={`h-1.5 w-1.5 rounded-full ${STATUS_COLORS[displayStatus(deal.status as DealStatus)]}`} />
+              {STATUS_LABELS[displayStatus(deal.status as DealStatus)]}
+            </span>
+            {deal.loan_type && <span>{deal.loan_type}</span>}
+          </p>
+          <p className="mt-1 text-xs text-slate-500 sm:text-sm">
+            Added {formatDateOnly(deal.created_at)}
+            {dealSpend > 0 && <span className="ml-3 text-slate-400">AI spend on this deal: ${dealSpend.toFixed(2)}</span>}
+          </p>
         </div>
+        <div className="hidden flex-wrap items-center gap-2 sm:flex">{dealActions}</div>
+        {/* Phone: the same actions in a ⋯ menu. */}
+        <details className="relative shrink-0 sm:hidden">
+          <summary className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full border border-slate-300 bg-white text-lg leading-none text-slate-600 [&::-webkit-details-marker]:hidden">
+            ⋯
+          </summary>
+          <div className="absolute right-0 z-40 mt-2 flex w-56 flex-col items-stretch gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-lg [&_button]:w-full">
+            {dealActions}
+          </div>
+        </details>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {step && !['dead', 'old', 'closed'].includes(deal.status) ? <NextStepToggle step={step} /> : <span />}
+      {/* Phone: the next step, right at the top. */}
+      {step && !isPast && (
+        <div className={`rounded-xl border px-4 py-3 sm:hidden ${URGENCY_STYLES[step.urgency].pill}`}>
+          <p className="text-[11px] font-semibold uppercase tracking-wide opacity-70">Next step · {URGENCY_STYLES[step.urgency].label}</p>
+          <p className="mt-0.5 text-sm font-medium">{step.text}</p>
+          {step.detail && <p className="mt-0.5 text-xs opacity-80">{step.detail}</p>}
+        </div>
+      )}
+
+      <div className="hidden flex-wrap items-center justify-between gap-3 sm:flex">
+        {step && !isPast ? <NextStepToggle step={step} /> : <span />}
         <CollapseAllControls />
       </div>
 
+      <PhoneTabs
+        tabs={[
+          { key: 'overview', label: 'Overview' },
+          { key: 'lenders', label: 'Lenders', count: submissions.length },
+          { key: 'activity', label: 'Activity', count: (updates ?? []).length },
+          { key: 'calls', label: 'Calls', count: calls.length },
+          { key: 'docs', label: 'Docs', count: (documents ?? []).length },
+          { key: 'ai', label: 'AI' },
+        ]}
+      >
+      <div className="space-y-5 sm:space-y-8">
 
       <DuplicateBanner dealId={deal.id} dealName={deal.company_name} duplicates={duplicates} />
 
-      <CollapsibleSection title="Deal details">
+      <CollapsibleSection tab="overview" title="Deal details">
       <DealDetails deal={deal as Deal} />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Calls">
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <CollapsibleSection tab="calls" title="Calls">
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <h2 className="mb-4 text-sm font-semibold text-slate-900">Calls{calls.length ? ` (${calls.length})` : ''}</h2>
           <CallsPanel
             calls={calls}
@@ -309,8 +349,8 @@ export default async function DealDetailPage({
         </section>
       </CollapsibleSection>
 
-      <CollapsibleSection title="Documents" phoneClosed closed={(documents ?? []).length > 0}>
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <CollapsibleSection tab="docs" title="Documents" phoneClosed closed={(documents ?? []).length > 0}>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="mb-4 text-sm font-semibold text-slate-900">
           Diligence documents
         </h2>
@@ -388,7 +428,7 @@ export default async function DealDetailPage({
       </section>
       </CollapsibleSection>
 
-      <CollapsibleSection title="Lenders sent to">
+      <CollapsibleSection tab="lenders" title="Lenders sent to">
       <SubmissionsPanel
         dealId={deal.id}
         submissions={submissions}
@@ -397,8 +437,8 @@ export default async function DealDetailPage({
       />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Updates">
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <CollapsibleSection tab="activity" title="Updates">
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="mb-4 text-sm font-semibold text-slate-900">Updates</h2>
 
         <form
@@ -437,7 +477,7 @@ export default async function DealDetailPage({
         </form>
 
         {updates && updates.length > 0 ? (
-          <ul className="divide-y divide-slate-100">
+          <PhoneShowMore count={updates.length} className="divide-y divide-slate-100">
             {(updates as (DealUpdate & { lender_id?: string | null })[]).map((u) => (
               <UpdateRow
                 key={u.id}
@@ -446,7 +486,7 @@ export default async function DealDetailPage({
                 lenderName={u.lender_id ? (lenderNameById.get(u.lender_id) ?? 'Lender') : null}
               />
             ))}
-          </ul>
+          </PhoneShowMore>
         ) : (
           <p className="py-6 text-center text-sm text-slate-400">
             No updates logged yet.
@@ -456,8 +496,8 @@ export default async function DealDetailPage({
       </CollapsibleSection>
 
       {dealEmails.length > 0 && (
-        <CollapsibleSection title="Emails" closed>
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <CollapsibleSection tab="activity" title="Emails" keepToggle closed>
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <h2 className="text-sm font-semibold text-slate-900">Emails ({dealEmails.length})</h2>
           <p className="mt-0.5 text-xs text-slate-500">
             Emails the inbox filed on this deal. Their full text is included when the deal is underwritten.
@@ -495,7 +535,7 @@ export default async function DealDetailPage({
         </CollapsibleSection>
       )}
 
-      <CollapsibleSection title="AI underwriting" phoneClosed closed={Boolean(deal.snapshot)}>
+      <CollapsibleSection tab="ai" title="AI underwriting" phoneClosed closed={Boolean(deal.snapshot)}>
       <SnapshotPanel
         dealId={deal.id}
         snapshot={(deal.snapshot as Snapshot | null) ?? null}
@@ -520,7 +560,7 @@ export default async function DealDetailPage({
       />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Full research report" phoneClosed closed>
+      <CollapsibleSection tab="ai" title="Full research report" keepToggle phoneClosed closed>
       <UnderwritingPanel
         dealId={deal.id}
         dealName={deal.company_name}
@@ -531,7 +571,7 @@ export default async function DealDetailPage({
       />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Lender matching" phoneClosed>
+      <CollapsibleSection tab="lenders" title="Lender matching" phoneClosed>
       <MatchingPanel
         dealId={deal.id}
         matches={matchesWithLender}
@@ -549,7 +589,7 @@ export default async function DealDetailPage({
       />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Find new lenders" phoneClosed closed={Boolean((deal as { lender_search?: unknown }).lender_search)}>
+      <CollapsibleSection tab="lenders" title="Find new lenders" phoneClosed closed={Boolean((deal as { lender_search?: unknown }).lender_search)}>
       <LenderSearchPanel
         dealId={deal.id}
         search={(deal as { lender_search?: LenderSearch | null }).lender_search ?? null}
@@ -559,6 +599,8 @@ export default async function DealDetailPage({
         prompt={buildLenderSearchPrompt(deal, (lenderRows ?? []).map((l) => l.name as string))}
       />
       </CollapsibleSection>
+      </div>
+      </PhoneTabs>
     </div>
   )
 }

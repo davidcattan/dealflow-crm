@@ -45,7 +45,7 @@ export default async function SettingsPage({
         </p>
       )}
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="text-sm font-semibold text-slate-900">Outlook</h2>
         <p className="mt-1 text-sm text-slate-600">
           Each person connects their own Outlook. The CRM creates lender drafts in the mailbox of whoever clicks
@@ -95,7 +95,7 @@ export default async function SettingsPage({
         </p>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="text-sm font-semibold text-slate-900">iPhone shortcut — send recordings from Voice Memos</h2>
         <p className="mb-4 mt-1 text-sm text-slate-600">
           Adds <span className="font-medium">Send to JED CRM</span> to your iPhone&apos;s Share menu, so a Voice Memo (or a

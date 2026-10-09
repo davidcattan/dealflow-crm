@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { mailboxLabel } from '@/lib/outlook/mailbox-label'
 import { createClient } from '@/lib/supabase/server'
 import { InboxControls } from '../settings/inbox-controls'
 import { RetryButton } from '../settings/retry-button'
@@ -46,6 +47,20 @@ export default async function InboxPage() {
   const dealOptions = [...(dealRows ?? [])]
     .sort((a, b) => Number(['dead', 'old', 'closed'].includes(a.status)) - Number(['dead', 'old', 'closed'].includes(b.status)))
     .map((d) => ({ id: d.id as string, name: d.company_name as string }))
+  // Fix-it buttons for one email (retry, re-file, link a lender).
+  type Logged = NonNullable<typeof recent>[number]
+  const emailActions = (m: Logged) => (
+    <>
+      {(m.classification === 'error' || (m.classification === 'lender_reply' && !m.deal_id)) && <RetryButton messageId={m.id} />}
+      {m.classification !== 'sent' &&
+        m.classification !== 'error' &&
+        teamEmails.has(String(m.from_email ?? '').toLowerCase()) &&
+        String(m.mailbox ?? '').toLowerCase() !== String(m.from_email ?? '').toLowerCase() && (
+          <RetryButton messageId={m.id} label="Re-file as sent email" />
+        )}
+      {m.classification === 'lender_reply' && m.deal_id && !m.lender_id && <LinkLender messageId={m.id} dealId={m.deal_id} />}
+    </>
+  )
   // Connected mailboxes — a teammate's email filed as incoming can be re-filed.
   const teamEmails = new Set((connections ?? []).map((c) => String(c.account_email).toLowerCase()))
 
@@ -53,7 +68,7 @@ export default async function InboxPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Inbox</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 hidden text-sm text-slate-500 sm:block">
           Every email the CRM reads (inboxes and Sent folders) and what it did with it. Connect mailboxes in{' '}
           <Link href="/settings" className="underline hover:text-slate-700">
             Settings
@@ -62,9 +77,9 @@ export default async function InboxPage() {
         </p>
       </div>
 
-      <section id="inbox" className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section id="inbox" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="text-sm font-semibold text-slate-900">Email reader</h2>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 hidden text-sm text-slate-600 sm:block">
           Reads new mail in the connected inboxes and Sent folders. New deal submissions become deals (attachments
           included), follow-ups are logged on the existing deal, and lender replies are logged on
           the deal they answer.
@@ -103,7 +118,7 @@ export default async function InboxPage() {
               {health.detail}
             </p>
             {health.level === 'ok' && (
-              <p className="mt-0.5 text-xs text-slate-500">Next one within 30 minutes. Pauses overnight (10pm–7am ET).</p>
+              <p className="mt-0.5 hidden text-xs text-slate-500 sm:block">Next one within 30 minutes. Pauses overnight (10pm–7am ET).</p>
             )}
           </div>
         </div>
@@ -148,8 +163,50 @@ export default async function InboxPage() {
           </details>
         )}
 
-        {recent && recent.length > 0 && (
-          <div className="mt-5 rounded-lg border border-slate-200">
+      </section>
+
+      {recent && recent.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-slate-900">Email log</h2>
+
+          {/* Phone: one card per email. */}
+          <ul className="space-y-2.5 sm:hidden">
+            {recent.map((m) => {
+              const deal = Array.isArray(m.deals) ? m.deals[0] : m.deals
+              const where = mailboxLabel(m.mailbox as string | null, m.classification === 'sent')
+              return (
+                <li key={m.id} className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${KIND_STYLES[m.classification] ?? ''}`}>
+                      {KIND_LABELS[m.classification] ?? m.classification}
+                    </span>
+                    <span className="truncate text-[11px] text-slate-400">
+                      {m.received_at && new Date(m.received_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      {where && ` · ${where}`}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 line-clamp-2 text-sm font-medium leading-snug text-slate-900">{m.subject || '(no subject)'}</p>
+                  <p className="truncate text-xs text-slate-500">
+                    {m.classification === 'sent' ? `to ${m.to_emails ?? ''}` : m.from_email}
+                  </p>
+                  <p className="mt-2 text-xs font-medium text-slate-700">{m.action_taken}</p>
+                  {m.summary && <p className="mt-0.5 line-clamp-3 text-xs text-slate-600">{m.summary}</p>}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-slate-100 pt-2 text-sm">
+                    {m.deal_id ? (
+                      <Link href={`/deals/${m.deal_id}`} className="font-medium text-slate-800 underline">
+                        {deal?.company_name ?? 'Open deal'} →
+                      </Link>
+                    ) : (
+                      <AssignToDeal messageId={m.id} deals={dealOptions} />
+                    )}
+                    {emailActions(m)}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+
+          <div className="hidden rounded-xl border border-slate-200 bg-white shadow-sm sm:block">
             <table className="w-full table-fixed text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
@@ -162,6 +219,7 @@ export default async function InboxPage() {
               <tbody className="divide-y divide-slate-100">
                 {recent.map((m) => {
                   const deal = Array.isArray(m.deals) ? m.deals[0] : m.deals
+                  const where = mailboxLabel(m.mailbox as string | null, m.classification === 'sent')
                   return (
                     <tr key={m.id} className="align-top">
                       <td className="px-3 py-2">
@@ -176,25 +234,15 @@ export default async function InboxPage() {
                         <p className="truncate text-xs text-slate-500" title={m.from_email ?? ''}>
                           {m.classification === 'sent' ? `to ${m.to_emails ?? ''}` : m.from_email}
                           {m.received_at && ` · ${new Date(m.received_at).toLocaleDateString()}`}
-                          {m.mailbox && ` · in ${String(m.mailbox).split('@')[0]}'s inbox`}
+                          {where && ` · ${where}`}
                         </p>
                       </td>
                       <td className="px-3 py-2 text-xs text-slate-600">
                         <p className="font-medium text-slate-700">{m.action_taken}</p>
                         {m.summary && <p className="mt-0.5 line-clamp-2">{m.summary}</p>}
-                        {(m.classification === 'error' ||
-                          (m.classification === 'lender_reply' && !m.deal_id)) && <RetryButton messageId={m.id} />}
-                        {m.classification !== 'sent' &&
-                          m.classification !== 'error' &&
-                          teamEmails.has(String(m.from_email ?? '').toLowerCase()) &&
-                          String(m.mailbox ?? '').toLowerCase() !== String(m.from_email ?? '').toLowerCase() && (
-                            <RetryButton messageId={m.id} label="Re-file as sent email" />
-                          )}
-                        {m.classification === 'lender_reply' && m.deal_id && !m.lender_id && (
-                          <LinkLender messageId={m.id} dealId={m.deal_id} />
-                        )}
+                        {emailActions(m)}
                       </td>
-                      <td className={`px-3 py-2 ${m.deal_id ? "truncate" : ""}`}>
+                      <td className={`px-3 py-2 ${m.deal_id ? 'truncate' : ''}`}>
                         {m.deal_id ? (
                           <Link href={`/deals/${m.deal_id}`} className="text-slate-800 hover:underline">
                             {deal?.company_name ?? 'Open deal'}
@@ -209,8 +257,8 @@ export default async function InboxPage() {
               </tbody>
             </table>
           </div>
-        )}
-      </section>
+        </section>
+      )}
     </div>
   )
 }

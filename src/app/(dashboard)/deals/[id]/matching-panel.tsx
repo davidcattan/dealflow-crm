@@ -525,7 +525,7 @@ export function MatchingPanel({
   return (
     <section
       id="lender-matches"
-      className="scroll-mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+      className="scroll-mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>

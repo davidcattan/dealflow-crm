@@ -6,12 +6,14 @@ import { updateDeal } from './actions'
 import { STATUS_OPTIONS, STATUS_LABELS, displayStatus, activityScoreColor, type Deal } from '@/lib/types'
 import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 
+// A label and value: a compact row on phones (blank ones hidden), a small
+// stacked block on computers.
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="min-w-0">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
+    <div className={`flex min-w-0 items-baseline justify-between gap-4 sm:block ${value ? '' : 'max-sm:hidden'}`}>
+      <p className="shrink-0 text-xs font-medium text-slate-500">{label}</p>
       {/* Long emails/URLs wrap instead of running off a phone screen. */}
-      <p className="mt-0.5 text-sm text-slate-800 [overflow-wrap:anywhere]">{value || '—'}</p>
+      <p className="text-right text-sm text-slate-800 [overflow-wrap:anywhere] sm:mt-0.5 sm:text-left">{value || '—'}</p>
     </div>
   )
 }
@@ -21,7 +23,7 @@ export function DealDetails({ deal }: { deal: Deal }) {
   const [editing, setEditing] = useState(false)
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-900">Deal details</h2>
         <button
@@ -33,7 +35,7 @@ export function DealDetails({ deal }: { deal: Deal }) {
       </div>
 
       {!editing ? (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-4">
           <Fact label="Status" value={STATUS_LABELS[deal.status]} />
           <Fact label="Industry" value={deal.industry} />
           <Fact label="Loan type" value={deal.loan_type} />
@@ -53,8 +55,14 @@ export function DealDetails({ deal }: { deal: Deal }) {
             }
           />
           <Fact label="Contact name" value={deal.contact_name} />
-          <Fact label="Contact email" value={deal.contact_email} />
-          <Fact label="Contact phone" value={deal.contact_phone} />
+          <Fact
+            label="Contact email"
+            value={deal.contact_email ? <a href={`mailto:${deal.contact_email}`} className="underline">{deal.contact_email}</a> : null}
+          />
+          <Fact
+            label="Contact phone"
+            value={deal.contact_phone ? <a href={`tel:${deal.contact_phone}`} className="underline">{deal.contact_phone}</a> : null}
+          />
           <Fact label="Deal type / ask" value={deal.deal_type} />
           <Fact label="Rep" value={deal.rep_name} />
           <Fact
@@ -70,7 +78,7 @@ export function DealDetails({ deal }: { deal: Deal }) {
               ) : null
             }
           />
-          <div className="sm:col-span-3">
+          <div className="border-t border-slate-100 pt-2.5 sm:col-span-3 sm:border-0 sm:pt-0">
             <p className="text-xs font-medium text-slate-500">Description</p>
             <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-800">
               {deal.description || '—'}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
+import { usePhoneTab } from './phone-tabs'
 
 // Lets a page section be hidden with a small arrow (shown by default).
 // Hidden sections stay mounted — just not displayed — so anything running
@@ -8,6 +9,9 @@ import { useEffect, useState, type ReactNode } from 'react'
 //
 // phoneClosed: starts hidden on phones (shown on computers). Done with CSS
 // until the user toggles, so there's no flash of open content on load.
+//
+// tab: on a page with PhoneTabs, the phone tab this section lives in. On a
+// phone it then shows (fully open, no arrow) only on that tab.
 
 const EVENT = 'collapsible-sections:set-all'
 const PHONE = '(max-width: 639px)'
@@ -17,9 +21,14 @@ export function CollapsibleSection({
   children,
   phoneClosed = false,
   closed = false,
+  tab,
+  keepToggle = false,
 }: {
   title: string
   children: ReactNode
+  tab?: string
+  // In a phone tab, keep the arrow and start closed (e.g. long extras).
+  keepToggle?: boolean
   phoneClosed?: boolean
   // Starts hidden everywhere (e.g. a section that's already filled in).
   closed?: boolean
@@ -40,22 +49,26 @@ export function CollapsibleSection({
       return window.matchMedia(PHONE).matches
     })
 
+  const activeTab = usePhoneTab()
+  const inTabs = Boolean(tab && activeTab)
+  const forceOpen = inTabs && !keepToggle
+
   const arrow = open === null ? 'sm:rotate-90' : open ? 'rotate-90' : ''
-  const body = open === null ? 'hidden sm:block' : open ? '' : 'hidden'
+  const body = `${open === null ? 'hidden sm:block' : open ? '' : 'hidden'} ${forceOpen ? 'max-sm:!block' : ''}`
   const hint = open === null ? 'sm:hidden' : open ? 'hidden' : ''
 
   return (
-    <div>
+    <div className={inTabs && tab !== activeTab ? 'max-sm:hidden' : ''}>
       <button
         type="button"
         onClick={toggle}
-        className="mb-2 flex items-center gap-1.5 py-1 text-xs font-medium uppercase tracking-wide text-slate-400 hover:text-slate-700"
+        className={`mb-2 flex items-center gap-1.5 py-1 text-xs font-medium uppercase tracking-wide text-slate-400 hover:text-slate-700 ${forceOpen ? 'max-sm:hidden' : ''}`}
       >
         <svg viewBox="0 0 20 20" fill="currentColor" className={`h-3.5 w-3.5 transition-transform ${arrow}`} aria-hidden="true">
           <path d="M7.2 4.2a1 1 0 0 1 1.4 0l5.1 5.1a1 1 0 0 1 0 1.4l-5.1 5.1a1 1 0 1 1-1.4-1.4L11.6 10 7.2 5.6a1 1 0 0 1 0-1.4Z" />
         </svg>
         {title}
-        <span className={`normal-case tracking-normal text-slate-400 ${hint}`}>— click to show</span>
+        <span className={`normal-case tracking-normal text-slate-400 ${hint}`}>— tap to show</span>
       </button>
       <div className={body}>{children}</div>
     </div>

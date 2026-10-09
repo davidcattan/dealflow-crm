@@ -93,6 +93,20 @@ export type WhoOptions = {
   otherLenders: LenderOption[]
 }
 
+// "2026-10-09" for a timestamp, in this device's time zone.
+function localDay(iso: string) {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// The same time of day as `iso`, moved to `day`.
+function onDay(iso: string, day: string) {
+  const d = new Date(iso)
+  const [y, m, dd] = day.split('-').map(Number)
+  d.setFullYear(y, m - 1, dd)
+  return d.toISOString()
+}
+
 // The dropdown value for who a saved call was with.
 function whoValue(call: CallRow) {
   if (call.call_with === 'lender' && call.lender_id) return `lender:${call.lender_id}`
@@ -279,6 +293,7 @@ function EditNotes({
   const [points, setPoints] = useState(notes.key_points.length ? [...notes.key_points] : [''])
   const [steps, setSteps] = useState(notes.next_steps.map((x) => ({ ...x })))
   const [who, setWho] = useState(whoValue(call))
+  const [day, setDay] = useState(localDay(call.created_at))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const input = 'w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm'
@@ -296,6 +311,8 @@ function EditNotes({
           key_points: points,
           next_steps: steps,
           ...(whoOptions ? { who: parseWho(who) } : {}),
+          // Same time of day, on the picked date.
+          ...(day && day !== localDay(call.created_at) ? { day, createdAt: onDay(call.created_at, day) } : {}),
         }),
       })
       const result = await readJsonResponse(res)
@@ -316,6 +333,15 @@ function EditNotes({
           <WhoSelect value={who} onChange={setWho} options={whoOptions} />
         </div>
       )}
+      <label className="block text-xs font-medium text-slate-600">
+        Date of the call
+        <input
+          type="date"
+          value={day}
+          onChange={(e) => setDay(e.target.value)}
+          className="mt-1 block rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+        />
+      </label>
       <label className="block text-xs font-medium text-slate-600">
         Title
         <input value={title} onChange={(e) => setTitle(e.target.value)} className={`mt-1 ${input}`} />

@@ -246,6 +246,10 @@ export async function deleteCall(supabase: SupabaseClient, callId: string) {
 export type CallNotesEdit = Pick<CallNotes, 'title' | 'summary' | 'key_points' | 'next_steps'> & {
   // Deal calls only: who the call was with.
   who?: { callWith: 'borrower' | 'lender' | 'broker' | null; lenderId: string | null }
+  // A corrected date: the full time (worked out in the browser so it keeps
+  // the same time of day) and the plain day for the deal's Updates.
+  createdAt?: string
+  day?: string
 }
 
 function summaryNote(n: CallNotesEdit) {
@@ -263,6 +267,7 @@ export async function editCallNotes(supabase: SupabaseClient, callId: string, ed
     key_points: edit.key_points.map((p) => p.trim()).filter(Boolean),
     next_steps: edit.next_steps.map((x) => ({ ...x, text: x.text.trim() })).filter((x) => x.text),
   }
+  const validDate = Boolean(edit.createdAt && !Number.isNaN(Date.parse(edit.createdAt)) && /^\d{4}-\d{2}-\d{2}$/.test(edit.day ?? ''))
   await supabase
     .from('deal_calls')
     .update({
@@ -270,6 +275,7 @@ export async function editCallNotes(supabase: SupabaseClient, callId: string, ed
       ...(call.deal_id && edit.who
         ? { call_with: edit.who.callWith, lender_id: edit.who.callWith === 'lender' ? edit.who.lenderId : null }
         : {}),
+      ...(validDate ? { created_at: edit.createdAt } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq('id', callId)
@@ -280,7 +286,9 @@ export async function editCallNotes(supabase: SupabaseClient, callId: string, ed
     const row =
       (rows ?? []).find((r) => r.call_id === callId && String(r.note).startsWith('📞')) ??
       (rows ?? []).find((r) => String(r.note).startsWith(`📞 ${before.title}:`))
-    if (row) await supabase.from('deal_updates').update({ note: summaryNote(clean) }).eq('id', row.id)
+    if (row) await supabase.from('deal_updates').update({ note: summaryNote(clean), ...(validDate ? { entry_date: edit.day } : {}) }).eq('id', row.id)
+    // Everything else this call added (lender notes) moves to the new date too.
+    if (validDate) await supabase.from('deal_updates').update({ entry_date: edit.day }).eq('call_id', callId)
   }
   return call.deal_id ? `/deals/${call.deal_id}` : `/lenders/${call.lender_id}`
 }

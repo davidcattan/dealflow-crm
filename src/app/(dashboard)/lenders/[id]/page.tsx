@@ -40,7 +40,7 @@ export default async function LenderDetailPage({
   return (
     <div className="space-y-8">
       <LenderDetail lender={lender as Lender} contacts={(contacts ?? []) as LenderContact[]} />
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="text-sm font-semibold text-slate-900">Calls{calls.length ? ` (${calls.length})` : ''}</h2>
         <p className="mb-4 mt-1 text-xs text-slate-500">
           Intro calls and general calls with this lender. The notes suggest updates to their profile — loan sizes, what

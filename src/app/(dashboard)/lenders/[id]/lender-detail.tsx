@@ -79,7 +79,7 @@ export function LenderDetail({
 
       {!editing ? (
         <div className="space-y-6">
-          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
             <h2 className="mb-4 text-sm font-semibold text-slate-900">
               Overview
             </h2>
@@ -108,7 +108,7 @@ export function LenderDetail({
             </div>
           </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
             <h2 className="mb-4 text-sm font-semibold text-slate-900">
               Loan criteria
             </h2>
@@ -149,7 +149,7 @@ export function LenderDetail({
 
           <LenderContacts lender={lender} contacts={contacts} />
 
-          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
             <h2 className="mb-4 text-sm font-semibold text-slate-900">
               Notes
             </h2>
@@ -159,7 +159,7 @@ export function LenderDetail({
           </section>
         </div>
       ) : (
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <h2 className="mb-4 text-sm font-semibold text-slate-900">
             Edit mandate
           </h2>

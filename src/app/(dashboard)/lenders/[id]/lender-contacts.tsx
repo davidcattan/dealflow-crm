@@ -114,7 +114,7 @@ export function LenderContacts({ lender, contacts }: { lender: Lender; contacts:
   const [pending, startTransition] = useTransition()
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Contacts ({rows.length})</h2>

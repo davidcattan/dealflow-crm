@@ -256,8 +256,9 @@ function LenderCard({ dealId, sub, items }: { dealId: string; sub: SubmissionRow
 
       {items.length > 0 && (
         <ul className="mt-3 space-y-2 border-l-2 border-slate-100 pl-3">
-          {visible.map((it) => (
-            <li key={it.id} className="text-sm">
+          {visible.map((it, i) => (
+            // Phones show just the latest line until "Show all".
+            <li key={it.id} className={`text-sm ${!showAll && i > 0 ? 'max-sm:hidden' : ''}`}>
               <span className="mr-2 text-xs text-slate-400">{shortDate(it.at)}</span>
               {it.kind === 'email' && it.sentBy ? (
                 <>
@@ -283,11 +284,11 @@ function LenderCard({ dealId, sub, items }: { dealId: string; sub: SubmissionRow
           ))}
         </ul>
       )}
-      {items.length > 3 && (
+      {items.length > 1 && (
         <button
           type="button"
           onClick={() => setShowAll((v) => !v)}
-          className="mt-2 text-xs text-slate-500 hover:underline"
+          className={`mt-2 text-xs text-slate-500 hover:underline ${items.length > 3 ? '' : 'sm:hidden'}`}
         >
           {showAll ? 'Show less' : `Show all ${items.length} updates`}
         </button>
@@ -359,7 +360,7 @@ export function SubmissionsPanel({
   )
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Lenders sent to ({submissions.length})</h2>
