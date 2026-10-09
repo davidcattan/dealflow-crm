@@ -10,6 +10,7 @@ import {
   type DealStatus,
 } from '@/lib/types'
 import { formatDateOnly } from '@/lib/format'
+import { loadLastActivity } from '@/lib/deals/load-next-steps'
 
 type Row = {
   id: string
@@ -114,7 +115,13 @@ export default async function DashboardHome() {
     supabase.from('ai_usage').select('cost_usd').gte('created_at', monthStart.toISOString()),
   ])
 
-  const deals = (raw ?? []) as Row[]
+  // "Updated" = the last activity of any kind (emails, lender replies, calls,
+  // updates), not just the last edit to the deal's own details.
+  const lastActivity = await loadLastActivity(
+    supabase,
+    (raw ?? []).map((d) => d.id as string)
+  )
+  const deals = ((raw ?? []) as Row[]).map((d) => ({ ...d, updated_at: lastActivity.get(d.id) ?? d.updated_at }))
   const monthSpend = (usage ?? []).reduce((n, r) => n + Number(r.cost_usd), 0)
   const now = currentTime()
   const byActivity = (a: Row, b: Row) => (b.activity_score ?? 0) - (a.activity_score ?? 0)
@@ -208,7 +215,7 @@ export default async function DashboardHome() {
           hint="Active deals (7+) with no update in over a week"
           rows={goingCold}
           empty="Everything active has been touched recently."
-          right={(d) => `updated ${formatDateOnly(d.updated_at)}`}
+          right={(d) => `last activity ${formatDateOnly(d.updated_at)}`}
         />
       </div>
     </div>

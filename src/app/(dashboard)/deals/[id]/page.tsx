@@ -2,7 +2,6 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import type { Deal, DocumentRecord, DealUpdate } from '@/lib/types'
 import {
-  deleteDocument,
   deleteDeal,
   addDealUpdate,
   setDealStatusQuick,
@@ -27,6 +26,8 @@ import { loadDealEmails, emailsToText } from '@/lib/deals/deal-emails'
 import { findPossibleDuplicates } from '@/lib/deals/duplicates'
 import { MergeDealButton, DuplicateBanner } from './merge-deal'
 import { CallsPanel, type CallRow } from './calls-panel'
+import { DocumentGroups } from './document-groups'
+import { guessCategory, guessLender } from '@/lib/documents/categories'
 import { callSuggestions } from '@/lib/calls/process'
 import type { CallNotes } from '@/lib/calls/schema'
 import { LenderSearchPanel } from './lender-search-panel'
@@ -149,6 +150,11 @@ export default async function DealDetailPage({
     [...(mailboxRows ?? [])].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0]?.id ??
     null
   const lenderNameById = new Map((lenderRows ?? []).map((l) => [l.id as string, l.name as string]))
+  // For tagging term sheets: lenders on this deal first, then everyone.
+  const termSheetLenders = [
+    ...(submissionRows ?? []).map((r) => ({ id: r.lender_id as string, name: lenderNameById.get(r.lender_id as string) ?? 'Lender' })),
+    ...((lenderRows ?? []) as { id: string; name: string }[]).filter((l) => !(submissionRows ?? []).some((r) => r.lender_id === l.id)),
+  ]
   const submissions: SubmissionRow[] = (submissionRows ?? []).map((r) => {
     const lender = Array.isArray(r.lenders) ? r.lenders[0] : r.lenders
     return {
@@ -368,61 +374,28 @@ export default async function DealDetailPage({
         />
 
         {docsWithUrls.length > 0 ? (
-          <ul className="divide-y divide-slate-100">
-            {docsWithUrls.map((doc) => (
-              <li
-                key={doc.id}
-                className="flex items-center justify-between py-3 text-sm"
-              >
-                <div>
-                  {doc.url ? (
-                    <a
-                      href={doc.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-medium text-slate-800 hover:underline"
-                    >
-                      {doc.file_name}
-                    </a>
-                  ) : (
-                    <span className="font-medium text-slate-800">
-                      {doc.file_name}
-                    </span>
-                  )}
-                  <span className="ml-2 text-xs text-slate-400">
-                    {formatBytes(doc.file_size)} ·{' '}
-                    {new Date(doc.uploaded_at).toLocaleDateString()}
-                  </span>
-                  {doc.triage && (
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      <span className="font-medium capitalize">{doc.triage.relevance} relevance</span>
-                      {' · '}
-                      {doc.triage.doc_type}
-                      {doc.triage.important_pages.length > 0 &&
-                        ` · pages ${doc.triage.important_pages
-                          .map((r) => (r.start === r.end ? r.start : `${r.start}-${r.end}`))
-                          .join(', ')} of ${doc.triage.total_pages} used`}
-                    </p>
-                  )}
-                </div>
-                <form action={deleteDocument}>
-                  <input type="hidden" name="deal_id" value={deal.id} />
-                  <input type="hidden" name="document_id" value={doc.id} />
-                  <input
-                    type="hidden"
-                    name="storage_path"
-                    value={doc.storage_path}
-                  />
-                  <ConfirmButton
-                    confirmMessage={`Delete ${doc.file_name}? This cannot be undone.`}
-                    className="text-xs text-red-500 hover:underline"
-                  >
-                    Delete
-                  </ConfirmButton>
-                </form>
-              </li>
-            ))}
-          </ul>
+          <DocumentGroups
+            dealId={deal.id}
+            docs={docsWithUrls.map((doc) => {
+              const category = doc.category || guessCategory(doc.file_name, doc.triage?.doc_type)
+              const lenderId =
+                doc.lender_id ??
+                (category === 'Term sheets & offers' ? guessLender(doc.file_name, termSheetLenders)?.id : null) ??
+                null
+              return {
+                id: doc.id,
+                file_name: doc.file_name,
+                storage_path: doc.storage_path,
+                url: doc.url,
+                size: formatBytes(doc.file_size),
+                uploaded_at: doc.uploaded_at,
+                triage: doc.triage,
+                category,
+                lender: lenderId ? { id: lenderId, name: lenderNameById.get(lenderId) ?? 'Lender' } : null,
+              }
+            })}
+            lenders={termSheetLenders}
+          />
         ) : (
           <p className="py-6 text-center text-sm text-slate-400">
             No documents uploaded yet.

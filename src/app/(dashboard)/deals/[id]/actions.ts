@@ -96,6 +96,19 @@ export async function deleteDocument(formData: FormData) {
   revalidatePath(`/deals/${dealId}`)
 }
 
+// Moves a document to another group (and, for term sheets, sets the lender).
+export async function setDocumentGroup(dealId: string, documentId: string, category: string, lenderId: string | null) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('documents')
+    .update({ category, lender_id: lenderId })
+    .eq('id', documentId)
+    .eq('deal_id', dealId)
+  if (error) return { error: error.message.includes('category') ? 'Run migration 035_document_groups.sql in Supabase first.' : error.message }
+  revalidatePath(`/deals/${dealId}`)
+  return { ok: true }
+}
+
 export async function deleteDeal(formData: FormData) {
   const id = String(formData.get('deal_id') ?? '')
   if (!id) return

@@ -90,6 +90,9 @@ export type DocumentRecord = {
   uploaded_at: string
   triage: DocTriage | null
   triaged_at: string | null
+  // A group someone picked (migration 035); otherwise guessed from the name.
+  category?: string | null
+  lender_id?: string | null
 }
 
 export type DocTriage = {
