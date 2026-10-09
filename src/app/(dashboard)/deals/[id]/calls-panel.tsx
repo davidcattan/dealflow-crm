@@ -18,7 +18,10 @@ export type CallRow = {
     title: string
     summary: string
     key_points: string[]
-    next_steps: { text: string; owner: 'us' | 'borrower' | 'lender' | 'other' }[]
+    next_steps: {
+      text: string
+      owner: 'us' | 'borrower' | 'lender' | 'other'
+    }[]
   } | null
   suggestions: CallSuggestion[]
   applied: string[]
@@ -28,10 +31,18 @@ export type CallRow = {
 const PENDING = ['uploaded', 'transcribing', 'summarizing']
 
 function when(iso: string) {
-  return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
 }
 
-type Who = { callWith: 'borrower' | 'lender' | 'broker' | null; lenderId: string | null }
+type Who = {
+  callWith: 'borrower' | 'lender' | 'broker' | null
+  lenderId: string | null
+}
 
 // Dropdown value -> who the call is with.
 function parseWho(value: string): Who {
@@ -42,7 +53,12 @@ function parseWho(value: string): Who {
 
 // Where a recording goes: a deal's calls or a lender's, and how the red
 // "Recording" bar names it.
-export type CallTarget = { uploadUrl: string; pathPrefix: string; label: string; href: string }
+export type CallTarget = {
+  uploadUrl: string
+  pathPrefix: string
+  label: string
+  href: string
+}
 
 // An existing recording file (e.g. from Zoom) uploaded by hand.
 async function uploadFileCall(target: CallTarget, file: File, who: Who) {
@@ -56,7 +72,11 @@ async function uploadFileCall(target: CallTarget, file: File, who: Who) {
   const res = await fetch(target.uploadUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ storagePaths: [storagePath], durationSeconds: null, ...who }),
+    body: JSON.stringify({
+      storagePaths: [storagePath],
+      durationSeconds: null,
+      ...who,
+    }),
   })
   const result = await readJsonResponse(res)
   if (!result.ok) throw new Error(result.message)
@@ -65,7 +85,11 @@ async function uploadFileCall(target: CallTarget, file: File, who: Who) {
 export type LenderOption = { id: string; name: string }
 
 // Deal calls ask who's on the call; lender calls already know.
-export type WhoOptions = { borrowerName: string; dealLenders: LenderOption[]; otherLenders: LenderOption[] }
+export type WhoOptions = {
+  borrowerName: string
+  dealLenders: LenderOption[]
+  otherLenders: LenderOption[]
+}
 
 // The Record button. The recording itself runs in CallRecorderProvider
 // (above every page), so it keeps going if you leave this page.
@@ -145,7 +169,9 @@ export function CallRecorder({ target, whoOptions, hint }: { target: CallTarget;
       {here && rec.state === 'recording' ? (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
           <span className="font-mono text-sm font-medium text-red-700">● Recording {clock(rec.seconds)}</span>
-          <span className="text-xs text-red-700/80">Keep the call on speaker. You can move around the CRM — it keeps recording.</span>
+          <span className="text-xs text-red-700/80">
+            Keep the call on speaker. You can move around the CRM — it keeps recording.
+          </span>
           <button
             type="button"
             onClick={rec.stop}
@@ -196,11 +222,135 @@ export function CallRecorder({ target, whoOptions, hint }: { target: CallTarget;
   )
 }
 
-const OWNER_LABEL: Record<string, string> = { us: 'Us', borrower: 'Borrower', lender: 'Lender', other: 'Other' }
+const OWNER_LABEL: Record<string, string> = {
+  us: 'Us',
+  borrower: 'Borrower',
+  lender: 'Lender',
+  other: 'Other',
+}
+
+type Notes = NonNullable<CallRow['result']>
+type Owner = Notes['next_steps'][number]['owner']
+
+// Edits a call's title, summary, key points and next steps (its summary in
+// Updates is kept in step).
+function EditNotes({ callId, notes, onDone }: { callId: string; notes: Notes; onDone: () => void }) {
+  const router = useRouter()
+  const [title, setTitle] = useState(notes.title)
+  const [summary, setSummary] = useState(notes.summary)
+  const [points, setPoints] = useState(notes.key_points.join('\n'))
+  const [steps, setSteps] = useState(notes.next_steps.map((x) => ({ ...x })))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const input = 'w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm'
+
+  async function save() {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/calls/${callId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          summary,
+          key_points: points.split('\n'),
+          next_steps: steps,
+        }),
+      })
+      const result = await readJsonResponse(res)
+      if (!result.ok) throw new Error(result.message)
+      router.refresh()
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Couldn’t save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="mt-2 space-y-3">
+      <label className="block text-xs font-medium text-slate-600">
+        Title
+        <input value={title} onChange={(e) => setTitle(e.target.value)} className={`mt-1 ${input}`} />
+      </label>
+      <label className="block text-xs font-medium text-slate-600">
+        Summary
+        <textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={4} className={`mt-1 ${input}`} />
+      </label>
+      <label className="block text-xs font-medium text-slate-600">
+        Key points <span className="font-normal text-slate-400">(one per line)</span>
+        <textarea
+          value={points}
+          onChange={(e) => setPoints(e.target.value)}
+          rows={Math.max(3, points.split('\n').length + 1)}
+          className={`mt-1 ${input}`}
+        />
+      </label>
+      <div>
+        <p className="text-xs font-medium text-slate-600">Next steps</p>
+        <ul className="mt-1 space-y-2">
+          {steps.map((step, i) => (
+            <li key={i} className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+              <select
+                value={step.owner}
+                onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, owner: e.target.value as Owner } : x)))}
+                className="rounded-md border border-slate-300 px-2 py-1.5 text-xs"
+              >
+                {Object.entries(OWNER_LABEL).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={step.text}
+                onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}
+                className={`min-w-0 flex-1 ${input}`}
+              />
+              <button
+                type="button"
+                onClick={() => setSteps(steps.filter((_, j) => j !== i))}
+                className="text-xs text-slate-400 hover:text-red-600"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          onClick={() => setSteps([...steps, { text: '', owner: 'us' }])}
+          className="mt-2 text-xs text-slate-600 hover:underline"
+        >
+          + Add next step
+        </button>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving || !summary.trim()}
+          className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button type="button" onClick={onDone} className="rounded-md px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100">
+          Cancel
+        </button>
+        {error && <span className="text-xs text-red-600">{error}</span>}
+      </div>
+    </div>
+  )
+}
 
 function CallCard({ call }: { call: CallRow }) {
   const router = useRouter()
-  const [picked, setPicked] = useState<Set<string>>(() => new Set(call.suggestions.map((s) => s.key).filter((k) => !call.applied.includes(k))))
+  const [editing, setEditing] = useState(false)
+  const [picked, setPicked] = useState<Set<string>>(
+    () => new Set(call.suggestions.map((s) => s.key).filter((k) => !call.applied.includes(k))),
+  )
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [showTranscript, setShowTranscript] = useState(false)
@@ -215,12 +365,15 @@ function CallCard({ call }: { call: CallRow }) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ keys: [...picked] }),
       })
-      const result = await readJsonResponse<{ applied: number; missing: string[] }>(res)
+      const result = await readJsonResponse<{
+        applied: number
+        missing: string[]
+      }>(res)
       if (!result.ok) throw new Error(result.message)
       const { applied, missing } = result.body
       setMessage(
         `${applied} update${applied === 1 ? '' : 's'} applied.` +
-          (missing.length ? ` Couldn’t find ${missing.join(', ')} in your lenders — add them on the Lenders page first.` : '')
+          (missing.length ? ` Couldn’t find ${missing.join(', ')} in your lenders — add them on the Lenders page first.` : ''),
       )
       router.refresh()
     } catch (err) {
@@ -233,7 +386,7 @@ function CallCard({ call }: { call: CallRow }) {
   async function remove() {
     if (
       !confirm(
-        'Delete this call? The recording, its notes, and the updates it added to the deal are removed. Status or detail changes you applied from it stay as they are.'
+        'Delete this call? The recording, its notes, and the updates it added to the deal are removed. Status or detail changes you applied from it stay as they are.',
       )
     )
       return
@@ -277,31 +430,46 @@ function CallCard({ call }: { call: CallRow }) {
         <span className="font-medium text-slate-900">
           📞 {notes.title} {meta}
         </span>
-        <button type="button" onClick={remove} className="text-xs text-slate-400 hover:text-red-600">
-          Delete
-        </button>
+        <span className="flex gap-3">
+          {!editing && (
+            <button type="button" onClick={() => setEditing(true)} className="text-xs text-slate-400 hover:text-slate-700">
+              Edit
+            </button>
+          )}
+          <button type="button" onClick={remove} className="text-xs text-slate-400 hover:text-red-600">
+            Delete
+          </button>
+        </span>
       </div>
-      <p className="mt-2 text-slate-700">{notes.summary}</p>
-      {notes.key_points.length > 0 && (
-        <ul className="mt-2 list-disc space-y-0.5 pl-5 text-slate-600">
-          {notes.key_points.map((p, i) => (
-            <li key={i}>{p}</li>
-          ))}
-        </ul>
-      )}
+      {editing ? (
+        <EditNotes callId={call.id} notes={notes} onDone={() => setEditing(false)} />
+      ) : (
+        <>
+          <p className="mt-2 text-slate-700">{notes.summary}</p>
+          {notes.key_points.length > 0 && (
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 text-slate-600">
+              {notes.key_points.map((p, i) => (
+                <li key={i}>{p}</li>
+              ))}
+            </ul>
+          )}
 
-      {notes.next_steps.length > 0 && (
-        <div className="mt-3">
-          <p className="text-xs font-semibold uppercase text-slate-500">Next steps</p>
-          <ul className="mt-1 space-y-1">
-            {notes.next_steps.map((s, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <span className="mt-0.5 shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">{OWNER_LABEL[s.owner]}</span>
-                <span className="text-slate-700">{s.text}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+          {notes.next_steps.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs font-semibold uppercase text-slate-500">Next steps</p>
+              <ul className="mt-1 space-y-1">
+                {notes.next_steps.map((s, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="mt-0.5 shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                      {OWNER_LABEL[s.owner]}
+                    </span>
+                    <span className="text-slate-700">{s.text}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
       )}
 
       {call.suggestions.length > 0 && (
@@ -377,7 +545,10 @@ export function CallsPanel({
   hint?: string
 }) {
   const router = useRouter()
-  const pendingIds = calls.filter((c) => PENDING.includes(c.status)).map((c) => c.id).join(',')
+  const pendingIds = calls
+    .filter((c) => PENDING.includes(c.status))
+    .map((c) => c.id)
+    .join(',')
 
   // While a call is processing, nudge it along and refresh when it changes.
   useEffect(() => {

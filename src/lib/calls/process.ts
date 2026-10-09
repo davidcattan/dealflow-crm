@@ -192,7 +192,7 @@ Write the call notes. Stick to what was actually said — never invent numbers, 
   await insertCallUpdate(supabase, callId, {
     deal_id: dealId,
     entry_date: today,
-    note: [`📞 ${notes.title}: ${notes.summary}`, ...notes.key_points.map((p) => `• ${p}`)].join('\n'),
+    note: summaryNote(notes),
     source: 'call',
   })
   await notify(supabase, {
@@ -230,6 +230,39 @@ export async function deleteCall(supabase: SupabaseClient, callId: string) {
   }
   // Tagged updates go with the call (on delete cascade).
   await supabase.from('deal_calls').delete().eq('id', callId)
+}
+
+export type CallNotesEdit = Pick<CallNotes, 'title' | 'summary' | 'key_points' | 'next_steps'>
+
+function summaryNote(n: CallNotesEdit) {
+  return [`📞 ${n.title}: ${n.summary}`, ...n.key_points.map((p) => `• ${p}`)].join('\n')
+}
+
+// Saves edits to a call's notes and keeps its summary in Updates matching.
+export async function editCallNotes(supabase: SupabaseClient, callId: string, edit: CallNotesEdit) {
+  const { data: call } = await supabase.from('deal_calls').select('*').eq('id', callId).single()
+  if (!call?.result) throw new Error('These call notes aren’t ready yet')
+  const before = call.result as CallNotes
+  const clean: CallNotesEdit = {
+    title: edit.title.trim() || before.title,
+    summary: edit.summary.trim(),
+    key_points: edit.key_points.map((p) => p.trim()).filter(Boolean),
+    next_steps: edit.next_steps.map((x) => ({ ...x, text: x.text.trim() })).filter((x) => x.text),
+  }
+  await supabase
+    .from('deal_calls')
+    .update({ result: { ...before, ...clean }, updated_at: new Date().toISOString() })
+    .eq('id', callId)
+
+  if (call.deal_id) {
+    // The summary update: tagged with the call, or (older) matched by title.
+    const { data: rows } = await supabase.from('deal_updates').select('id, note, call_id').eq('deal_id', call.deal_id).eq('source', 'call')
+    const row =
+      (rows ?? []).find((r) => r.call_id === callId && String(r.note).startsWith('📞')) ??
+      (rows ?? []).find((r) => String(r.note).startsWith(`📞 ${before.title}:`))
+    if (row) await supabase.from('deal_updates').update({ note: summaryNote(clean) }).eq('id', row.id)
+  }
+  return call.deal_id ? `/deals/${call.deal_id}` : `/lenders/${call.lender_id}`
 }
 
 // Suggested updates as a flat list, each with a stable key.
