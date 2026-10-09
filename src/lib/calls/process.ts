@@ -8,13 +8,14 @@ import { recordSubmission } from '@/lib/deals/submissions'
 import { SUBMISSION_LABELS, type SubmissionStatus } from '@/lib/deals/submission-status'
 import { LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 import { CallNotesSchema, type CallNotes } from './schema'
+import { summarizeLenderCall, applyLenderCallSuggestions } from './lender-call'
 
 // Recorded calls: audio -> transcript (AssemblyAI, ~1¢/min) -> notes,
 // next steps and suggested updates (Claude, a few cents). Suggested
 // updates are only applied when someone ticks them.
 
-const ASSEMBLY = 'https://api.assemblyai.com/v2/transcript'
-const MODEL = 'claude-opus-5-5'
+export const ASSEMBLY = 'https://api.assemblyai.com/v2/transcript'
+export const MODEL = 'claude-opus-5-5'
 
 function assemblyKey() {
   const key = process.env.ASSEMBLYAI_API_KEY
@@ -92,6 +93,8 @@ export async function advanceCall(supabase: SupabaseClient, callId: string) {
   if (!transcript.trim()) return fail(supabase, callId, 'No speech was picked up. Was the call on speaker?')
 
   try {
+    // A call filed on a lender (e.g. an intro call) rather than a deal.
+    if (!call.deal_id) return await summarizeLenderCall(supabase, call.id, call.lender_id, transcript)
     await summarizeCall(supabase, call.id, call.deal_id, transcript, {
       callWith: call.call_with ?? null,
       lenderId: call.lender_id ?? null,
@@ -204,6 +207,7 @@ export function callSuggestions(notes: CallNotes): CallSuggestion[] {
 export async function applyCallSuggestions(supabase: SupabaseClient, callId: string, keys: string[]) {
   const { data: call } = await supabase.from('deal_calls').select('*').eq('id', callId).single()
   if (!call?.result) throw new Error('These call notes aren’t ready yet')
+  if (!call.deal_id) return applyLenderCallSuggestions(supabase, call, keys)
   const notes = call.result as CallNotes
   const already = new Set((call.applied as string[]) ?? [])
   const dealId = call.deal_id as string

@@ -42,3 +42,59 @@ export const CallNotesSchema = z.object({
 })
 
 export type CallNotes = z.infer<typeof CallNotesSchema>
+
+export const LENDER_CHANGE_FIELDS = [
+  'min_loan_amount',
+  'max_loan_amount',
+  'min_revenue',
+  'min_ebitda',
+  'lending_type',
+  'asset_types',
+  'industries',
+  'geographies',
+  'website',
+  'add_to_mandate_notes',
+] as const
+
+// Notes from a call with a lender that isn't about one deal — usually an
+// intro call where they explain what they lend on.
+export const LenderCallNotesSchema = z.object({
+  title: z.string().describe('Short title, e.g. "Intro call with Mike at Fairview".'),
+  summary: z.string().describe('3-5 plain sentences: who they are, what they lend on, and what came out of the call.'),
+  key_points: z
+    .array(z.string())
+    .describe('Concrete facts said on the call: loan sizes, rates, LTV/advance rates, terms, fees, speed to close, deal types they love or avoid. One short line each.'),
+  next_steps: z
+    .array(
+      z.object({
+        text: z.string().describe('One action, starting with a verb.'),
+        owner: z.enum(['us', 'borrower', 'lender', 'other']).describe('us = JED Capital (David/Eli).'),
+      })
+    )
+    .describe('What has to happen next, most important first.'),
+  lender_changes: z
+    .array(
+      z.object({
+        field: z.enum(LENDER_CHANGE_FIELDS),
+        value: z
+          .string()
+          .describe(
+            'Amounts: whole US dollars as digits only (e.g. 5000000). lending_type: exactly one of the listed lending types. asset_types / industries / geographies: comma-separated values from the listed options only; geographies "Nationwide" means no restriction. add_to_mandate_notes: one line on what they want or avoid.'
+          ),
+        why: z.string().describe('Very short: what on the call supports this.'),
+      })
+    )
+    .describe('Updates to the lender profile that the call clearly supports. Empty if none.'),
+  new_contacts: z
+    .array(
+      z.object({
+        name: z.string(),
+        title: z.string().nullable(),
+        email: z.string().nullable(),
+        phone: z.string().nullable(),
+      })
+    )
+    .describe('People at the lender named on the call (with any title, email or phone given) — so deals can be sent to them. Empty if none.'),
+})
+
+export type LenderCallNotes = z.infer<typeof LenderCallNotesSchema>
