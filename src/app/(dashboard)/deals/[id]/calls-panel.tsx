@@ -236,7 +236,7 @@ export function CallRecorder({ target, whoOptions, hint }: { target: CallTarget;
           <input
             ref={fileInput}
             type="file"
-            accept="audio/*,video/mp4,.m4a,.mp3,.wav,.webm,.mp4"
+            accept="audio/*,video/mp4,.m4a,.mp3,.wav,.webm,.mp4,.opus,.ogg,.aac,.mov"
             className="hidden"
             onChange={(e) => e.target.files?.[0] && uploadFile(e.target.files[0])}
           />
