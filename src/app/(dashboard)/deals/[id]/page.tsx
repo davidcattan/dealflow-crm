@@ -9,6 +9,8 @@ import {
 import { ConfirmButton } from '@/components/confirm-button'
 import { UnderwritingPanel } from './underwriting-panel'
 import { SnapshotPanel } from './snapshot-panel'
+import { QuickReadPanel } from './quick-read-panel'
+import type { QuickRead } from '@/lib/quickread/schema'
 import { buildSnapshotPrompt } from '@/lib/snapshot/prompt'
 import type { Snapshot } from '@/lib/snapshot/schema'
 import { docTextsOf, withCollateralRequests } from '@/lib/snapshot/collateral'
@@ -533,6 +535,15 @@ export default async function DealDetailPage({
         </section>
         </CollapsibleSection>
       )}
+
+      <CollapsibleSection tab="ai" title="Quick read">
+        <QuickReadPanel
+          dealId={deal.id}
+          quickRead={((deal as { quick_read?: QuickRead | null }).quick_read as QuickRead | null) ?? null}
+          at={(deal as { quick_read_at?: string | null }).quick_read_at ?? null}
+          costLabel={deal.snapshot ? 'about 1¢ (uses the existing underwriting)' : 'usually 5–30¢'}
+        />
+      </CollapsibleSection>
 
       <CollapsibleSection tab="ai" title="AI underwriting" phoneClosed closed={Boolean(deal.snapshot)}>
       <SnapshotPanel
