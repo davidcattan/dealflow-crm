@@ -35,6 +35,21 @@ export function emptyUsage() {
   return { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_searches: 0 }
 }
 
+// Dollar cost of one call (or a summed set of calls) on a model.
+export function usageCost(model: string, usage: UsageLike | ReturnType<typeof emptyUsage> | undefined) {
+  const u = (usage ?? {}) as Record<string, unknown>
+  const p = PRICES[model] ?? PRICES['claude-opus-5-5']
+  const searches = Number(u.web_searches ?? (u.server_tool_use as { web_search_requests?: number } | undefined)?.web_search_requests ?? 0)
+  return (
+    (Number(u.input_tokens ?? 0) * p.in +
+      Number(u.output_tokens ?? 0) * p.out +
+      Number(u.cache_read_input_tokens ?? 0) * p.in * (p.cacheRead ?? 0.1) +
+      Number(u.cache_creation_input_tokens ?? 0) * p.in * 1.25) /
+      1_000_000 +
+    searches * WEB_SEARCH_USD
+  )
+}
+
 // Best-effort: a logging failure must never break the AI feature itself.
 export async function logUsage(opts: {
   feature: string

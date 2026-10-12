@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { loadChat, type ChatMessage } from '@/lib/chat/actions'
 import { OPEN_ASK_AI_EVENT } from '@/components/mobile-nav'
+import { uploadDealDocuments } from '@/lib/upload-documents'
 
 const DEAL_PATH = /^\/deals\/([0-9a-f-]{36})/
 
@@ -108,6 +109,26 @@ function renderText(text: string, key: number) {
   })
 }
 
+// The server streams ⟦…⟧ markers: what the AI is doing (grey lines while
+// it works) and, at the end, ⟦cost:0.0123⟧. Split them from the answer.
+function splitAnswer(raw: string) {
+  const statuses: string[] = []
+  let cost: number | null = null
+  const text = raw
+    .replace(/\n?⟦([^⟧]*)⟧\n?/g, (_m, inner: string) => {
+      if (inner.startsWith('cost:')) cost = Number(inner.slice(5))
+      else statuses.push(inner)
+      return '\n'
+    })
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+  return { text, statuses, cost: cost as number | null }
+}
+
+function costLabel(usd: number) {
+  return usd < 0.01 ? 'under 1¢' : usd < 1 ? `${Math.round(usd * 100)}¢` : `$${usd.toFixed(2)}`
+}
+
 function Formatted({ text }: { text: string }) {
   // Split out fenced blocks (```email … ``` or any ``` … ```), even if the
   // closing fence hasn't streamed in yet.
@@ -125,6 +146,35 @@ function Formatted({ text }: { text: string }) {
   }
   if (last < text.length) parts.push(...renderText(text.slice(last), k++))
   return <>{parts}</>
+}
+
+function AssistantMessage({ raw, working }: { raw: string; working: boolean }) {
+  const { text, statuses, cost } = splitAnswer(raw)
+  return (
+    <div className="mr-4 text-slate-800">
+      {statuses.length > 0 && (
+        <details className="mb-1 text-xs text-slate-400" open={working}>
+          <summary className="cursor-pointer list-none">
+            {working ? <span className="animate-pulse">{statuses[statuses.length - 1]}…</span> : `Looked at ${statuses.length} thing${statuses.length === 1 ? '' : 's'} ›`}
+          </summary>
+          {(!working || statuses.length > 1) && (
+            <ul className="mt-1 space-y-0.5 border-l border-slate-200 pl-2">
+              {statuses.map((st, i) => (
+                <li key={i}>{st}</li>
+              ))}
+            </ul>
+          )}
+        </details>
+      )}
+      {text ? <Formatted text={text} /> : working && !statuses.length ? <p className="animate-pulse text-slate-400">Thinking…</p> : null}
+      {text && !working && (
+        <div className="mt-1 flex items-center gap-2">
+          <CopyButton text={text} label="Copy answer" />
+          {cost !== null && <span className="text-[11px] text-slate-400">cost {costLabel(cost)}</span>}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function AskAiPanel() {
@@ -147,6 +197,10 @@ export function AskAiPanel() {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(false)
+  // Deep: the stronger (pricier) model, for hard reading.
+  const [deep, setDeep] = useState(false)
+  const [uploading, setUploading] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -240,7 +294,7 @@ export function AskAiPanel() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dealId, chatId, message: text, documentIds: attached }),
+        body: JSON.stringify({ dealId, chatId, message: text, documentIds: attached, deep }),
         signal: controller.signal,
       })
       const newChatId = res.headers.get('X-Chat-Id')
@@ -278,6 +332,28 @@ export function AskAiPanel() {
     }
   }
 
+  // Files added here are saved to the deal; the AI is told about them and
+  // opens them itself (only the pages it needs).
+  async function addFiles(list: FileList | null) {
+    if (!dealId || !list?.length) return
+    const files = Array.from(list)
+    setUploading(files.length === 1 ? files[0].name : `${files.length} files`)
+    try {
+      const results = await uploadDealDocuments(dealId, files)
+      const ok = results.filter((r) => r.ok)
+      const failed = results.filter((r) => !r.ok)
+      if (ok.length) {
+        setDocuments((d) => [...d, ...ok.filter((r) => r.id).map((r) => ({ id: r.id!, name: r.fileName }))])
+        const names = ok.map((r) => r.fileName).join(', ')
+        setInput((v) => `${v}${v && !v.endsWith('\n') ? '\n\n' : ''}[I just added ${names} to this deal]\n`)
+      }
+      if (failed.length) alert(`Couldn’t upload: ${failed.map((f) => `${f.fileName} (${f.error})`).join(', ')}`)
+    } finally {
+      setUploading(null)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
   const suggestions = dealId ? DEAL_SUGGESTIONS : PIPELINE_SUGGESTIONS
 
   return (
@@ -308,6 +384,14 @@ export function AskAiPanel() {
 
       {open && (
         <div
+          onDragOver={(e) => {
+            if (dealId && e.dataTransfer.types.includes('Files')) e.preventDefault()
+          }}
+          onDrop={(e) => {
+            if (!dealId || !e.dataTransfer.files.length) return
+            e.preventDefault()
+            void addFiles(e.dataTransfer.files)
+          }}
           className={`fixed inset-y-0 right-0 z-50 w-full flex-col border-l border-slate-200 bg-white shadow-2xl ${minimized ? 'hidden' : 'flex'}`}
           style={{
             paddingTop: 'env(safe-area-inset-top)',
@@ -325,7 +409,7 @@ export function AskAiPanel() {
             <div className="min-w-0">
               <p className="text-sm font-semibold text-slate-900">✨ Ask AI</p>
               <p className="truncate text-xs text-slate-500">
-                {dealId ? `Knows everything on ${dealName ?? 'this deal'}` : 'Knows your whole pipeline — open a deal for deal details'}
+                {dealId ? `Reads ${dealName ?? 'this deal'}'s documents and the whole CRM` : 'Knows your whole pipeline and can look up any deal or lender'}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -392,10 +476,7 @@ export function AskAiPanel() {
                     {m.attached && <p className="mt-1 text-xs text-slate-300">📎 {m.attached}</p>}
                   </div>
                 ) : (
-                  <div key={m.id} className="mr-4 text-slate-800">
-                    {m.content ? <Formatted text={m.content} /> : <p className="animate-pulse text-slate-400">Thinking…</p>}
-                    {m.content && !busy && <div className="mt-1"><CopyButton text={m.content} label="Copy answer" /></div>}
-                  </div>
+                  <AssistantMessage key={m.id} raw={m.content} working={busy && m === messages[messages.length - 1]} />
                 )
               )
             )}
@@ -418,6 +499,40 @@ export function AskAiPanel() {
                 ))}
               </div>
             )}
+            <div className="mb-2 flex items-center justify-between gap-2 text-xs">
+              <div className="flex rounded-md bg-slate-100 p-0.5">
+                {(
+                  [
+                    [false, 'Quick'],
+                    [true, 'Deep'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setDeep(value)}
+                    title={value ? 'Strongest model — for reading a full tax return or a messy file. Costs more.' : 'Cheaper model — fine for most questions and emails.'}
+                    className={`rounded px-2.5 py-1 font-medium ${deep === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {dealId && (
+                <>
+                  <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => void addFiles(e.target.files)} />
+                  <button
+                    type="button"
+                    disabled={Boolean(uploading)}
+                    onClick={() => fileRef.current?.click()}
+                    className="truncate rounded-md border border-slate-300 px-2 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                    title="Add a file to this deal (or drag it onto the chat)"
+                  >
+                    {uploading ? `Uploading ${uploading}…` : '+ Add file'}
+                  </button>
+                </>
+              )}
+            </div>
             <div className="flex items-end gap-2">
               {dealId && documents.length > 0 && (
                 <button
@@ -463,7 +578,7 @@ export function AskAiPanel() {
               )}
             </div>
             <p className="mt-1.5 text-[11px] text-slate-400">
-              About 1–6¢ per question{dealId ? ' · attached documents cost more' : ''}. Enter to send, Shift+Enter for a new line.
+              {deep ? 'Deep: usually 10–60¢ when it reads documents' : 'Quick: usually 1–10¢'} · the cost shows under each answer. Enter to send, Shift+Enter for a new line.
             </p>
           </div>
         </div>

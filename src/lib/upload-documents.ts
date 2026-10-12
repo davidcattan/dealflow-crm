@@ -9,7 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 // access to any authenticated user (small trusted team model), so the
 // browser's own session is enough to do this directly.
 
-export type UploadResult = { fileName: string; ok: boolean; error?: string }
+export type UploadResult = { fileName: string; ok: boolean; error?: string; id?: string }
 
 export async function uploadDealDocuments(
   dealId: string,
@@ -35,21 +35,25 @@ export async function uploadDealDocuments(
       continue
     }
 
-    const { error: insertError } = await supabase.from('documents').insert({
-      deal_id: dealId,
-      file_name: file.name,
-      storage_path: storagePath,
-      file_size: file.size,
-      content_type: file.type || null,
-      uploaded_by: user?.id ?? null,
-    })
+    const { data: inserted, error: insertError } = await supabase
+      .from('documents')
+      .insert({
+        deal_id: dealId,
+        file_name: file.name,
+        storage_path: storagePath,
+        file_size: file.size,
+        content_type: file.type || null,
+        uploaded_by: user?.id ?? null,
+      })
+      .select('id')
+      .single()
 
     if (insertError) {
       results.push({ fileName: file.name, ok: false, error: insertError.message })
       continue
     }
 
-    results.push({ fileName: file.name, ok: true })
+    results.push({ fileName: file.name, ok: true, id: inserted?.id as string | undefined })
   }
 
   return results
