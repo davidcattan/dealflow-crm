@@ -23,6 +23,7 @@ export type Deal = {
   deal_type: string | null
   loan_type: string | null
   rep_name: string | null
+  owner?: string | null
   created_by: string | null
   created_at: string
   updated_at: string

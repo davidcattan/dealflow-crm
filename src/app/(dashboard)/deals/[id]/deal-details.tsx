@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { updateDeal } from './actions'
 import { STATUS_OPTIONS, STATUS_LABELS, displayStatus, activityScoreColor, type Deal } from '@/lib/types'
 import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
+import { OwnerSelect } from '@/components/owner-select'
 
 // A label and value: a compact row on phones (blank ones hidden), a small
 // stacked block on computers.
@@ -37,6 +38,7 @@ export function DealDetails({ deal }: { deal: Deal }) {
       {!editing ? (
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-4">
           <Fact label="Status" value={STATUS_LABELS[deal.status]} />
+          <Fact label="Whose deal" value={<OwnerSelect dealId={deal.id} owner={deal.owner ?? null} />} />
           <Fact label="Industry" value={deal.industry} />
           <Fact label="Loan type" value={deal.loan_type} />
           <Fact
