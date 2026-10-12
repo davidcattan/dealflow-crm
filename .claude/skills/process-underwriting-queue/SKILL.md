@@ -9,14 +9,16 @@ Deals get queued from a deal page ("Underwrite for free → Queue for Claude Cod
 
 ## Running in the cloud (no browser)
 
-When the environment variable `JED_CRM_KEY` is set (the scheduled cloud job), skip the browser entirely and call the live CRM with that key:
+In the scheduled cloud job (the **JED CRM** cloud environment), the CRM key is a *network secret*: the environment adds `Authorization: Bearer jed_…` automatically to every request to dealflow-crm-gamma.vercel.app. So call the live CRM with plain curl — no browser, no auth header of your own:
 
 ```bash
 BASE=https://dealflow-crm-gamma.vercel.app
-curl -s -H "Authorization: Bearer $JED_CRM_KEY" $BASE/api/queue > queue.json
+curl -s $BASE/api/queue > queue.json
 # save (same JSON as below):
-curl -s -X POST -H "Authorization: Bearer $JED_CRM_KEY" -H 'Content-Type: application/json' --data @snapshot.json $BASE/api/deals/<id>/save-snapshot
+curl -s -X POST -H 'Content-Type: application/json' --data @snapshot.json $BASE/api/deals/<id>/save-snapshot
 ```
+
+(Running somewhere with the key in an environment variable instead? Add `-H "Authorization: Bearer $JED_CRM_KEY"`.)
 
 - Run `npm ci --ignore-scripts` once first so `mupdf` and `exceljs` are available, then read files with `node scripts/read-doc.mjs <file> [from] [to]` (text) or `node scripts/read-doc.mjs <file> --render <page> page.png` (scans — then Read the PNG).
 - Each queue entry's `duplicate_details` holds the possible duplicates' documents and emails, so you don't need to open deal pages.
