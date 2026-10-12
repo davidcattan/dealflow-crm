@@ -96,6 +96,57 @@ export async function deleteDocument(formData: FormData) {
   revalidatePath(`/deals/${dealId}`)
 }
 
+// Moves a misfiled email to the right deal, along with the updates it added
+// (matched by its subject or summary) and the lender entry it created.
+export async function moveEmailToDeal(fromDealId: string, inboxMessageId: string, toDealId: string) {
+  if (!toDealId || toDealId === fromDealId) return { error: 'Pick a different deal' }
+  const supabase = await createClient()
+  const { data: msg } = await supabase
+    .from('inbox_messages')
+    .select('id, subject, summary, received_at, lender_id, conversation_id')
+    .eq('id', inboxMessageId)
+    .eq('deal_id', fromDealId)
+    .single()
+  if (!msg) return { error: 'Email not found on this deal' }
+  await supabase.from('inbox_messages').update({ deal_id: toDealId }).eq('id', msg.id)
+
+  // Updates this email wrote: they quote its subject, or repeat its summary.
+  const subject = String(msg.subject ?? '').trim()
+  const summary = String(msg.summary ?? '').replace(/^[A-Za-z ]+:\s*/, '').slice(0, 60)
+  const { data: updates } = await supabase.from('deal_updates').select('id, note').eq('deal_id', fromDealId).in('source', ['email', 'import'])
+  const ids = (updates ?? [])
+    .filter((u) => {
+      const note = String(u.note ?? '')
+      return (subject.length > 3 && note.includes(`"${subject}"`)) || (summary.length > 20 && note.includes(summary))
+    })
+    .map((u) => u.id as string)
+  if (ids.length) await supabase.from('deal_updates').update({ deal_id: toDealId }).in('id', ids)
+
+  // The lender entry this email's thread created, if any.
+  if (msg.lender_id && msg.conversation_id) {
+    await supabase
+      .from('deal_submissions')
+      .update({ deal_id: toDealId })
+      .eq('deal_id', fromDealId)
+      .eq('lender_id', msg.lender_id)
+      .eq('outlook_conversation_id', msg.conversation_id)
+  }
+  revalidatePath(`/deals/${fromDealId}`)
+  revalidatePath(`/deals/${toDealId}`)
+  return { ok: true, movedUpdates: ids.length }
+}
+
+// Moves a document that landed on the wrong deal.
+export async function moveDocumentToDeal(fromDealId: string, documentId: string, toDealId: string) {
+  if (!toDealId || toDealId === fromDealId) return { error: 'Pick a different deal' }
+  const supabase = await createClient()
+  const { error } = await supabase.from('documents').update({ deal_id: toDealId }).eq('id', documentId).eq('deal_id', fromDealId)
+  if (error) return { error: error.message }
+  revalidatePath(`/deals/${fromDealId}`)
+  revalidatePath(`/deals/${toDealId}`)
+  return { ok: true }
+}
+
 // Moves a document to another group (and, for term sheets, sets the lender).
 export async function setDocumentGroup(dealId: string, documentId: string, category: string, lenderId: string | null) {
   const supabase = await createClient()

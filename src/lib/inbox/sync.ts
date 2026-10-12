@@ -19,6 +19,7 @@ import { notify } from '@/lib/notifications'
 import { addresses } from '@/lib/deals/duplicates'
 import { ownText } from '@/lib/outlook/own-text'
 import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
+import { isNotBorrowerEmail, isTeamName, referralPartnerFor } from './partners'
 import type { Snapshot } from '@/lib/snapshot/schema'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
 
@@ -71,7 +72,9 @@ function dealHints(d: {
     .map((e) => e.name.split(/\s+[—–(]|\s+-\s+/)[0].trim())
     .filter((n) => n.length >= 5 && !/personal|guarantor|^subject property/i.test(n))
   const text = [d.description, d.notes, d.deal_type, ...(snap?.entities ?? []).map((e) => e.name)].join(' ')
-  const hints = [...addresses(text), ...entityNames, d.contact_email ?? ''].filter(Boolean)
+  // A referral partner's address would match every deal they send — skip it.
+  const contactHint = d.contact_email && !isNotBorrowerEmail(d.contact_email) ? d.contact_email : ''
+  const hints = [...addresses(text), ...entityNames, contactHint].filter(Boolean)
   return [...new Set(hints)].slice(0, 6)
 }
 
@@ -141,9 +144,16 @@ export function findLenderBySender(
   if (byDomain.size > 1) return null
   const core = lenderCore(domain.split('.')[0])
   if (core.length < 4) return null
+  // "fairviewcommercial" ↔ "Fairview" is a match; "bridgewayalliance" ↔
+  // "Bridge Business Credit" is not (only lender-ish words may be left over).
+  const SUFFIX = /^(capital|funding|finance|financial|lending|lender|credit|group|partners|llc|inc|co|usa|us|bank|commercial|business|loans?|cap|fin|corp)*$/
   const byName = lenders.filter((l) => {
     const c = lenderCore(l.name)
-    return c.length >= 4 && (c === core || core.startsWith(c) || c.startsWith(core))
+    if (c.length < 4) return false
+    if (c === core) return true
+    if (core.startsWith(c)) return SUFFIX.test(core.slice(c.length))
+    if (c.startsWith(core)) return SUFFIX.test(c.slice(core.length))
+    return false
   })
   return byName.length === 1 ? byName[0].id : null
 }
@@ -252,10 +262,15 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
     dealByConversation: new Map((filedThreads ?? []).map((t) => [t.conversation_id as string, t.deal_id as string])),
     dealByContactEmail: new Map(
       (deals ?? [])
-        .filter((d) => d.contact_email && !INACTIVE.includes(d.status))
+        .filter((d) => d.contact_email && !INACTIVE.includes(d.status) && !isNotBorrowerEmail(d.contact_email))
         .map((d) => [String(d.contact_email).toLowerCase(), d.id as string])
     ),
   }
+}
+
+// A borrower contact email, or null if it's really a partner's or the team's.
+function borrowerEmail(email: string | null | undefined) {
+  return email && !isNotBorrowerEmail(email) ? email : null
 }
 
 // Classifies one email and acts on it. Returns what to record; throws only
@@ -274,7 +289,7 @@ async function processMessage(
     const internalDomain = firmDomain(message.from, ctx.accountEmail)
     const thread = ctx.threadByConversation.get(message.conversationId) ?? null
     let senderLenderId = ctx.lenderByEmail.get(message.from) ?? null
-    if (!senderLenderId && !internalDomain) {
+    if (!senderLenderId && !internalDomain && !referralPartnerFor(message.from)) {
       // New person at a known lender: recognize the lender and save them
       // as a contact so their next email matches instantly.
       senderLenderId = findLenderBySender(ctx.lenders, ctx.contacts, message.from)
@@ -299,6 +314,7 @@ async function processMessage(
         })),
         senderLenderName: senderLenderId ? (ctx.lenderById.get(senderLenderId)?.name ?? null) : null,
         internalFirmDomain: internalDomain,
+        referralPartner: referralPartnerFor(message.from)?.name ?? null,
         threadDealCompany: thread ? (ctx.dealById.get(thread.dealId)?.company_name ?? null) : null,
         threadLenderName: thread ? (ctx.lenderById.get(thread.lenderId)?.name ?? null) : null,
       },
@@ -590,6 +606,8 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
   // Lenders among the recipients (saving new people at known lenders).
   const lenderIds: string[] = []
   for (const r of external) {
+    // Referral partners on the email aren't lenders.
+    if (referralPartnerFor(r.email)) continue
     let id = ctx.lenderByEmail.get(r.email) ?? null
     if (!id) {
       id = findLenderBySender(ctx.lenders, ctx.contacts, r.email)
@@ -932,12 +950,16 @@ async function act({
         .from('deals')
         .insert({
           company_name: d.company_name,
-          contact_name: d.contact_name,
+          contact_name: isTeamName(d.contact_name) ? null : d.contact_name,
           // Only fall back to the sender when the sender IS the borrower —
           // a broker's email/phone must never become the deal contact.
-          contact_email: d.contact_email ?? (d.sender_role === 'borrower' ? message.from : null),
+          contact_email: borrowerEmail(d.contact_email ?? (d.sender_role === 'borrower' ? message.from : null)),
           contact_phone: d.contact_phone,
-          notes: d.referred_by ? `Referred by ${d.referred_by}` : null,
+          notes: d.referred_by
+            ? `Referred by ${d.referred_by}`
+            : referralPartnerFor(message.from)
+              ? `Referred by ${referralPartnerFor(message.from)!.name}`
+              : null,
           industry: d.industry,
           loan_type: d.loan_type,
           deal_type: d.ask,

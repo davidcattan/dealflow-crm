@@ -27,6 +27,7 @@ import { findPossibleDuplicates } from '@/lib/deals/duplicates'
 import { MergeDealButton, DuplicateBanner } from './merge-deal'
 import { CallsPanel, type CallRow } from './calls-panel'
 import { DocumentGroups } from './document-groups'
+import { MoveToDeal } from './move-to-deal'
 import { guessCategory, guessLender } from '@/lib/documents/categories'
 import { callSuggestions } from '@/lib/calls/process'
 import type { CallNotes } from '@/lib/calls/schema'
@@ -150,6 +151,12 @@ export default async function DealDetailPage({
     [...(mailboxRows ?? [])].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0]?.id ??
     null
   const lenderNameById = new Map((lenderRows ?? []).map((l) => [l.id as string, l.name as string]))
+  // For "Move to deal…" on misfiled emails and documents.
+  const dealChoices = ((allDeals ?? []) as { id: string; company_name: string; status: string }[]).map((d) => ({
+    id: d.id,
+    name: d.company_name,
+    past: ['dead', 'closed', 'old'].includes(d.status),
+  }))
   // For tagging term sheets: lenders on this deal first, then everyone.
   const termSheetLenders = [
     ...(submissionRows ?? []).map((r) => ({ id: r.lender_id as string, name: lenderNameById.get(r.lender_id as string) ?? 'Lender' })),
@@ -395,6 +402,7 @@ export default async function DealDetailPage({
               }
             })}
             lenders={termSheetLenders}
+            deals={dealChoices}
           />
         ) : (
           <p className="py-6 text-center text-sm text-slate-400">
@@ -504,6 +512,9 @@ export default async function DealDetailPage({
                     </pre>
                   )}
                 </details>
+                <div className="mt-1.5">
+                  <MoveToDeal kind="email" dealId={deal.id} itemId={e.id} deals={dealChoices} />
+                </div>
               </li>
             ))}
           </ul>

@@ -5,6 +5,7 @@ import { ConfirmButton } from '@/components/confirm-button'
 import { DOC_CATEGORIES } from '@/lib/documents/categories'
 import type { DocTriage } from '@/lib/types'
 import { deleteDocument, setDocumentGroup } from './actions'
+import { MoveToDeal, type DealChoice } from './move-to-deal'
 
 export type GroupedDoc = {
   id: string
@@ -22,7 +23,17 @@ export type GroupedDoc = {
 
 const TERM_SHEETS = 'Term sheets & offers'
 
-function DocRow({ dealId, doc, lenders }: { dealId: string; doc: GroupedDoc; lenders: { id: string; name: string }[] }) {
+function DocRow({
+  dealId,
+  doc,
+  lenders,
+  deals,
+}: {
+  dealId: string
+  doc: GroupedDoc
+  lenders: { id: string; name: string }[]
+  deals: DealChoice[]
+}) {
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
@@ -86,6 +97,7 @@ function DocRow({ dealId, doc, lenders }: { dealId: string; doc: GroupedDoc; len
             ))}
           </select>
         )}
+        <MoveToDeal kind="document" dealId={dealId} itemId={doc.id} deals={deals} />
         <form action={deleteDocument}>
           <input type="hidden" name="deal_id" value={dealId} />
           <input type="hidden" name="document_id" value={doc.id} />
@@ -105,10 +117,12 @@ export function DocumentGroups({
   dealId,
   docs: rawDocs,
   lenders,
+  deals,
 }: {
   dealId: string
   docs: GroupedDoc[]
   lenders: { id: string; name: string }[]
+  deals: DealChoice[]
 }) {
   // Later copies of the same file (same name and size) are marked.
   const seenFiles = new Set<string>()
@@ -179,7 +193,7 @@ export function DocumentGroups({
             {open && (
               <ul className="divide-y divide-slate-100 border-t border-slate-100 px-3">
                 {g.docs.map((d) => (
-                  <DocRow key={d.id} dealId={dealId} doc={d} lenders={lenders} />
+                  <DocRow key={d.id} dealId={dealId} doc={d} lenders={lenders} deals={deals} />
                 ))}
               </ul>
             )}

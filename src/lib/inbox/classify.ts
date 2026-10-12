@@ -59,6 +59,8 @@ export type ClassifyContext = {
   // Set when the sender is a colleague (same email domain as the connected
   // mailbox) — their emails are never lender replies.
   internalFirmDomain?: string | null
+  // The sender is a referral partner that sends many different deals.
+  referralPartner?: string | null
 }
 
 export async function classifyEmail(
@@ -76,6 +78,9 @@ export async function classifyEmail(
     context.senderLenderName ? `The sender is a known lender in the CRM: ${context.senderLenderName}.` : null,
     context.internalFirmDomain
       ? `The sender is a colleague at the user's own brokerage firm (@${context.internalFirmDomain}) — NOT a lender. Never classify their email as lender_reply. If it is about a deal in the list (e.g. asking a borrower for documents), classify it as new_deal with existing_deal_ref set and describe what was asked or done; otherwise other.`
+      : null,
+    context.referralPartner
+      ? `The sender is ${context.referralPartner}, a referral partner that sends the team MANY DIFFERENT deals — not a borrower and not a lender. The email is about the company it names (e.g. a subject like "Introducing Eli — <Company>"). It is a new deal unless that same company is already in the list; never match it to another deal just because ${context.referralPartner} sent it or because the deal's contact email is theirs. The deal's contact is the business owner named in the file — never ${context.referralPartner} and never Eli Cattan or David Cattan (they are the loan officers being introduced). Put "${context.referralPartner}" plus any file number and submitter in referred_by.`
       : null,
     context.deals.length > 0
       ? `Deals in the CRM (status in brackets; "old" deals may still be live). "also:" lists the deal's property addresses, related companies/trusts and contact email — an email mentioning any of those is about that deal:\n${context.deals

@@ -1,3 +1,4 @@
+import { isNotBorrowerEmail, isTeamName } from '@/lib/inbox/partners'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 // Spots deals that are probably the same borrower — the inbox can create a
@@ -49,12 +50,14 @@ function norm(s: string | null) {
 
 function compare(a: DealLite, b: DealLite): string[] {
   const reasons: string[] = []
-  if (a.contact_email && norm(a.contact_email) === norm(b.contact_email)) reasons.push(`same contact email (${b.contact_email})`)
+  // A referral partner's or the team's address is shared by many deals.
+  if (a.contact_email && !isNotBorrowerEmail(a.contact_email) && norm(a.contact_email) === norm(b.contact_email))
+    reasons.push(`same contact email (${b.contact_email})`)
   const pa = phoneKey(a.contact_phone)
   if (pa && pa === phoneKey(b.contact_phone)) reasons.push(`same contact phone (${b.contact_phone})`)
   const na = norm(a.contact_name)
   // A contact name matching the other deal's contact or company name.
-  if (na.length > 3 && (na === norm(b.contact_name) || na === norm(b.company_name))) reasons.push(`same contact name (${a.contact_name})`)
+  if (na.length > 3 && !isTeamName(a.contact_name) && (na === norm(b.contact_name) || na === norm(b.company_name))) reasons.push(`same contact name (${a.contact_name})`)
   else if (norm(a.company_name).length > 3 && norm(a.company_name) === norm(b.contact_name)) reasons.push(`same name (${a.company_name})`)
   const textA = [a.company_name, a.description, a.notes, a.deal_type].join(' ')
   const textB = [b.company_name, b.description, b.notes, b.deal_type].join(' ')
