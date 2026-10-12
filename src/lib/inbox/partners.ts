@@ -2,7 +2,8 @@
 // borrowers). Their address is never a borrower's contact, and an email from
 // them is about the company it names — not whichever deal they last sent.
 
-export const REFERRAL_PARTNERS = [{ name: 'Venture Nationals', domains: ['venturenationals.com'] }]
+// Bridgeway Alliance: Venture's loan officers (e.g. Isaac Chehebar) write from it.
+export const REFERRAL_PARTNERS = [{ name: 'Venture Nationals', domains: ['venturenationals.com', 'bridgewayalliance.com'] }]
 
 // The team itself — an intro email often names Eli or David as the loan
 // officer, which must never become the borrower's contact.
