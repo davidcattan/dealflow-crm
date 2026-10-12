@@ -9,6 +9,7 @@ import { ErrorText } from '@/components/error-text'
 import { SnapshotEditor } from './snapshot-editor'
 import { ManualUnderwriting, type ManualDoc } from './manual-underwriting'
 import { formatCompactCurrency } from '@/lib/format'
+import { RequestEmail, type Recipient } from './request-email'
 
 const money = (n: number | null | undefined) =>
   n === null || n === undefined
@@ -131,6 +132,7 @@ export function SnapshotPanel({
   manualPrompt,
   snapshotPrompt,
   hasReportUnderwriting,
+  requestEmail,
 }: {
   dealId: string
   snapshot: Snapshot | null
@@ -140,6 +142,8 @@ export function SnapshotPanel({
   manualPrompt: string
   snapshotPrompt: string
   hasReportUnderwriting: boolean
+  // For "Draft request email" under Documents to request.
+  requestEmail?: { dealName: string; recipients: Recipient[]; mailboxId: string | null }
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -387,6 +391,15 @@ export function SnapshotPanel({
               <ul className="mt-1 list-disc space-y-1 pl-4 text-sm text-slate-700">
                 {snapshot.request_list.length > 0 ? snapshot.request_list.map((r, i) => <li key={i}>{r}</li>) : <li className="list-none text-slate-400">Nothing missing</li>}
               </ul>
+              {requestEmail && (
+                <RequestEmail
+                  dealId={dealId}
+                  dealName={requestEmail.dealName}
+                  items={snapshot.request_list}
+                  recipients={requestEmail.recipients}
+                  mailboxId={requestEmail.mailboxId}
+                />
+              )}
               </PhoneFold>
             </div>
           </div>

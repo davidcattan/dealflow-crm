@@ -17,7 +17,8 @@ Rules:
 3. EBITDA: net income + interest + depreciation/amortization (+ taxes if any). Say in the source field if you derived it. Prefer tax-return figures for full years; book figures only if that is all there is.
 4. Coverage: annual debt service (from the debt schedule if given) against EBITDA, as a ratio. Say in one line what basis you used and how much to trust it (for example seasonality of a partial year).
 5. FLAGS: list every inconsistency or red flag as one short line each. Examples: the loan application says "no balances" but debt exists; unexplained "other income"; interim P&L with no depreciation; round-number receivables; balance sheet not reconciling to the tax return; thin coverage; concentrated or related-party debt; SBA anti-stacking restrictions; missing documents.
-6. REQUEST LIST: the documents to ask the client for, one short line each, tailored to what is missing for an asset-based or cash-flow lender (AR aging, fixed asset register, equipment list with serials/VINs, inventory listing, AP aging, UCC search, payoff statements, loan agreements, appraisals, and so on). Only list what is actually missing.`
+6. REQUEST LIST: the documents to ask the client for, one short line each, tailored to what is missing for an asset-based or cash-flow lender (AR aging, fixed asset register, equipment list with serials/VINs, inventory listing, AP aging, UCC search, payoff statements, loan agreements, appraisals, and so on). Only list what is actually missing.
+7. ALWAYS: if the business has accounts receivable, request an AR aging report; if it has inventory, request an inventory list; if it has equipment, request an equipment list (make, model, year, serial/VIN, value) — unless that exact document is already in the package.`
 
 export function buildSnapshotPrompt(
   deal: {

@@ -11,6 +11,7 @@ import { UnderwritingPanel } from './underwriting-panel'
 import { SnapshotPanel } from './snapshot-panel'
 import { buildSnapshotPrompt } from '@/lib/snapshot/prompt'
 import type { Snapshot } from '@/lib/snapshot/schema'
+import { docTextsOf, withCollateralRequests } from '@/lib/snapshot/collateral'
 import { estimateUnderwriting } from '@/lib/underwriting/estimate'
 import { buildManualPrompt } from '@/lib/underwriting/prompt'
 import { MatchingPanel, type MatchWithLender, type LoanTypeRecommendation } from './matching-panel'
@@ -151,6 +152,17 @@ export default async function DealDetailPage({
     [...(mailboxRows ?? [])].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0]?.id ??
     null
   const lenderNameById = new Map((lenderRows ?? []).map((l) => [l.id as string, l.name as string]))
+  // Who a "what we still need" email can go to: the borrower contact, and
+  // the broker / referral partner named in the notes.
+  const brokerEmail = String(deal.notes ?? '').match(/[\w.+-]+@[\w-]+\.[\w.-]+/)?.[0] ?? null
+  const brokerName = String(deal.notes ?? '').match(/Referred by ([^,—(\n]+)/)?.[1]?.trim() ?? null
+  const requestRecipients = [
+    ...(deal.contact_email ? [{ label: `Borrower — ${deal.contact_name || deal.contact_email}`, name: deal.contact_name, email: deal.contact_email }] : []),
+    ...(brokerEmail && brokerEmail !== deal.contact_email
+      ? [{ label: `Broker — ${brokerName || brokerEmail}`, name: brokerName, email: brokerEmail }]
+      : []),
+  ]
+
   // For "Move to deal…" on misfiled emails and documents.
   const dealChoices = ((allDeals ?? []) as { id: string; company_name: string; status: string }[]).map((d) => ({
     id: d.id,
@@ -525,7 +537,12 @@ export default async function DealDetailPage({
       <CollapsibleSection tab="ai" title="AI underwriting" phoneClosed closed={Boolean(deal.snapshot)}>
       <SnapshotPanel
         dealId={deal.id}
-        snapshot={(deal.snapshot as Snapshot | null) ?? null}
+        snapshot={
+          deal.snapshot
+            ? withCollateralRequests(deal.snapshot as Snapshot, docTextsOf((documents ?? []) as DocumentRecord[]))
+            : null
+        }
+        requestEmail={{ dealName: deal.company_name, recipients: requestRecipients, mailboxId: defaultMailboxId ?? null }}
         generatedAt={(deal.snapshot_generated_at as string | null) ?? null}
         queuedAt={(deal as { underwriting_requested_at?: string | null }).underwriting_requested_at ?? null}
         manualDocs={docsWithUrls.map((d) => ({

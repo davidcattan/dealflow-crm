@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { docTextsOf, withCollateralRequests } from '@/lib/snapshot/collateral'
 import { friendlyAiError } from '@/lib/ai-errors'
 import { runSnapshot } from '@/lib/snapshot/run'
 
@@ -16,7 +17,9 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
 
   const { id } = await ctx.params
   try {
-    const snapshot = await runSnapshot(id, request.signal)
+    const { data: docs } = await supabase.from('documents').select('file_name, triage').eq('deal_id', id)
+    // Always ask for the AR aging / inventory list / equipment list when needed.
+    const snapshot = withCollateralRequests(await runSnapshot(id, request.signal), docTextsOf(docs ?? []))
     const { data: saved, error } = await supabase
       .from('deals')
       .update({

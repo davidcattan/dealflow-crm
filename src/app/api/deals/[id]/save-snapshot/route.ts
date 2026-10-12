@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { docTextsOf, withCollateralRequests } from '@/lib/snapshot/collateral'
 import { SnapshotSchema } from '@/lib/snapshot/schema'
 
 // Saves an already-structured snapshot (e.g. written by Claude Code for a
@@ -19,10 +20,13 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
       { status: 400 }
     )
   }
+  // Always ask for the AR aging / inventory list / equipment list when needed.
+  const { data: docs } = await supabase.from('documents').select('file_name, triage').eq('deal_id', id)
+  const snapshot = withCollateralRequests(parsed.data, docTextsOf(docs ?? []))
   const { data: saved, error } = await supabase
     .from('deals')
     .update({
-      snapshot: parsed.data,
+      snapshot,
       snapshot_generated_at: new Date().toISOString(),
       underwriting_requested_at: null,
       underwriting_requested_kind: null,

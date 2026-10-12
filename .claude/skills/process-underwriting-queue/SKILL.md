@@ -31,6 +31,7 @@ Deals get queued from a deal page ("Underwrite for free → Queue for Claude Cod
 4. **Write the result** in the exact schema for the requested kind:
    - `snapshot` → `src/lib/snapshot/schema.ts` (`SnapshotSchema`). Follow the rules in `src/lib/snapshot/prompt.ts` (`SNAPSHOT_RULES`): one block per legal entity plus a combined block if there's more than one; three periods newest first with a source on every figure; EBITDA = net income + interest + depreciation/amortization (+ taxes); coverage = annual debt service vs EBITDA; short flags; a request list of only what's actually missing.
    - `report` → `src/lib/underwriting/schema.ts` (`UnderwritingSchema`). This one also includes web research: verify the company's identity (same name, location, industry) before trusting any search result, and say plainly when nothing relevant is found.
+   - **Collateral backup, always:** if the business shows AR, the request list must include an **AR aging report**; inventory → an **inventory list**; equipment → an **equipment list** (make, model, year, serial/VIN, value) — unless that document is already on the deal. (The save route also adds these automatically.) When any are missing, tell the user and offer to use **Draft request email** on the deal's AI tab.
    - **Never invent a number.** Anything not in the documents or emails is `null`. Cross-check totals (e.g. sum the debt schedule yourself and compare to the balance sheet) and flag mismatches.
 
 5. **Save it** from the logged-in page — this clears the deal from the queue and moves it to Underwritten:
