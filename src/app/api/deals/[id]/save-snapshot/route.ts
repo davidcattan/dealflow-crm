@@ -1,16 +1,15 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { sessionOrKey } from '@/lib/shortcut/keys'
 import { docTextsOf, withCollateralRequests } from '@/lib/snapshot/collateral'
 import { SnapshotSchema } from '@/lib/snapshot/schema'
 
 // Saves an already-structured snapshot (e.g. written by Claude Code for a
 // queued deal) or an edited one from the deal page. No AI call is made.
 export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/save-snapshot'>) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Browser session, or a personal key (the cloud queue job).
+  const auth = await sessionOrKey(request)
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { supabase } = auth
 
   const { id } = await ctx.params
   const parsed = SnapshotSchema.safeParse(await request.json().catch(() => null))

@@ -1,15 +1,14 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { sessionOrKey } from '@/lib/shortcut/keys'
 import { UnderwritingSchema } from '@/lib/underwriting/schema'
 
 // Saves an already-structured underwriting (e.g. written by Claude Code for
 // a queued deal). No AI call is made here, so it costs nothing.
 export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/save-underwriting'>) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Browser session, or a personal key (the cloud queue job).
+  const auth = await sessionOrKey(request)
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { supabase } = auth
 
   const { id } = await ctx.params
   const parsed = UnderwritingSchema.safeParse(await request.json().catch(() => null))

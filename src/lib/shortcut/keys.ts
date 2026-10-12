@@ -1,6 +1,8 @@
 import 'server-only'
 import { createHash, randomBytes } from 'crypto'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 
 // Personal keys for the iPhone shortcut. The key is shown once when made;
 // only its hash is stored.
@@ -29,4 +31,15 @@ export async function authenticateShortcut(request: Request) {
   if (!data) return null
   await supabase.from('api_keys').update({ last_used_at: new Date().toISOString() }).eq('id', data.id)
   return { userId: data.user_id as string, supabase }
+}
+
+// The signed-in browser session, or — for the cloud queue job — a personal
+// key. Returns the client to act with, or null if neither.
+export async function sessionOrKey(request: Request): Promise<{ supabase: SupabaseClient; userId: string } | null> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (user) return { supabase, userId: user.id }
+  return authenticateShortcut(request)
 }

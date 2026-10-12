@@ -35,7 +35,10 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const path = request.nextUrl.pathname
-  const isPublicPath = PUBLIC_PATHS.some((p) => path.startsWith(p))
+  // API calls carrying a personal key (cloud queue job, phone shortcut)
+  // are let through; the route itself checks the key.
+  const hasKey = path.startsWith('/api/') && /^Bearer jed_/i.test(request.headers.get('authorization') ?? '')
+  const isPublicPath = hasKey || PUBLIC_PATHS.some((p) => path.startsWith(p))
 
   if (!user && !isPublicPath) {
     const loginUrl = request.nextUrl.clone()

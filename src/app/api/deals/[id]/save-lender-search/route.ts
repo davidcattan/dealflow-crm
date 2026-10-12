@@ -1,15 +1,14 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { sessionOrKey } from '@/lib/shortcut/keys'
 import { LenderSearchSchema } from '@/lib/lender-search/schema'
 import { saveLenderSearch } from '@/lib/lender-search/save'
 
 // Free path: Claude Code posts lender search results it researched itself.
 export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/save-lender-search'>) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Browser session, or a personal key (the cloud queue job).
+  const auth = await sessionOrKey(request)
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { supabase } = auth
 
   const { id } = await ctx.params
   const parsed = LenderSearchSchema.safeParse(await request.json().catch(() => null))

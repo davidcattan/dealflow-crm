@@ -7,7 +7,23 @@ description: Process the Dealflow CRM's Claude Code queue — underwrite queued 
 
 Deals get queued from a deal page ("Underwrite for free → Queue for Claude Code"). The queue lives in the CRM's shared database, so it doesn't matter which team member queued a deal or whose Claude Code processes it. You do the reading and analysis yourself, on the user's Claude plan — the app makes no API call, so this costs $0 in API charges.
 
-## Requirements
+## Running in the cloud (no browser)
+
+When the environment variable `JED_CRM_KEY` is set (the scheduled cloud job), skip the browser entirely and call the live CRM with that key:
+
+```bash
+BASE=https://dealflow-crm-gamma.vercel.app
+curl -s -H "Authorization: Bearer $JED_CRM_KEY" $BASE/api/queue > queue.json
+# save (same JSON as below):
+curl -s -X POST -H "Authorization: Bearer $JED_CRM_KEY" -H 'Content-Type: application/json' --data @snapshot.json $BASE/api/deals/<id>/save-snapshot
+```
+
+- Run `npm ci --ignore-scripts` once first so `mupdf` and `exceljs` are available, then read files with `node scripts/read-doc.mjs <file> [from] [to]` (text) or `node scripts/read-doc.mjs <file> --render <page> page.png` (scans — then Read the PNG).
+- Each queue entry's `duplicate_details` holds the possible duplicates' documents and emails, so you don't need to open deal pages.
+- Download documents with `curl -s -o <name> "<url>"` into a scratch folder outside the repo. Never commit or push anything.
+- If the queue is empty, stop and say only "Queue empty".
+
+## Requirements (on the Mac)
 
 - A browser (the built-in browser pane, or Claude in Chrome) **logged into the live CRM**: https://dealflow-crm-gamma.vercel.app. If you hit the login page, ask the user to sign in — never type their password. All API calls below run from that logged-in page (JavaScript `fetch`), so they carry the user's session.
 - Run from this repo (`crm/`) so the local `node_modules` (mupdf, mailparser) are available for reading files.
