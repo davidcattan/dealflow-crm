@@ -6,7 +6,9 @@ import { logUsage } from '@/lib/usage'
 import { DocTriageSchema } from './triage-schema'
 import type { DocumentRecord } from '@/lib/types'
 
-const TRIAGE_MODEL = 'claude-opus-5-5'
+// Cheapest model: picking which pages matter is simple work, and it reads
+// the whole PDF on every upload — about 1¢ for a 30-page return.
+const TRIAGE_MODEL = 'claude-haiku-5-5'
 
 const INSTRUCTIONS = `You are triaging a document uploaded for an asset-based lending underwriting file. Decide which pages carry real underwriting signal and which are boilerplate, so the full underwriting pass only needs to read the pages that matter.
 
@@ -41,7 +43,7 @@ export async function triageDocument(doc: DocumentRecord): Promise<DocumentRecor
         ],
       },
     ],
-    output_config: { format: zodOutputFormat(DocTriageSchema) },
+    output_config: { effort: 'low', format: zodOutputFormat(DocTriageSchema) },
   })
 
   await logUsage({ feature: 'document-triage', model: TRIAGE_MODEL, dealId: doc.deal_id, usage: structured.usage })
