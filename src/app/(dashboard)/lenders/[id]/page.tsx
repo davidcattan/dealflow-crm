@@ -5,6 +5,16 @@ import type { Lender, LenderContact } from '@/lib/types'
 import { CallsPanel, type CallRow } from '../../deals/[id]/calls-panel'
 import { lenderCallSuggestions } from '@/lib/calls/lender-call'
 import type { LenderCallNotes } from '@/lib/calls/schema'
+import { ApolloPanel } from './apollo-panel'
+
+// "fairviewcl.com" from a website or email address.
+function domainOf(v: string | null | undefined) {
+  if (!v) return null
+  const host = (v.includes('@') ? v.split('@')[1] : v.replace(/^https?:\/\//i, '').split('/')[0])?.toLowerCase().replace(/^www\./, '')
+  // A personal email domain says nothing about the lender.
+  if (!host || !/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(host)) return null
+  return /^(gmail|yahoo|outlook|hotmail|aol|icloud|me|msn|live)\./.test(host) ? null : host
+}
 
 export default async function LenderDetailPage({
   params,
@@ -40,6 +50,16 @@ export default async function LenderDetailPage({
   return (
     <div className="space-y-8">
       <LenderDetail lender={lender as Lender} contacts={(contacts ?? []) as LenderContact[]} />
+      <ApolloPanel
+        lenderId={id}
+        lenderName={(lender as Lender).name}
+        defaultDomain={
+          domainOf((lender as Lender).website) ??
+          domainOf((lender as Lender).contact_email) ??
+          ((contacts ?? []) as LenderContact[]).map((c) => domainOf(c.email)).find(Boolean) ??
+          ''
+        }
+      />
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="text-sm font-semibold text-slate-900">Calls{calls.length ? ` (${calls.length})` : ''}</h2>
         <p className="mb-4 mt-1 text-xs text-slate-500">
