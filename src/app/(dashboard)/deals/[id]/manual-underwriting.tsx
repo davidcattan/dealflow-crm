@@ -6,6 +6,7 @@ import { zipSync } from 'fflate'
 import { readJsonResponse } from '@/lib/fetch-json'
 import { setUnderwritingQueued } from './actions'
 import { ErrorText } from '@/components/error-text'
+import { RunQueueButton } from '@/components/run-queue-button'
 
 // Underwrite outside the app (Claude.ai, covered by a subscription) and
 // bring the written result back in. Only the small structuring step here
@@ -148,16 +149,20 @@ export function ManualUnderwriting({
       <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">
         <p className="font-medium text-slate-800">Option A — have Claude Code do it</p>
         <p className="mt-1 text-xs text-slate-500">
-          Queue this deal, then tell Claude Code &ldquo;process the underwriting queue.&rdquo; It
-          reads the documents itself and saves the result here. Runs on your Claude plan, $0 API.
+          Queue this deal, then tap &ldquo;Run the queue now&rdquo; and press <b>Run now</b> on the page that opens
+          (phone or computer). It reads the documents itself and saves the result here in a few minutes. Runs on
+          your Claude plan, $0 API.
         </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
           onClick={toggleQueue}
           disabled={queueing}
-          className="mt-2 rounded-md border border-slate-300 bg-white px-3 py-1 text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+          className="rounded-md border border-slate-300 bg-white px-3 py-1 text-slate-700 hover:bg-slate-100 disabled:opacity-50"
         >
           {queuedAt ? 'Queued ✓ — click to cancel' : 'Queue for Claude Code'}
         </button>
+        {queuedAt && <RunQueueButton />}
+        </div>
       </div>
       <p className="mt-3 font-medium text-slate-800">Option B — do it yourself in Claude.ai</p>
       <ol className="mt-3 list-decimal space-y-3 pl-5 text-slate-600">

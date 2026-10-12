@@ -11,6 +11,7 @@ import {
 } from '@/lib/types'
 import { formatDateOnly } from '@/lib/format'
 import { loadLastActivity } from '@/lib/deals/load-next-steps'
+import { RunQueueButton } from '@/components/run-queue-button'
 
 type Row = {
   id: string
@@ -20,6 +21,7 @@ type Row = {
   updated_at: string
   underwriting_generated_at: string | null
   underwriting_requested_at: string | null
+  lender_search_requested_at: string | null
   snapshot_generated_at: string | null
   deal_matches: { score: number; draft_status: string }[]
 }
@@ -109,7 +111,7 @@ export default async function DashboardHome() {
     supabase
       .from('deals')
       .select(
-        'id, company_name, status, activity_score, updated_at, underwriting_generated_at, underwriting_requested_at, snapshot_generated_at, deal_matches(score, draft_status)'
+        'id, company_name, status, activity_score, updated_at, underwriting_generated_at, underwriting_requested_at, lender_search_requested_at, snapshot_generated_at, deal_matches(score, draft_status)'
       )
       .in('status', PIPELINE_QUERY_STATUSES),
     supabase.from('ai_usage').select('cost_usd').gte('created_at', monthStart.toISOString()),
@@ -126,7 +128,9 @@ export default async function DashboardHome() {
   const now = currentTime()
   const byActivity = (a: Row, b: Row) => (b.activity_score ?? 0) - (a.activity_score ?? 0)
 
-  const queued = deals.filter((d) => d.underwriting_requested_at && !d.underwriting_generated_at && !d.snapshot_generated_at)
+  const queued = deals.filter(
+    (d) => (d.underwriting_requested_at && !d.underwriting_generated_at && !d.snapshot_generated_at) || d.lender_search_requested_at
+  )
 
   const readyToUnderwrite = deals
     .filter(
@@ -175,9 +179,10 @@ export default async function DashboardHome() {
       </div>
 
       {queued.length > 0 && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-slate-800">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-slate-800">
+          <p className="min-w-0 flex-1">
           <span className="font-medium">
-            {queued.length} deal{queued.length === 1 ? '' : 's'} queued for Claude Code underwriting:
+            {queued.length} deal{queued.length === 1 ? '' : 's'} queued for Claude:
           </span>{' '}
           {queued.map((d, i) => (
             <span key={d.id}>
@@ -187,7 +192,8 @@ export default async function DashboardHome() {
               </Link>
             </span>
           ))}
-          . Tell Claude Code &ldquo;process the underwriting queue.&rdquo;
+          </p>
+          <RunQueueButton />
         </div>
       )}
 

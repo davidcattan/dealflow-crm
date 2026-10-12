@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { readJsonResponse } from '@/lib/fetch-json'
 import { ErrorText } from '@/components/error-text'
+import { RunQueueButton } from '@/components/run-queue-button'
 import type { FoundLender, LenderSearch } from '@/lib/lender-search/schema'
 import { addFoundLender, setLenderSearchQueued } from './actions'
 import { addSubmissions } from './submission-actions'
@@ -227,7 +228,7 @@ export function LenderSearchPanel({
           <div>
             <p className="font-medium">Option 1 — Claude Code ($0)</p>
             <p className="text-xs text-slate-500">
-              Queue it, then in Claude Code say &ldquo;process the underwriting queue&rdquo;. Results land here
+              Queue it, then tap &ldquo;Run the queue now&rdquo; and press Run now. Results land here
               automatically.
             </p>
             <button
@@ -238,6 +239,7 @@ export function LenderSearchPanel({
             >
               {queuedAt ? `Queued ${new Date(queuedAt).toLocaleDateString()} — click to unqueue` : 'Queue for Claude Code'}
             </button>
+            {queuedAt && <RunQueueButton className="ml-2 mt-2" />}
           </div>
           <div>
             <p className="font-medium">Option 2 — Claude.ai ($0 to search, a few cents to save)</p>
