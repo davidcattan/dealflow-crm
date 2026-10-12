@@ -8,10 +8,12 @@ import { EmailClassificationSchema, TriageSchema, type EmailClassification } fro
 
 // Two-stage reading, agreed with David to keep inbox cost down:
 // a cheap model sorts every email; only ones that might be a deal or a
-// lender reply (usually a small share of an inbox) are re-read by the top
-// model, which does the extraction that actually changes the CRM.
+// lender reply (usually a small share of an inbox) are re-read by a
+// stronger model, which does the extraction that actually changes the CRM.
+// Sonnet since Oct 2026 (David's call, ~half Opus's cost) — if emails start
+// getting misfiled, switch INBOX_MODEL back to 'claude-opus-5-5'.
 export const TRIAGE_MODEL = 'claude-haiku-4-5-20251001'
-export const INBOX_MODEL = 'claude-opus-5-5'
+export const INBOX_MODEL = 'claude-sonnet-5-5'
 
 const TRIAGE_INSTRUCTIONS = `You are doing a quick first-pass sort of a debt broker's inbox. Decide whether this email could be:
 - new_deal: someone presenting a financing request for a specific business, or sending more info/documents about one
@@ -42,7 +44,7 @@ function isBillingError(err: unknown) {
   return text.includes('credit balance') || text.includes('usage limit') || text.includes('spend limit')
 }
 
-const INSTRUCTIONS = `You are sorting the inbox of an asset-based lending debt broker. For the email above, decide what it is and extract what the CRM needs.
+const INSTRUCTIONS = `You are sorting the inbox of an asset-based lending debt broker. For the email below (after this CRM context), decide what it is and extract what the CRM needs.
 
 - new_deal: a borrower, another broker, or a referral partner presenting a financing request for a specific business (often with financials, tax returns or a loan package attached), or sending more information about one. If the company is already in the deal list (any status, including old), set existing_deal_ref to its D#.
   The deal's contact fields are always the BORROWER (the business owner/officer), never the person who sent the email if they are a broker or referral partner. Brokers often list the borrower's name and phone in the body — use those. Put the broker's own name, firm, email and phone in referred_by instead.
@@ -71,7 +73,8 @@ export async function classifyEmail(
 ): Promise<EmailClassification> {
   const client = new Anthropic()
 
-  const contextLines = [
+  // About this one email (changes every time).
+  const emailNotes = [
     context.threadDealCompany
       ? `This email is in the thread where deal "${context.threadDealCompany}" was submitted to lender "${context.threadLenderName ?? 'unknown'}".`
       : null,
@@ -82,6 +85,11 @@ export async function classifyEmail(
     context.referralPartner
       ? `The sender is ${context.referralPartner}, a referral partner that sends the team MANY DIFFERENT deals — not a borrower and not a lender. The email is about the company it names (e.g. a subject like "Introducing Eli — <Company>"). It is a new deal unless that same company is already in the list; never match it to another deal just because ${context.referralPartner} sent it or because the deal's contact email is theirs. The deal's contact is the business owner named in the file — never ${context.referralPartner} and never Eli Cattan or David Cattan (they are the loan officers being introduced). Put "${context.referralPartner}" plus any file number and submitter in referred_by.`
       : null,
+  ].filter(Boolean)
+
+  // The deal list is the same for every email in a check, so it's cached:
+  // the 2nd, 3rd… email in a run pay a tenth for it.
+  const dealList =
     context.deals.length > 0
       ? `Deals in the CRM (status in brackets; "old" deals may still be live). "also:" lists the deal's property addresses, related companies/trusts and contact email — an email mentioning any of those is about that deal:\n${context.deals
           .map(
@@ -91,8 +99,7 @@ export async function classifyEmail(
               }`
           )
           .join('\n')}`
-      : 'There are no deals in the CRM.',
-  ].filter(Boolean)
+      : 'There are no deals in the CRM.'
 
   const emailText = [
     `From: ${message.fromName ? `${message.fromName} <${message.from}>` : message.from}`,
@@ -122,22 +129,28 @@ export async function classifyEmail(
 
   const structured = await client.messages.parse({
     model: INBOX_MODEL,
-    max_tokens: 2000,
+    max_tokens: 4000,
     messages: [
       {
         role: 'user',
         content: [
-          '--- Email ---',
-          emailText,
-          '',
-          '--- CRM context ---',
-          contextLines.join('\n\n'),
-          '',
-          INSTRUCTIONS,
-        ].join('\n'),
+          { type: 'text', text: ['--- CRM context ---', dealList, '', INSTRUCTIONS].join('\n'), cache_control: { type: 'ephemeral' } },
+          {
+            type: 'text',
+            text: [
+              emailNotes.length ? `--- About this email ---\n${emailNotes.join('\n\n')}\n` : null,
+              '--- Email ---',
+              emailText,
+              '',
+              'Classify this email following the instructions above.',
+            ]
+              .filter((x) => x !== null)
+              .join('\n'),
+          },
+        ],
       },
     ],
-    output_config: { format: zodOutputFormat(EmailClassificationSchema) },
+    output_config: { effort: 'medium', format: zodOutputFormat(EmailClassificationSchema) },
   })
 
   await logUsage({ feature: 'inbox-classify', model: INBOX_MODEL, usage: structured.usage, supabase })
