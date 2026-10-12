@@ -21,6 +21,7 @@ import { DocumentUploader } from './document-uploader'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
+import { ProfilePanel } from './profile-panel'
 import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
 import { UpdateRow } from './update-row'
 import { SubmissionsPanel, type SubmissionRow, type TimelineItem } from './submissions-panel'
@@ -355,6 +356,14 @@ export default async function DealDetailPage({
 
       <CollapsibleSection tab="overview" title="Deal details">
       <DealDetails deal={deal as Deal} />
+      </CollapsibleSection>
+
+      <CollapsibleSection tab="overview" title="Borrower profile" phoneClosed closed={!(deal as { borrower_profile?: unknown }).borrower_profile}>
+        <ProfilePanel
+          dealId={deal.id}
+          profile={((deal as { borrower_profile?: unknown }).borrower_profile ?? null) as Parameters<typeof ProfilePanel>[0]['profile']}
+          at={(deal as { borrower_profile_at?: string | null }).borrower_profile_at ?? null}
+        />
       </CollapsibleSection>
 
       <CollapsibleSection tab="calls" title="Calls">
