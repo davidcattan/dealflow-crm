@@ -344,6 +344,12 @@ export function AskAiPanel() {
       const failed = results.filter((r) => !r.ok)
       if (ok.length) {
         setDocuments((d) => [...d, ...ok.filter((r) => r.id).map((r) => ({ id: r.id!, name: r.fileName }))])
+        // Fill in the deal's business details from them (cheap, background).
+        void fetch(`/api/deals/${dealId}/autofill`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ documentIds: ok.map((r) => r.id).filter(Boolean) }),
+        }).catch(() => null)
         const names = ok.map((r) => r.fileName).join(', ')
         setInput((v) => `${v}${v && !v.endsWith('\n') ? '\n\n' : ''}[I just added ${names} to this deal]\n`)
       }

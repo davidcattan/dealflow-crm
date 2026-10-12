@@ -57,6 +57,15 @@ export function DocumentUploader({
       } else {
         setFiles([])
       }
+      // Fill in the deal's business name, industry… from the new files.
+      const newIds = results.filter((r) => r.ok && r.id).map((r) => r.id!)
+      if (newIds.length) {
+        await fetch(`/api/deals/${dealId}/autofill`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ documentIds: newIds }),
+        }).catch(() => null)
+      }
       router.refresh()
       if (failed.length < files.length) await analyze()
     } catch (err) {

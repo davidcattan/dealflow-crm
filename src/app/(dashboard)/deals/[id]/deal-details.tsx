@@ -6,6 +6,7 @@ import { updateDeal } from './actions'
 import { STATUS_OPTIONS, STATUS_LABELS, displayStatus, activityScoreColor, type Deal } from '@/lib/types'
 import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 import { OwnerSelect } from '@/components/owner-select'
+import { AutofillButton } from './autofill-button'
 
 // A label and value: a compact row on phones (blank ones hidden), a small
 // stacked block on computers.
@@ -22,17 +23,27 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
 export function DealDetails({ deal }: { deal: Deal }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
+  // Name is a placeholder, or the basics are blank: offer to read the docs.
+  const needsFill =
+    /not stated|unknown|unnamed|tbd|n\/a|no name|\?\?/i.test(deal.company_name ?? '') ||
+    (deal.contact_name && deal.company_name?.trim().toLowerCase() === deal.contact_name.trim().toLowerCase()) ||
+    !deal.industry ||
+    deal.industry === 'Other' ||
+    !deal.description
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-900">Deal details</h2>
+        <div className="flex items-start gap-2">
+        {needsFill && !editing && <AutofillButton dealId={deal.id} />}
         <button
           onClick={() => setEditing((v) => !v)}
           className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
         >
           {editing ? 'Cancel edit' : 'Edit'}
         </button>
+        </div>
       </div>
 
       {!editing ? (

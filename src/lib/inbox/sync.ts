@@ -1,4 +1,5 @@
 import 'server-only'
+import { autofillDeal } from '@/lib/deals/autofill'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   getValidAccessToken,
@@ -772,6 +773,7 @@ async function saveAttachments(
   const have = new Set((existingDocs ?? []).map((d) => `${d.file_name}|${d.file_size}`))
 
   let saved = 0
+  const newIds: string[] = []
   for (const a of attachments) {
     if (!KEEP_EXT.test(a.name) || a.size > MAX_ATTACHMENT_BYTES) continue
     const bytes = Buffer.from(a.contentBytes, 'base64')
@@ -783,16 +785,24 @@ async function saveAttachments(
       .from('borrower-documents')
       .upload(storagePath, bytes, { contentType: a.contentType })
     if (uploadError) continue
-    await supabase.from('documents').insert({
-      deal_id: dealId,
-      file_name: a.name,
-      storage_path: storagePath,
-      file_size: bytes.byteLength,
-      content_type: a.contentType,
-    })
+    const { data: doc } = await supabase
+      .from('documents')
+      .insert({
+        deal_id: dealId,
+        file_name: a.name,
+        storage_path: storagePath,
+        file_size: bytes.byteLength,
+        content_type: a.contentType,
+      })
+      .select('id')
+      .single()
+    if (doc?.id) newIds.push(doc.id as string)
     have.add(key)
     saved++
   }
+  // Fill in the deal's business name, industry… from the new files (cheap;
+  // only fills blanks and placeholder names).
+  if (newIds.length) await autofillDeal(supabase, dealId, newIds).catch((err) => console.error('Autofill failed', err))
   return saved
 }
 
