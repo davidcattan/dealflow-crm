@@ -21,23 +21,21 @@ const MAX_CHARS = 24_000
 const MAX_IMAGES = 4
 const MAX_DOCS = 8
 
+// Unknowns are "" (the API caps nullable fields per request).
 const field = (what: string) =>
   z
     .object({
-      value: z.string().nullable(),
+      value: z.string().describe('Empty string if not in the documents.'),
       printed: z.boolean().describe('true only if this exact value is printed in the documents (not inferred).'),
-      source: z.string().nullable().describe('Short: which file, e.g. "Chase statement Mar 2026"'),
+      source: z.string().describe('Short: which file, e.g. "Chase statement Mar 2026". Empty string if none.'),
     })
     .describe(what)
 
 const AutofillSchema = z.object({
   business_name: field("The borrower business's legal name (LLC/Inc…) exactly as printed — not a bank, lender, broker, accountant or the owner's personal name."),
   dba: field('Doing-business-as / trade name, if different'),
-  what_it_does: z
-    .string()
-    .nullable()
-    .describe('1–2 plain sentences: what the business does and where it is based. Only from the documents. null if unclear.'),
-  industry: z.enum(INDUSTRY_CATEGORIES).nullable().describe('Best-fitting category, or null if unclear.'),
+  what_it_does: z.string().describe('1–2 plain sentences: what the business does and where it is based. Only from the documents. Empty string if unclear.'),
+  industry: z.enum([...INDUSTRY_CATEGORIES, 'Unknown']).describe('Best-fitting category, or "Unknown" if unclear.'),
   website: field('Business website'),
   phone: field('Business or owner phone'),
   email: field('Business or owner email'),
@@ -50,6 +48,8 @@ type Deal = Record<string, string | null>
 
 // "Jeff Zimmerman (business name not stated)", "Unknown", "", or just the
 // contact's own name.
+export { AutofillSchema }
+
 export function isPlaceholderName(name: string | null | undefined, contact?: string | null) {
   const n = (name ?? '').trim()
   if (!n) return true
@@ -134,14 +134,14 @@ export async function autofillDeal(supabase: SupabaseClient, dealId: string, doc
 
   const update: Record<string, string> = {}
   const changed: string[] = []
-  const sure = (f: Autofill['website']) => (f.value && f.printed ? f.value.trim() : null)
+  const sure = (f: Autofill['website']) => (f.value.trim() && f.printed ? f.value.trim() : null)
 
   const name = sure(found.business_name)
   if (missing.name && name && !isPlaceholderName(name)) {
     update.company_name = name
-    changed.push(`name → ${name}${found.business_name.source ? ` (${found.business_name.source})` : ''}`)
+    changed.push(`name → ${name}${found.business_name.source.trim() ? ` (${found.business_name.source.trim()})` : ''}`)
   }
-  if (missing.industry && found.industry && found.industry !== 'Other') {
+  if (missing.industry && found.industry !== 'Unknown' && found.industry !== 'Other') {
     update.industry = found.industry
     changed.push(`industry → ${found.industry}`)
   }
@@ -150,7 +150,7 @@ export async function autofillDeal(supabase: SupabaseClient, dealId: string, doc
     update.website = website
     changed.push(`website → ${website}`)
   }
-  if (missing.description && found.what_it_does) {
+  if (missing.description && found.what_it_does.trim()) {
     const dba = sure(found.dba)
     const address = sure(found.address)
     update.description = [found.what_it_does, dba ? `DBA ${dba}.` : null, address ? `Address: ${address}.` : null].filter(Boolean).join(' ')

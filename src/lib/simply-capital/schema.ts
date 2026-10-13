@@ -23,7 +23,9 @@ export const CHECKLIST = [
   { key: 'application', label: 'Application' },
 ] as const
 
-const s = (what: string) => z.string().nullable().describe(`${what}. null if not in the material.`)
+// What the AI fills in. The API caps "nullable" fields per request, so
+// unknowns are "" (text) or 0 (amounts) here and become null afterwards.
+const s = (what: string) => z.string().describe(`${what}. Empty string if not in the material.`)
 
 const OwnerSchema = z.object({
   first_name: s('First name'),
@@ -37,8 +39,8 @@ const OwnerSchema = z.object({
   ownership_pct: s('Ownership percent, number only, e.g. "60"'),
 })
 
-export const SimplyCapitalSchema = z.object({
-  requested_amount: z.number().nullable().describe('Loan amount the borrower is asking for, in dollars. null if unknown.'),
+export const SimplyCapitalAiSchema = z.object({
+  requested_amount: z.number().describe('Loan amount the borrower is asking for, in dollars. 0 if unknown.'),
   form: z.object({
     company_name: s('Legal company name exactly as on the tax return / formation papers'),
     dba: s('DBA, if different'),
@@ -48,18 +50,18 @@ export const SimplyCapitalSchema = z.object({
     state: s('Business state, 2-letter'),
     zip: s('Business ZIP'),
     ein: s('Federal tax ID, XX-XXXXXXX'),
-    entity_type: z.enum(['Corporation', 'Sole Prop', 'LLC', 'Partnership', 'Non-Profit']).nullable().describe('S-Corp and C-Corp are "Corporation".'),
+    entity_type: z.enum(['Corporation', 'Sole Prop', 'LLC', 'Partnership', 'Non-Profit', 'Unknown']).describe('S-Corp and C-Corp are "Corporation".'),
     established: s('Business established / incorporation date, YYYY-MM-DD'),
     product_or_service: s('What the business sells, a few words'),
     owner: OwnerSchema.describe('Primary owner (largest %)'),
     contact_time: s('Best time and method to reach the owner, if stated'),
-    second_owner: OwnerSchema.nullable().describe('Second owner, or null if only one owner'),
+    has_second_owner: z.boolean().describe('true if there is a second owner'),
+    second_owner: OwnerSchema.describe('Second owner (all empty strings if none)'),
     monthly_sales: z
       .number()
-      .nullable()
-      .describe('Average monthly business deposits/sales over the latest bank statements (exclude transfers between own accounts and loan proceeds). null if no statements.'),
-    open_loans_or_mca: z.enum(['Yes', 'No']).nullable().describe('Any open term loan or merchant cash advance (from the debt schedule, statements — recurring lender debits — or emails).'),
-    funding_amount: z.number().nullable().describe('Funding amount needed, dollars'),
+      .describe('Average monthly business deposits/sales over the latest bank statements (exclude transfers between own accounts and loan proceeds). 0 if no statements.'),
+    open_loans_or_mca: z.enum(['Yes', 'No', 'Unknown']).describe('Any open term loan or merchant cash advance (from the debt schedule, statements — recurring lender debits — or emails).'),
+    funding_amount: z.number().describe('Funding amount needed, dollars. 0 if unknown.'),
     use_of_funds: s('Use of funds, short'),
   }),
   files: z
@@ -68,14 +70,74 @@ export const SimplyCapitalSchema = z.object({
         item: z.enum(['tax_returns', 'pl_bs', 'bank_statements', 'debt_schedule', 'application']),
         document_ids: z.array(z.string()).describe('Ids of the documents that satisfy this item (for bank statements: the latest 6 months, newest first).'),
         status: z.enum(['complete', 'partial', 'missing']),
-        note: z.string().nullable().describe('What is missing or off, e.g. "only 2024 return", "statements stop at July".'),
+        note: z.string().describe('What is missing or off, e.g. "only 2024 return", "statements stop at July". Empty string if nothing.'),
       })
     )
     .describe('One entry for each of the 5 checklist items.'),
   check: z.array(z.string()).describe('Values worth double-checking before submitting, one short line each (guesses, conflicts, old data).'),
 })
 
-export type SimplyCapitalPrep = z.infer<typeof SimplyCapitalSchema>
+type Owner = { [K in keyof z.infer<typeof OwnerSchema>]: string | null }
+
+export type SimplyCapitalPrep = {
+  requested_amount: number | null
+  form: {
+    company_name: string | null
+    dba: string | null
+    street: string | null
+    street2: string | null
+    city: string | null
+    state: string | null
+    zip: string | null
+    ein: string | null
+    entity_type: 'Corporation' | 'Sole Prop' | 'LLC' | 'Partnership' | 'Non-Profit' | null
+    established: string | null
+    product_or_service: string | null
+    owner: Owner
+    contact_time: string | null
+    second_owner: Owner | null
+    monthly_sales: number | null
+    open_loans_or_mca: 'Yes' | 'No' | null
+    funding_amount: number | null
+    use_of_funds: string | null
+  }
+  files: { item: (typeof CHECKLIST)[number]['key']; document_ids: string[]; status: 'complete' | 'partial' | 'missing'; note: string | null }[]
+  check: string[]
+}
+
+const t = (v: string) => (v.trim() ? v.trim() : null)
+const owner = (o: z.infer<typeof OwnerSchema>): Owner =>
+  Object.fromEntries(Object.entries(o).map(([k, v]) => [k, t(v)])) as Owner
+
+export function fromAi(a: z.infer<typeof SimplyCapitalAiSchema>): SimplyCapitalPrep {
+  const f = a.form
+  return {
+    requested_amount: a.requested_amount > 0 ? a.requested_amount : null,
+    form: {
+      company_name: t(f.company_name),
+      dba: t(f.dba),
+      street: t(f.street),
+      street2: t(f.street2),
+      city: t(f.city),
+      state: t(f.state),
+      zip: t(f.zip),
+      ein: t(f.ein),
+      entity_type: f.entity_type === 'Unknown' ? null : f.entity_type,
+      established: t(f.established),
+      product_or_service: t(f.product_or_service),
+      owner: owner(f.owner),
+      contact_time: t(f.contact_time),
+      second_owner: f.has_second_owner && (f.second_owner.first_name || f.second_owner.last_name) ? owner(f.second_owner) : null,
+      monthly_sales: f.monthly_sales > 0 ? f.monthly_sales : null,
+      open_loans_or_mca: f.open_loans_or_mca === 'Unknown' ? null : f.open_loans_or_mca,
+      funding_amount: f.funding_amount > 0 ? f.funding_amount : null,
+      use_of_funds: t(f.use_of_funds),
+    },
+    files: a.files.map((x) => ({ ...x, note: t(x.note) })),
+    check: a.check,
+  }
+}
+
 
 // The pre-filled Jotform link. Only business and contact details go in the
 // link — never SSN, date of birth or credit score.

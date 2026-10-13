@@ -6,17 +6,19 @@ import { z } from 'zod'
 // filled with confidence. Social Security numbers are never stored — only
 // where to find them.
 
+// The API caps "nullable" fields per request, so the AI answers "" for
+// unknowns and fromAi() turns them into null.
 const field = (what: string) =>
   z
     .object({
-      value: z.string().nullable().describe(`${what}. null if not in the material.`),
+      value: z.string().describe(`${what}. Empty string if not in the material.`),
       status: z
         .enum(['confirmed', 'check', 'missing'])
         .describe(
           'confirmed = printed in a document exactly as given; check = worked out or inferred (e.g. from a parent company, a signature line, or two documents that disagree) — explain in note; missing = not in the material.'
         ),
-      source: z.string().nullable().describe('Where it came from, short: e.g. "2024 tax return (1120-S), p.9" or "Email from Lucas, Oct 8".'),
-      note: z.string().nullable().describe('Only if useful: why it needs checking, or a caveat. One short line.'),
+      source: z.string().describe('Where it came from, short: e.g. "2024 tax return (1120-S), p.9" or "Email from Lucas, Oct 8". Empty string if missing.'),
+      note: z.string().describe('Only if useful: why it needs checking, or a caveat. One short line. Empty string otherwise.'),
     })
     .describe(what)
 
@@ -62,7 +64,7 @@ export const ProfileSchema = z.object({
     .array(
       z.object({
         name: z.string(),
-        ein: z.string().nullable(),
+        ein: z.string().describe('EIN, or empty string'),
         relationship: z.string().describe('e.g. "Parent — owns 100% of the operating company", "Subsidiary", "Affiliate under common ownership"'),
       })
     )
@@ -74,9 +76,34 @@ export const ProfileSchema = z.object({
     ),
 })
 
-export type ProfileField = z.infer<ReturnType<typeof field>>
-export type Owner = z.infer<typeof OwnerSchema>
-export type Profile = z.infer<typeof ProfileSchema>
+export type ProfileField = { value: string | null; status: 'confirmed' | 'check' | 'missing'; source: string | null; note: string | null }
+type Ai = z.infer<typeof ProfileSchema>
+export type Owner = { [K in keyof Ai['owners'][number]]: ProfileField }
+export type Profile = {
+  company: { [K in keyof Ai['company']]: ProfileField }
+  owners: Owner[]
+  related_entities: { name: string; ein: string | null; relationship: string }[]
+  warnings: string[]
+}
+
+const t = (v: string) => (v.trim() ? v.trim() : null)
+const cell = (c: z.infer<ReturnType<typeof field>>): ProfileField => ({
+  value: t(c.value),
+  status: t(c.value) ? c.status : 'missing',
+  source: t(c.source),
+  note: t(c.note),
+})
+const cells = <T extends Record<string, z.infer<ReturnType<typeof field>>>>(o: T) =>
+  Object.fromEntries(Object.entries(o).map(([k, v]) => [k, cell(v)])) as { [K in keyof T]: ProfileField }
+
+export function fromAi(a: Ai): Profile {
+  return {
+    company: cells(a.company),
+    owners: a.owners.map((o) => cells(o)),
+    related_entities: a.related_entities.map((r) => ({ ...r, ein: t(r.ein) })),
+    warnings: a.warnings,
+  }
+}
 
 // Labels for the form-style display, in the order lender forms ask.
 export const COMPANY_FIELDS: [keyof Profile['company'], string][] = [

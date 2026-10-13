@@ -9,7 +9,7 @@ import type { Snapshot } from '@/lib/snapshot/schema'
 import { guessCategory } from '@/lib/documents/categories'
 import { getDocText, renderPages } from '@/lib/chat/doc-text'
 import type { DocumentRecord } from '@/lib/types'
-import { SimplyCapitalSchema, type SimplyCapitalPrep } from './schema'
+import { SimplyCapitalAiSchema, fromAi, type SimplyCapitalPrep } from './schema'
 
 // Prepares Simply Capital's application for a deal: the answers for his
 // Jotform and which files go in the upload. Reads what the CRM already has
@@ -82,7 +82,7 @@ export async function prepareSimplyCapital(supabase: SupabaseClient, dealId: str
 
   const rules = `You are preparing a small-business loan application (Simply Capital's form) for a broker, from the deal material above and the statement / debt-schedule pages that follow it.
 
-- Fill each form field only from the material; copy names, addresses and numbers exactly. Unknown = null. Never invent.
+- Fill each form field only from the material; copy names, addresses and numbers exactly. Unknown = empty string (text) or 0 (amounts). Never invent.
 - monthly_sales: average total monthly deposits across the latest statements you can see, excluding transfers between the company's own accounts and loan proceeds. Say in "check" how many months and which accounts you used.
 - open_loans_or_mca: Yes if the debt schedule, statements (recurring lender/MCA debits) or emails show any term loan or merchant cash advance.
 - files: for each of the 5 items pick the matching document ids from the list. Bank statements = the latest 6 months across all business accounts, newest first. Mark partial/missing honestly and say what's missing.
@@ -91,12 +91,12 @@ export async function prepareSimplyCapital(supabase: SupabaseClient, dealId: str
   const response = await new Anthropic().messages.parse({
     model: MODEL,
     max_tokens: 8000,
-    output_config: { effort: 'medium', format: zodOutputFormat(SimplyCapitalSchema) },
+    output_config: { effort: 'medium', format: zodOutputFormat(SimplyCapitalAiSchema) },
     messages: [{ role: 'user', content: [{ type: 'text', text: header }, ...blocks, { type: 'text', text: rules }] }],
   })
   await logUsage({ feature: 'simply-capital', model: MODEL, dealId, usage: response.usage })
-  const out = response.parsed_output
-  if (!out) throw new Error('Couldn’t prepare the application')
+  if (!response.parsed_output) throw new Error('Couldn’t prepare the application')
+  const out = fromAi(response.parsed_output)
   // Only ids that really belong to this deal.
   const ids = new Set(docs.map((d) => d.id))
   out.files = out.files.map((f) => ({ ...f, document_ids: f.document_ids.filter((id) => ids.has(id)) }))

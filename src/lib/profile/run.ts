@@ -5,7 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { logUsage } from '@/lib/usage'
 import { loadDealEmails, emailsToText } from '@/lib/deals/deal-emails'
 import type { DocumentRecord } from '@/lib/types'
-import { ProfileSchema, scrubProfile, type Profile } from './schema'
+import { ProfileSchema, fromAi, scrubProfile, type Profile } from './schema'
 
 // Borrower profile: reads the deal's tax returns, entity papers and emails
 // and pulls out what lender application forms ask for (legal name, EIN,
@@ -108,7 +108,7 @@ async function documentPages(supabase: SupabaseClient, docs: DocumentRecord[]): 
 const RULES = `You are filling in the borrower section of a commercial loan application for a debt broker. From the documents, emails and notes above, extract the operating company's details and every owner's details.
 
 Rules:
-- Copy values EXACTLY as printed (spelling, punctuation, suite numbers). Never guess or invent. If it isn't there, value = null and status = "missing".
+- Copy values EXACTLY as printed (spelling, punctuation, suite numbers). Never guess or invent. If it isn't there, value = "" and status = "missing".
 - status "confirmed" only when the value is printed in a document for THIS company/person. Use "check" when you worked it out (e.g. a date or EIN from a parent/holding company, a percentage held indirectly, an email from a signature line, or documents that disagree) and say why in note.
 - The operating company may sit under a holding company: give the operating company's own legal name and EIN, list the parent under related_entities, and warn if a form could mix them up.
 - If the company name is spelled differently anywhere (deal name, emails, documents), add a warning.
@@ -151,5 +151,5 @@ export async function runProfile(supabase: SupabaseClient, dealId: string): Prom
   })
   await logUsage({ feature: 'borrower-profile', model: MODEL, dealId, usage: response.usage })
   if (!response.parsed_output) throw new Error('Couldn’t read the owner details')
-  return { profile: scrubProfile(response.parsed_output), read }
+  return { profile: scrubProfile(fromAi(response.parsed_output)), read }
 }
