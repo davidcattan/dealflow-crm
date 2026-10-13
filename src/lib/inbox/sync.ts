@@ -147,7 +147,7 @@ export function findLenderBySender(
   if (core.length < 4) return null
   // "fairviewcommercial" ↔ "Fairview" is a match; "bridgewayalliance" ↔
   // "Bridge Business Credit" is not (only lender-ish words may be left over).
-  const SUFFIX = /^(capital|funding|finance|financial|lending|lender|credit|group|partners|llc|inc|co|usa|us|bank|commercial|business|loans?|cap|fin|corp)*$/
+  const SUFFIX = /^(capital|funding|finance|financial|lending|lender|credit|group|partners|llc|inc|co|usa|us|bank|commercial|business|loans?|cap|fin|corp|source|sources)*$/
   const byName = lenders.filter((l) => {
     const c = lenderCore(l.name)
     if (c.length < 4) return false
