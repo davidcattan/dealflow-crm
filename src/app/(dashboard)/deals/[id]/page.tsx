@@ -439,6 +439,7 @@ export default async function DealDetailPage({
         {docsWithUrls.length > 0 ? (
           <DocumentGroups
             dealId={deal.id}
+            dealName={deal.company_name}
             docs={docsWithUrls.map((doc) => {
               const category = doc.category || guessCategory(doc.file_name, doc.triage?.doc_type)
               const lenderId =

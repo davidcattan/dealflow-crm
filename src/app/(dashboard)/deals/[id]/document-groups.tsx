@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { zipSync } from 'fflate'
+import { readJsonResponse } from '@/lib/fetch-json'
 import { ConfirmButton } from '@/components/confirm-button'
 import { DOC_CATEGORIES } from '@/lib/documents/categories'
 import type { DocTriage } from '@/lib/types'
@@ -113,13 +115,65 @@ function DocRow({
 
 // A deal's documents in groups (bank statements, tax returns, term sheets…),
 // each a folder you open. Small sets start open.
+// Every document on the deal as one zip: "<Deal name>/<Group>/<file>".
+function DownloadAll({ dealId, dealName }: { dealId: string; dealName: string }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function run() {
+    setError(null)
+    setBusy('Getting files…')
+    try {
+      const res = await fetch(`/api/deals/${dealId}/documents/all`)
+      const result = await readJsonResponse<{ files: { name: string; group: string; url: string | null }[] }>(res)
+      if (!result.ok) throw new Error(result.message)
+      const top = dealName.replace(/[\\/:*?"<>|]+/g, '').trim() || 'Deal'
+      const entries: Record<string, Uint8Array> = {}
+      let done = 0
+      for (const f of result.body.files) {
+        setBusy(`Downloading ${++done} of ${result.body.files.length}…`)
+        if (!f.url) continue
+        const r = await fetch(f.url)
+        if (!r.ok) continue
+        const folder = `${top}/${f.group.replace(/[\\/:*?"<>|]+/g, '-')}`
+        let path = `${folder}/${f.name}`
+        for (let n = 2; entries[path]; n++) path = `${folder}/${n}-${f.name}`
+        entries[path] = new Uint8Array(await r.arrayBuffer())
+      }
+      if (!Object.keys(entries).length) throw new Error('No files to download.')
+      setBusy('Zipping…')
+      const blob = new Blob([zipSync(entries, { level: 0 }) as BlobPart], { type: 'application/zip' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `${top}.zip`
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 10_000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Download failed')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <>
+      <button type="button" onClick={run} disabled={Boolean(busy)} className="font-medium text-slate-700 hover:underline disabled:opacity-60">
+        {busy ?? '⬇ Download all'}
+      </button>
+      {error && <span className="text-red-600">{error}</span>}
+    </>
+  )
+}
+
 export function DocumentGroups({
   dealId,
+  dealName,
   docs: rawDocs,
   lenders,
   deals,
 }: {
   dealId: string
+  dealName: string
   docs: GroupedDoc[]
   lenders: { id: string; name: string }[]
   deals: DealChoice[]
@@ -168,6 +222,7 @@ export function DocumentGroups({
             {dupCount} duplicate upload{dupCount === 1 ? '' : 's'} — marked below, safe to delete
           </span>
         )}
+        <DownloadAll dealId={dealId} dealName={dealName} />
         <button type="button" onClick={() => setOpenGroups(new Set(groups.map((g) => g.name)))} className="hover:underline">
           Open all
         </button>
