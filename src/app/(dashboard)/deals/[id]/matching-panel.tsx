@@ -119,13 +119,13 @@ function DraftEmail({
           onClick={() => setOpen((v) => !v)}
           className="text-xs font-medium text-amber-800 hover:underline"
         >
-          {open ? 'Hide' : 'View'} auto-drafted submission email
+          {open ? 'Hide' : 'View'} submission email
         </button>
         <div className="flex items-center gap-2">
           {open && (
-            <span className="flex items-center gap-1 text-xs text-amber-800" title="Writes a fresh draft (a few cents)">
+            <span className="flex items-center gap-1 text-xs text-amber-800" title="Fills the email skeleton again with this deal's latest numbers (free)">
               {redrafting ? (
-                'Redrafting…'
+                'Refilling…'
               ) : (
                 <>
                   <label className="mr-1 flex items-center gap-1" title="Start the email with your intro from Settings">
@@ -137,17 +137,13 @@ function DraftEmail({
                     />
                     intro
                   </label>
-                  Redraft:
-                  {(['short', 'long'] as const).map((st) => (
-                    <button
-                      key={st}
-                      type="button"
-                      onClick={() => onRedraft(st)}
-                      className="rounded border border-amber-300 px-2 py-0.5 capitalize hover:bg-amber-100"
-                    >
-                      {st}
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    onClick={() => onRedraft('short')}
+                    className="rounded border border-amber-300 px-2 py-0.5 hover:bg-amber-100"
+                  >
+                    Refill numbers
+                  </button>
                 </>
               )}
             </span>
@@ -250,7 +246,7 @@ function DraftEmail({
         <p className="mt-1 text-xs font-medium text-amber-800">
           {staleNote}{' '}
           <button type="button" onClick={() => onRedraft('short')} disabled={redrafting} className="underline disabled:opacity-50">
-            {redrafting ? 'Redrafting…' : 'Redraft to match'}
+            {redrafting ? 'Refilling…' : 'Refill'}
           </button>
         </p>
       )}
@@ -722,7 +718,7 @@ export function MatchingPanel({
                 />
               )}
               {draftingId === m.id && (
-                <p className="mt-3 text-xs text-slate-500">Drafting submission email…</p>
+                <p className="mt-3 text-xs text-slate-500">Filling in the email…</p>
               )}
               {draftError?.id === m.id && (
                 <p className="mt-3 text-xs text-red-600">
@@ -731,16 +727,13 @@ export function MatchingPanel({
               )}
               {m.selected && m.draftStatus !== 'drafted' && draftingId !== m.id && (
                 <div className="mt-3 flex gap-2">
-                  {(['short', 'long'] as const).map((st) => (
-                    <button
-                      key={st}
-                      type="button"
-                      onClick={() => draftFor(m.id, st)}
-                      className="rounded-md border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                    >
-                      Draft {st} email
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    onClick={() => draftFor(m.id)}
+                    className="rounded-md border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                  >
+                    Draft email
+                  </button>
                 </div>
               )}
               </div>
