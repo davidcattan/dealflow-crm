@@ -21,6 +21,7 @@ import { DocumentUploader } from './document-uploader'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
+import type { DealContact } from './deal-contacts'
 import { ProfilePanel } from './profile-panel'
 import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
 import { UpdateRow } from './update-row'
@@ -159,8 +160,14 @@ export default async function DealDetailPage({
   // the broker / referral partner named in the notes.
   const brokerEmail = String(deal.notes ?? '').match(/[\w.+-]+@[\w-]+\.[\w.-]+/)?.[0] ?? null
   const brokerName = String(deal.notes ?? '').match(/Referred by ([^,—(\n]+)/)?.[1]?.trim() ?? null
+  // Other people on the deal (empty until migration 042 is run).
+  const { data: contactRows } = await supabase.from('deal_contacts').select('id, name, title, email, phone, notes').eq('deal_id', id).order('created_at')
+  const otherContacts = (contactRows ?? []) as DealContact[]
   const requestRecipients = [
     ...(deal.contact_email ? [{ label: `Borrower — ${deal.contact_name || deal.contact_email}`, name: deal.contact_name, email: deal.contact_email }] : []),
+    ...otherContacts
+      .filter((c) => c.email && c.email !== deal.contact_email)
+      .map((c) => ({ label: `${c.title || 'Contact'} — ${c.name}`, name: c.name, email: c.email as string })),
     ...(brokerEmail && brokerEmail !== deal.contact_email
       ? [{ label: `Broker — ${brokerName || brokerEmail}`, name: brokerName, email: brokerEmail }]
       : []),
@@ -366,7 +373,7 @@ export default async function DealDetailPage({
       <DuplicateBanner dealId={deal.id} dealName={deal.company_name} duplicates={duplicates} />
 
       <CollapsibleSection tab="overview" title="Deal details">
-      <DealDetails deal={deal as Deal} />
+      <DealDetails deal={deal as Deal} contacts={otherContacts} />
       </CollapsibleSection>
 
       <CollapsibleSection tab="overview" title="Borrower profile" phoneClosed closed={!(deal as { borrower_profile?: unknown }).borrower_profile}>

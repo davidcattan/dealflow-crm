@@ -7,6 +7,7 @@ import { STATUS_OPTIONS, STATUS_LABELS, displayStatus, activityScoreColor, type 
 import { INDUSTRY_CATEGORIES, LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 import { OwnerSelect } from '@/components/owner-select'
 import { AutofillButton } from './autofill-button'
+import { DealContacts, type DealContact } from './deal-contacts'
 
 // A label and value: a compact row on phones (blank ones hidden), a small
 // stacked block on computers.
@@ -20,7 +21,7 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
-export function DealDetails({ deal }: { deal: Deal }) {
+export function DealDetails({ deal, contacts = [] }: { deal: Deal; contacts?: DealContact[] }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   // Name is a placeholder, or the basics are blank: offer to read the docs.
@@ -91,6 +92,7 @@ export function DealDetails({ deal }: { deal: Deal }) {
               ) : null
             }
           />
+          <DealContacts dealId={deal.id} contacts={contacts} />
           <div className="border-t border-slate-100 pt-2.5 sm:col-span-3 sm:border-0 sm:pt-0">
             <p className="text-xs font-medium text-slate-500">Description</p>
             <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-800">

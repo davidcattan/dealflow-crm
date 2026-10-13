@@ -226,6 +226,15 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
         .not('outlook_conversation_id', 'is', null),
     ])
   const threads = [...(matchThreads ?? []), ...(submissionThreads ?? [])]
+  // The other people on each deal (e.g. a treasurer next to the CFO) —
+  // empty until migration 042 is run.
+  const { data: dealContacts } = await supabase.from('deal_contacts').select('deal_id, email').not('email', 'is', null)
+  const extraEmails = new Map<string, string[]>()
+  for (const c of dealContacts ?? []) {
+    const email = String(c.email).toLowerCase()
+    if (isNotBorrowerEmail(email)) continue
+    extraEmails.set(c.deal_id as string, [...(extraEmails.get(c.deal_id as string) ?? []), email])
+  }
   // Threads whose emails were already filed on a deal (inbound or sent).
   const { data: filedThreads } = await supabase
     .from('inbox_messages')
@@ -240,7 +249,7 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
     company_name: d.company_name as string,
     contact_name: d.contact_name as string | null,
     status: d.status as string,
-    hints: dealHints(d),
+    hints: INACTIVE.includes(d.status as string) ? [] : [...new Set([...dealHints(d), ...(extraEmails.get(d.id as string) ?? [])])],
     ref: `D${i + 1}`,
   }))
   const lenderByEmail = new Map<string, string>()
@@ -261,11 +270,14 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
       threads.map((t) => [t.outlook_conversation_id as string, { dealId: t.deal_id, lenderId: t.lender_id }])
     ),
     dealByConversation: new Map((filedThreads ?? []).map((t) => [t.conversation_id as string, t.deal_id as string])),
-    dealByContactEmail: new Map(
-      (deals ?? [])
+    dealByContactEmail: new Map([
+      ...(deals ?? [])
+        .filter((d) => !INACTIVE.includes(d.status))
+        .flatMap((d) => (extraEmails.get(d.id as string) ?? []).map((e) => [e, d.id as string] as [string, string])),
+      ...(deals ?? [])
         .filter((d) => d.contact_email && !INACTIVE.includes(d.status) && !isNotBorrowerEmail(d.contact_email))
-        .map((d) => [String(d.contact_email).toLowerCase(), d.id as string])
-    ),
+        .map((d) => [String(d.contact_email).toLowerCase(), d.id as string] as [string, string]),
+    ]),
   }
 }
 

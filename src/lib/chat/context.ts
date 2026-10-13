@@ -56,6 +56,7 @@ export async function buildDealContext(supabase: SupabaseClient, dealId: string)
       loadNextSteps(supabase, [dealId]),
     ])
   if (!deal) throw new Error('Deal not found')
+  const { data: others } = await supabase.from('deal_contacts').select('name, title, email, phone, notes').eq('deal_id', dealId).order('created_at')
 
   const name = (l: unknown) => ((Array.isArray(l) ? l[0] : l) as { name?: string } | null)?.name ?? 'Unknown lender'
   const step = steps.get(dealId)
@@ -65,6 +66,9 @@ export async function buildDealContext(supabase: SupabaseClient, dealId: string)
     `=== DEAL: ${deal.company_name} ===`,
     `Status: ${deal.status} | Industry: ${deal.industry ?? '—'} | Loan type: ${deal.loan_type ?? '—'} | Ask: ${deal.deal_type ?? '—'}`,
     `Contact: ${[deal.contact_name, deal.contact_email, deal.contact_phone].filter(Boolean).join(', ') || '—'} | Rep: ${deal.rep_name ?? '—'} | Added: ${fmtDate(deal.created_at)}`,
+    (others ?? []).length
+      ? `Other contacts: ${(others ?? []).map((c) => [c.name, c.title, c.email, c.phone, c.notes].filter(Boolean).join(', ')).join(' | ')}`
+      : null,
     deal.description ? `Description: ${deal.description}` : null,
     deal.notes ? `Notes: ${deal.notes}` : null,
     step ? `CRM's suggested next step: ${step.text}${step.detail ? ` (${step.detail})` : ''}` : null,
