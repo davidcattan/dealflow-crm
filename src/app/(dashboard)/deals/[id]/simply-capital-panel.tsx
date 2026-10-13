@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { zipSync } from 'fflate'
 import { readJsonResponse } from '@/lib/fetch-json'
 import { ErrorText } from '@/components/error-text'
+import { markSimplyCapitalSent } from './submission-actions'
 import { CHECKLIST, SIMPLY_CAPITAL, fitsSimplyCapital, prefillUrl, type SimplyCapitalPrep } from '@/lib/simply-capital/schema'
 
 const money = (n: number | null | undefined) => (n == null ? '—' : `$${Math.round(n).toLocaleString('en-US')}`)
@@ -44,6 +45,7 @@ export function SimplyCapitalPanel({
   const [busy, setBusy] = useState(false)
   const [zipping, setZipping] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sent, setSent] = useState(false)
 
   const amount = prep?.requested_amount ?? askAmount
   const fits = fitsSimplyCapital(amount)
@@ -149,6 +151,16 @@ export function SimplyCapitalPanel({
               href={prefillUrl(prep)}
               target="_blank"
               rel="noopener noreferrer"
+              // Opening the form = sending him the deal: mark it Sent and note it.
+              onClick={() => {
+                void markSimplyCapitalSent(dealId).then((res) => {
+                  if (res && 'error' in res && res.error) setError(res.error)
+                  else {
+                    setSent(true)
+                    router.refresh()
+                  }
+                })
+              }}
               className="rounded-lg bg-slate-900 px-3 py-2.5 text-center font-medium text-white hover:bg-slate-800"
             >
               1 · Open the pre-filled form ↗
@@ -162,6 +174,9 @@ export function SimplyCapitalPanel({
               {zipping ? 'Bundling files…' : '2 · Download the files (.zip)'}
             </button>
           </div>
+          {sent && (
+            <p className="-mt-2 text-xs text-emerald-700">✓ Marked as sent to Simply Capital, with a note that you filled out the application.</p>
+          )}
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             <p className="font-medium">3 · Then, in the form:</p>
             <ul className="mt-0.5 list-disc space-y-0.5 pl-4">

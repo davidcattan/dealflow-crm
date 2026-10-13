@@ -119,3 +119,41 @@ export async function addLenderNote(dealId: string, lenderId: string, note: stri
     .eq('lender_id', lenderId)
   refresh(dealId)
 }
+
+// Opening Simply Capital's pre-filled application = sending him the deal:
+// mark it Sent (if it isn't already further along) and note that the
+// application was filled out. Clicking again the same day adds nothing.
+export async function markSimplyCapitalSent(dealId: string) {
+  if (!dealId) return
+  const supabase = await createClient()
+  const { data: found } = await supabase.from('lenders').select('id').ilike('name', 'simply capital%').limit(1).maybeSingle()
+  let lenderId = found?.id as string | undefined
+  if (!lenderId) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    const { data: created } = await supabase
+      .from('lenders')
+      .insert({ name: 'Simply Capital', website: 'simplycapitalsource.com', created_by: user?.id ?? null })
+      .select('id')
+      .single()
+    lenderId = created?.id as string | undefined
+  }
+  if (!lenderId) return { error: 'Could not find or add the Simply Capital lender.' }
+
+  const { data: already } = await supabase.from('deal_submissions').select('id').eq('deal_id', dealId).eq('lender_id', lenderId).maybeSingle()
+  if (!already) await recordSubmission(supabase, { dealId, lenderId })
+
+  const note = 'Filled out Simply Capital’s application (Jotform) and sent them the deal.'
+  const { data: logged } = await supabase
+    .from('deal_updates')
+    .select('id')
+    .eq('deal_id', dealId)
+    .eq('lender_id', lenderId)
+    .eq('note', note)
+    .eq('entry_date', today())
+    .limit(1)
+  if (!logged?.length) await logLenderNote(supabase, dealId, lenderId, note)
+  refresh(dealId)
+  return { ok: true }
+}
