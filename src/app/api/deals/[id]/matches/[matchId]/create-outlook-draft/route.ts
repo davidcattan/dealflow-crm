@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getValidAccessToken, createOutlookDraft, type DraftAttachment } from '@/lib/outlook/graph'
+import { jedSignatureHtml, trimToSignOff } from '@/lib/outlook/jed-signature'
 import { friendlyAiError } from '@/lib/ai-errors'
 import type { DocumentRecord } from '@/lib/types'
 
@@ -73,13 +74,16 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
       })
     }
 
+    // The sender's real JED signature replaces any typed name / text signature.
+    const signatureHtml = jedSignatureHtml(accountEmail)
     const result = await createOutlookDraft({
       accessToken,
       to: { name: primaryContact.name, email: primaryContact.email },
       cc: ccContacts,
       subject: match.draft_subject,
-      body: match.draft_body,
+      body: signatureHtml ? trimToSignOff(match.draft_body) : match.draft_body,
       attachments,
+      signatureHtml,
     })
 
     await supabase

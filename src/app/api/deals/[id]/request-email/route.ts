@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createOutlookDraft, getValidAccessToken } from '@/lib/outlook/graph'
+import { jedSignatureHtml, trimToSignOff } from '@/lib/outlook/jed-signature'
 
 // Puts a short "here's what we still need" email in the user's Outlook
 // Drafts (never sends). No AI — the list comes from the deal's request list.
@@ -28,12 +29,15 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
     const { data: conn } = await supabase.from('outlook_connections').select('email_signature').eq('id', used).maybeSingle()
     const first = accountEmail.split('@')[0].split(/[._-]/)[0]
     const signature = conn?.email_signature?.trim() || first.charAt(0).toUpperCase() + first.slice(1)
+    // The sender's real JED signature if it's David's or Eli's mailbox.
+    const signatureHtml = jedSignatureHtml(accountEmail)
     const draft = await createOutlookDraft({
       accessToken,
       to: { name: to.name ?? null, email: to.email },
       subject: subject?.trim() || 'A few items to move forward',
-      body: `${body.trim()}\n${signature}`,
+      body: signatureHtml ? trimToSignOff(body.trim()) : `${body.trim()}\n${signature}`,
       attachments: [],
+      signatureHtml,
     })
     await supabase.from('deal_updates').insert({
       deal_id: id,

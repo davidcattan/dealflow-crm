@@ -146,6 +146,7 @@ export async function createOutlookDraft({
   subject,
   body,
   attachments,
+  signatureHtml = null,
 }: {
   accessToken: string
   to: { name?: string | null; email: string }
@@ -153,6 +154,8 @@ export async function createOutlookDraft({
   subject: string
   body: string
   attachments: DraftAttachment[]
+  // The sender's real Outlook signature, appended after the text.
+  signatureHtml?: string | null
 }) {
   const MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024
   const included = attachments.filter((a) => Buffer.byteLength(a.contentBytes, 'base64') <= MAX_ATTACHMENT_BYTES)
@@ -163,7 +166,7 @@ export async function createOutlookDraft({
     body: JSON.stringify({
       subject,
       // Sent as formatted HTML so bullets, bold labels and spacing survive.
-      body: { contentType: 'html', content: textToEmailHtml(body) },
+      body: { contentType: 'html', content: signatureHtml ? `${textToEmailHtml(body)}${signatureHtml}` : textToEmailHtml(body) },
       toRecipients: [{ emailAddress: { address: to.email, name: to.name ?? undefined } }],
       ccRecipients: cc.map((c) => ({ emailAddress: { address: c.email, name: c.name ?? undefined } })),
       attachments: included.map((a) => ({
