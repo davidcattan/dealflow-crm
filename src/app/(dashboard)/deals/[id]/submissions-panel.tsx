@@ -15,6 +15,8 @@ import {
   addNewLenderSubmission,
   addSubmissions,
   removeSubmission,
+  setDealRequiresNda,
+  setSubmissionNda,
   setSubmissionSentOn,
   setSubmissionStatus,
 } from './submission-actions'
@@ -26,6 +28,8 @@ export type SubmissionRow = {
   status: SubmissionStatus
   sent_on: string
   last_activity_at: string
+  // NDA: JED's master NDA on the lender, one for this deal only, or none.
+  nda?: 'master' | 'deal' | null
 }
 
 export type TimelineItem = {
@@ -203,7 +207,42 @@ function AddLenders({
   )
 }
 
-function LenderCard({ dealId, sub, items }: { dealId: string; sub: SubmissionRow; items: TimelineItem[] }) {
+// On deals that need an NDA: whether this lender has signed one. A heads-up,
+// never a block — tap "No NDA" to mark it signed for this deal.
+function NdaChip({ dealId, sub }: { dealId: string; sub: SubmissionRow }) {
+  const [pending, startTransition] = useTransition()
+  if (sub.nda === 'master')
+    return (
+      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700" title="Signed JED's master NDA (covers every deal)">
+        NDA ✓
+      </span>
+    )
+  if (sub.nda === 'deal')
+    return (
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => confirm(`Clear the NDA for ${sub.lender_name} on this deal?`) && startTransition(() => void setSubmissionNda(dealId, sub.id, false))}
+        className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 disabled:opacity-50"
+        title="Signed an NDA for this deal (tap to clear)"
+      >
+        NDA ✓ this deal
+      </button>
+    )
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() => startTransition(() => void setSubmissionNda(dealId, sub.id, true))}
+      className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100 disabled:opacity-50"
+      title="This deal needs lenders to sign an NDA. Tap once they've signed one for this deal (or mark JED's master NDA on the lender's page)."
+    >
+      No NDA · mark signed
+    </button>
+  )
+}
+
+function LenderCard({ dealId, sub, items, requiresNda }: { dealId: string; sub: SubmissionRow; items: TimelineItem[]; requiresNda: boolean }) {
   const [showAll, setShowAll] = useState(false)
   const [note, setNote] = useState('')
   const [pending, startTransition] = useTransition()
@@ -217,6 +256,7 @@ function LenderCard({ dealId, sub, items }: { dealId: string; sub: SubmissionRow
       <button type="button" onClick={() => setOpen((v) => !v)} className="block w-full px-3.5 py-3 text-left sm:hidden">
         <span className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate font-medium text-slate-900">{sub.lender_name}</span>
+          {requiresNda && !sub.nda && <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">No NDA</span>}
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${SUBMISSION_STYLES[sub.status]}`}>
             {SUBMISSION_LABELS[sub.status]}
           </span>
@@ -238,6 +278,7 @@ function LenderCard({ dealId, sub, items }: { dealId: string; sub: SubmissionRow
           <span className="text-xs text-slate-400">updated {ago(sub.last_activity_at)}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {requiresNda && <NdaChip dealId={dealId} sub={sub} />}
           <label className="flex items-center gap-1 text-xs text-slate-500">
             Sent
             <input
@@ -340,13 +381,47 @@ function LenderCard({ dealId, sub, items }: { dealId: string; sub: SubmissionRow
   )
 }
 
+// "Lenders must sign an NDA" for this deal — turns on the NDA labels.
+function NdaToggle({ dealId, required, missing }: { dealId: string; required: boolean; missing: number }) {
+  const [on, setOn] = useState(required)
+  const [error, setError] = useState<string | null>(null)
+  const [pending, startTransition] = useTransition()
+  return (
+    <label className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
+      <input
+        type="checkbox"
+        checked={on}
+        disabled={pending}
+        onChange={(e) => {
+          const next = e.target.checked
+          setOn(next)
+          setError(null)
+          startTransition(async () => {
+            const res = await setDealRequiresNda(dealId, next)
+            if (res && 'error' in res && res.error) {
+              setError(res.error)
+              setOn(!next)
+            }
+          })
+        }}
+        className="rounded border-slate-300"
+      />
+      Lenders must sign an NDA for this deal
+      {on && missing > 0 && <span className="text-amber-700">· {missing} without one</span>}
+      {error && <span className="text-red-600">{error}</span>}
+    </label>
+  )
+}
+
 export function SubmissionsPanel({
   dealId,
+  requiresNda = false,
   submissions,
   timeline,
   lenders,
 }: {
   dealId: string
+  requiresNda?: boolean
   submissions: SubmissionRow[]
   timeline: TimelineItem[]
   lenders: { id: string; name: string }[]
@@ -386,6 +461,7 @@ export function SubmissionsPanel({
           <p className="mt-0.5 text-xs text-slate-500">
             Lenders you email from a CRM draft, and their replies, are added here automatically.
           </p>
+          <NdaToggle dealId={dealId} required={requiresNda} missing={submissions.filter((x) => !x.nda).length} />
         </div>
         {!adding && (
           <button
@@ -418,6 +494,7 @@ export function SubmissionsPanel({
             <LenderCard
               key={sub.id}
               dealId={dealId}
+              requiresNda={requiresNda}
               sub={sub}
               items={timeline.filter((t) => t.lender_id === sub.lender_id)}
             />

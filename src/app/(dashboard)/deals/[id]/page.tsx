@@ -177,6 +177,16 @@ export default async function DealDetailPage({
     ...(submissionRows ?? []).map((r) => ({ id: r.lender_id as string, name: lenderNameById.get(r.lender_id as string) ?? 'Lender' })),
     ...((lenderRows ?? []) as { id: string; name: string }[]).filter((l) => !(submissionRows ?? []).some((r) => r.lender_id === l.id)),
   ]
+  // NDAs (heads-up only): lenders with JED's master NDA, and lenders that
+  // signed one for this deal. Both just come back empty before migration 041.
+  const requiresNda = Boolean((deal as { requires_nda?: boolean }).requires_nda)
+  const [{ data: ndaSubs }, { data: ndaLenders }] = await Promise.all([
+    supabase.from('deal_submissions').select('id, lender_id, nda_signed_on').eq('deal_id', id).not('nda_signed_on', 'is', null),
+    supabase.from('lenders').select('id').not('nda_signed_on', 'is', null),
+  ])
+  const masterNda = new Set((ndaLenders ?? []).map((l) => l.id as string))
+  const dealNda = new Set((ndaSubs ?? []).map((r) => r.id as string))
+  const ndaLenderIds = [...masterNda, ...(ndaSubs ?? []).map((r) => r.lender_id as string)]
   const submissions: SubmissionRow[] = (submissionRows ?? []).map((r) => {
     const lender = Array.isArray(r.lenders) ? r.lenders[0] : r.lenders
     return {
@@ -186,6 +196,7 @@ export default async function DealDetailPage({
       status: r.status as SubmissionStatus,
       sent_on: r.sent_on,
       last_activity_at: r.last_activity_at,
+      nda: masterNda.has(r.lender_id as string) ? 'master' : dealNda.has(r.id as string) ? 'deal' : null,
     }
   })
   // Per-lender timeline: received emails (from the inbox log) plus notes.
@@ -439,6 +450,7 @@ export default async function DealDetailPage({
       <CollapsibleSection tab="lenders" title="Lenders sent to">
       <SubmissionsPanel
         dealId={deal.id}
+        requiresNda={requiresNda}
         submissions={submissions}
         timeline={lenderTimeline}
         lenders={(lenderRows ?? []) as { id: string; name: string }[]}
@@ -598,6 +610,8 @@ export default async function DealDetailPage({
 
       <CollapsibleSection tab="lenders" title="Lender matching" phoneClosed>
       <MatchingPanel
+        requiresNda={requiresNda}
+        ndaLenderIds={ndaLenderIds}
         dealId={deal.id}
         matches={matchesWithLender}
         lastRunAt={lastMatchRunAt}

@@ -119,3 +119,29 @@ export async function addLenderNote(dealId: string, lenderId: string, note: stri
     .eq('lender_id', lenderId)
   refresh(dealId)
 }
+
+const NDA_MIGRATION = 'Run migration 041_ndas.sql in Supabase first.'
+
+// "Lenders must sign an NDA for this deal" — a heads-up only.
+export async function setDealRequiresNda(dealId: string, required: boolean) {
+  const supabase = await createClient()
+  const { error } = await supabase.from('deals').update({ requires_nda: required }).eq('id', dealId)
+  if (error) return { error: error.message.includes('requires_nda') ? NDA_MIGRATION : error.message }
+  refresh(dealId)
+  return { ok: true }
+}
+
+// This lender signed an NDA for this deal (today), or clear it.
+export async function setSubmissionNda(dealId: string, submissionId: string, signed: boolean) {
+  const supabase = await createClient()
+  const { data: sub, error } = await supabase
+    .from('deal_submissions')
+    .update({ nda_signed_on: signed ? today() : null })
+    .eq('id', submissionId)
+    .select('lender_id')
+    .single()
+  if (error) return { error: error.message.includes('nda_signed_on') ? NDA_MIGRATION : error.message }
+  if (signed && sub) await logLenderNote(supabase, dealId, sub.lender_id as string, 'Signed an NDA for this deal.')
+  refresh(dealId)
+  return { ok: true }
+}

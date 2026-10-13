@@ -361,6 +361,8 @@ export function MatchingPanel({
   mailboxes,
   defaultMailboxId,
   latestPitch,
+  requiresNda = false,
+  ndaLenderIds = [],
 }: {
   dealId: string
   matches: MatchWithLender[]
@@ -373,6 +375,9 @@ export function MatchingPanel({
   mailboxes: Mailbox[]
   defaultMailboxId: string | null
   latestPitch: { at: string; lenderId: string; lenderName: string } | null
+  // Deal needs lenders to sign an NDA: label each match (never blocks).
+  requiresNda?: boolean
+  ndaLenderIds?: string[]
 }) {
   // Which Outlook gets the drafts: your own by default; a different pick is
   // remembered in this browser.
@@ -625,6 +630,9 @@ export function MatchingPanel({
                 {m.draftStatus === 'drafted' && !sentLenderIds.includes(m.lender_id) && (
                   <span className="shrink-0 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700">Draft</span>
                 )}
+                {requiresNda && !ndaLenderIds.includes(m.lender_id) && (
+                  <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">No NDA</span>
+                )}
                 <span className="shrink-0 text-xs text-slate-500">{m.score}</span>
                 <span className={`shrink-0 text-slate-400 transition-transform ${openIds.has(m.id) ? 'rotate-90' : ''}`}>›</span>
               </button>
@@ -641,6 +649,14 @@ export function MatchingPanel({
                     {m.lender_name}
                   </Link>
                   <span className="text-xs text-slate-500">{m.score}/100</span>
+                  {requiresNda &&
+                    (ndaLenderIds.includes(m.lender_id) ? (
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">NDA ✓</span>
+                    ) : (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800" title="This deal needs an NDA — get one signed before sending the package">
+                        No NDA
+                      </span>
+                    ))}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                 {sentLenderIds.includes(m.lender_id) ? (

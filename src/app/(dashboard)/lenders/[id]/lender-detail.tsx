@@ -14,6 +14,7 @@ import {
 } from '@/lib/lenders/categories'
 import type { Lender, LenderContact } from '@/lib/types'
 import { LenderContacts } from './lender-contacts'
+import { LenderNda } from './lender-nda'
 
 function moneyInputDefault(value: number | null): string {
   return value === null ? '' : formatCompactCurrency(value)
@@ -105,6 +106,7 @@ export function LenderDetail({
                   ) : null
                 }
               />
+              <LenderNda lenderId={lender.id} signedOn={(lender as { nda_signed_on?: string | null }).nda_signed_on ?? null} />
             </div>
           </section>
 

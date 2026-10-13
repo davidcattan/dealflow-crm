@@ -157,3 +157,12 @@ export async function setContactCc(lenderId: string, contactId: string, cc: bool
   await supabase.from('lender_contacts').update({ cc_on_emails: cc }).eq('id', contactId)
   revalidatePath(`/lenders/${lenderId}`)
 }
+
+// JED's master NDA (covers every deal): the date it was signed, or null.
+export async function setLenderNda(lenderId: string, signedOn: string | null) {
+  const supabase = await createClient()
+  const { error } = await supabase.from('lenders').update({ nda_signed_on: signedOn || null }).eq('id', lenderId)
+  if (error) return { error: error.message.includes('nda_signed_on') ? 'Run migration 041_ndas.sql in Supabase first.' : error.message }
+  revalidatePath(`/lenders/${lenderId}`)
+  return { ok: true }
+}
