@@ -225,6 +225,34 @@ export default async function DealDetailPage({
   const uwRows = (usageRows ?? []).filter((r) => r.feature === 'underwriting').slice(0, 2)
   const lastRunCost = uwRows.length > 0 ? uwRows.reduce((n, r) => n + Number(r.cost_usd), 0) : null
 
+  // Simply Capital: his lender record (range), whether matching suggested
+  // him, and the application panel (shown in his match row, or on its own).
+  const { data: simplyCapitalLender } = await supabase
+    .from('lenders')
+    .select('id, min_loan_amount, max_loan_amount')
+    .ilike('name', 'simply capital%')
+    .limit(1)
+    .maybeSingle()
+  const simplyCapitalPrep = ((deal as { simply_capital?: unknown }).simply_capital ?? null) as SimplyCapitalPrep | null
+  const simplyCapitalRange = {
+    min: Number(simplyCapitalLender?.min_loan_amount ?? 0) || null,
+    max: Number(simplyCapitalLender?.max_loan_amount ?? 0) || null,
+  }
+  const simplyCapitalAsk = simplyCapitalPrep?.requested_amount ?? askAmount(deal.deal_type)
+  const simplyCapitalFits = fitsSimplyCapital(simplyCapitalAsk, simplyCapitalRange)
+  const simplyCapitalMatched = Boolean(simplyCapitalLender && (matches ?? []).some((m) => m.lender_id === simplyCapitalLender.id))
+  const simplyCapitalPanel = (
+    <SimplyCapitalPanel
+      dealId={deal.id}
+      dealName={deal.company_name}
+      askAmount={askAmount(deal.deal_type)}
+      range={simplyCapitalRange}
+      prep={simplyCapitalPrep}
+      at={(deal as { simply_capital_at?: string | null }).simply_capital_at ?? null}
+      docNames={Object.fromEntries((documents ?? []).map((d) => [d.id as string, d.file_name as string]))}
+    />
+  )
+
   const matchesWithLender: MatchWithLender[] = (matches ?? []).map((m) => {
     const lender = Array.isArray(m.lenders) ? m.lenders[0] : m.lenders
     return {
@@ -446,23 +474,6 @@ export default async function DealDetailPage({
       />
       </CollapsibleSection>
 
-      {(() => {
-        const prep = ((deal as { simply_capital?: unknown }).simply_capital ?? null) as SimplyCapitalPrep | null
-        const ask = askAmount(deal.deal_type)
-        return (
-          <CollapsibleSection tab="lenders" title="Simply Capital" phoneClosed closed={!prep && !fitsSimplyCapital(ask)}>
-            <SimplyCapitalPanel
-              dealId={deal.id}
-              dealName={deal.company_name}
-              askAmount={ask}
-              prep={prep}
-              at={(deal as { simply_capital_at?: string | null }).simply_capital_at ?? null}
-              docNames={Object.fromEntries((documents ?? []).map((d) => [d.id as string, d.file_name as string]))}
-            />
-          </CollapsibleSection>
-        )
-      })()}
-
       <CollapsibleSection tab="activity" title="Updates">
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="mb-4 text-sm font-semibold text-slate-900">Updates</h2>
@@ -616,6 +627,8 @@ export default async function DealDetailPage({
 
       <CollapsibleSection tab="lenders" title="Lender matching" phoneClosed>
       <MatchingPanel
+        applicationLenderId={simplyCapitalLender?.id ?? null}
+        application={simplyCapitalPanel}
         dealId={deal.id}
         matches={matchesWithLender}
         lastRunAt={lastMatchRunAt}
@@ -631,6 +644,12 @@ export default async function DealDetailPage({
         }
       />
       </CollapsibleSection>
+
+      {!simplyCapitalMatched && (
+        <CollapsibleSection tab="lenders" title="Simply Capital" phoneClosed closed={!simplyCapitalPrep && !simplyCapitalFits}>
+          {simplyCapitalPanel}
+        </CollapsibleSection>
+      )}
 
       <CollapsibleSection tab="lenders" title="Find new lenders" phoneClosed closed={Boolean((deal as { lender_search?: unknown }).lender_search)}>
       <LenderSearchPanel

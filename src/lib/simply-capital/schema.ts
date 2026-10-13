@@ -142,4 +142,19 @@ export function askAmount(...texts: (string | null | undefined)[]) {
   return best
 }
 
-export const fitsSimplyCapital = (amount: number | null) => amount !== null && amount >= SIMPLY_CAPITAL.min && amount <= SIMPLY_CAPITAL.max
+export type Range = { min: number | null; max: number | null }
+
+// His range as set on his lender record (min/max loan), else $300–500K.
+export function fitsSimplyCapital(amount: number | null, range?: Range) {
+  if (amount === null) return false
+  const min = range?.min ?? (range?.max ? 0 : SIMPLY_CAPITAL.min)
+  const max = range?.max ?? SIMPLY_CAPITAL.max
+  return amount >= min && amount <= max
+}
+
+export function rangeLabel(range?: Range) {
+  const k = (n: number) => (n >= 1_000_000 ? `$${n / 1_000_000}M` : `$${Math.round(n / 1000)}K`)
+  const min = range?.min ?? (range?.max ? null : SIMPLY_CAPITAL.min)
+  const max = range?.max ?? SIMPLY_CAPITAL.max
+  return min ? `${k(min)}–${k(max)}` : `up to ${k(max)}`
+}

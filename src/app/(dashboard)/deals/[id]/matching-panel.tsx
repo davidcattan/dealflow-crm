@@ -365,6 +365,8 @@ export function MatchingPanel({
   mailboxes,
   defaultMailboxId,
   latestPitch,
+  applicationLenderId = null,
+  application = null,
 }: {
   dealId: string
   matches: MatchWithLender[]
@@ -377,6 +379,10 @@ export function MatchingPanel({
   mailboxes: Mailbox[]
   defaultMailboxId: string | null
   latestPitch: { at: string; lenderId: string; lenderName: string } | null
+  // A lender that takes an application form instead of an email (Simply
+  // Capital): its row shows the application instead of the email draft.
+  applicationLenderId?: string | null
+  application?: React.ReactNode
 }) {
   // Which Outlook gets the drafts: your own by default; a different pick is
   // remembered in this browser.
@@ -690,7 +696,8 @@ export function MatchingPanel({
                 </div>
               </div>
               <p className="mt-2 text-sm text-slate-600">{m.reasoning}</p>
-              {m.draftStatus === 'drafted' && m.draftSubject && m.draftBody && (
+              {m.lender_id === applicationLenderId && application && <div className="mt-3">{application}</div>}
+              {m.lender_id !== applicationLenderId && m.draftStatus === 'drafted' && m.draftSubject && m.draftBody && (
                 <DraftEmail
                   dealId={dealId}
                   matchId={m.id}
@@ -729,7 +736,7 @@ export function MatchingPanel({
                   <ErrorText message={draftError.message} />
                 </p>
               )}
-              {m.selected && m.draftStatus !== 'drafted' && draftingId !== m.id && (
+              {m.lender_id !== applicationLenderId && m.selected && m.draftStatus !== 'drafted' && draftingId !== m.id && (
                 <div className="mt-3 flex gap-2">
                   {(['short', 'long'] as const).map((st) => (
                     <button
