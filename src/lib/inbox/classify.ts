@@ -63,6 +63,8 @@ export type ClassifyContext = {
   internalFirmDomain?: string | null
   // The sender is a referral partner that sends many different deals.
   referralPartner?: string | null
+  // The partner also lends on small deals (e.g. Simply Capital).
+  referralPartnerAlsoLends?: boolean
 }
 
 export async function classifyEmail(
@@ -82,7 +84,9 @@ export async function classifyEmail(
     context.internalFirmDomain
       ? `The sender is a colleague at the user's own brokerage firm (@${context.internalFirmDomain}) — NOT a lender. Never classify their email as lender_reply. If it is about a deal in the list (e.g. asking a borrower for documents), classify it as new_deal with existing_deal_ref set and describe what was asked or done; otherwise other.`
       : null,
-    context.referralPartner
+    context.referralPartner && context.referralPartnerAlsoLends
+      ? `The sender is ${context.referralPartner}, who BOTH refers deals to the team and lends on small deals ($300–500K) himself. If the email presents a business that needs financing, it is a new deal (put "${context.referralPartner}" in referred_by; the contact is the business owner, never ${context.referralPartner}). If it is about a deal the team sent him as a lender — asking for documents, approving, declining, offering terms — it is a lender_reply on that deal. Never match a new company to an existing deal just because ${context.referralPartner} sent it.`
+      : context.referralPartner
       ? `The sender is ${context.referralPartner}, a referral partner that sends the team MANY DIFFERENT deals — not a borrower and not a lender. The email is about the company it names (e.g. a subject like "Introducing Eli — <Company>"). It is a new deal unless that same company is already in the list; never match it to another deal just because ${context.referralPartner} sent it or because the deal's contact email is theirs. The deal's contact is the business owner named in the file — never ${context.referralPartner} and never Eli Cattan or David Cattan (they are the loan officers being introduced). Put "${context.referralPartner}" plus any file number and submitter in referred_by.`
       : null,
   ].filter(Boolean)

@@ -20,7 +20,7 @@ import { notify } from '@/lib/notifications'
 import { addresses } from '@/lib/deals/duplicates'
 import { ownText } from '@/lib/outlook/own-text'
 import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
-import { isNotBorrowerEmail, isTeamName, referralPartnerFor } from './partners'
+import { isNotBorrowerEmail, isTeamName, referralOnlyPartnerFor, referralPartnerFor } from './partners'
 import type { Snapshot } from '@/lib/snapshot/schema'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
 
@@ -290,7 +290,7 @@ async function processMessage(
     const internalDomain = firmDomain(message.from, ctx.accountEmail)
     const thread = ctx.threadByConversation.get(message.conversationId) ?? null
     let senderLenderId = ctx.lenderByEmail.get(message.from) ?? null
-    if (!senderLenderId && !internalDomain && !referralPartnerFor(message.from)) {
+    if (!senderLenderId && !internalDomain && !referralOnlyPartnerFor(message.from)) {
       // New person at a known lender: recognize the lender and save them
       // as a contact so their next email matches instantly.
       senderLenderId = findLenderBySender(ctx.lenders, ctx.contacts, message.from)
@@ -316,6 +316,7 @@ async function processMessage(
         senderLenderName: senderLenderId ? (ctx.lenderById.get(senderLenderId)?.name ?? null) : null,
         internalFirmDomain: internalDomain,
         referralPartner: referralPartnerFor(message.from)?.name ?? null,
+        referralPartnerAlsoLends: Boolean(referralPartnerFor(message.from)?.alsoLender),
         threadDealCompany: thread ? (ctx.dealById.get(thread.dealId)?.company_name ?? null) : null,
         threadLenderName: thread ? (ctx.lenderById.get(thread.lenderId)?.name ?? null) : null,
       },
@@ -608,7 +609,7 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
   const lenderIds: string[] = []
   for (const r of external) {
     // Referral partners on the email aren't lenders.
-    if (referralPartnerFor(r.email)) continue
+    if (referralOnlyPartnerFor(r.email)) continue
     let id = ctx.lenderByEmail.get(r.email) ?? null
     if (!id) {
       id = findLenderBySender(ctx.lenders, ctx.contacts, r.email)

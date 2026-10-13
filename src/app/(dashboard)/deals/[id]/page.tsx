@@ -22,6 +22,8 @@ import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
 import { ProfilePanel } from './profile-panel'
+import { SimplyCapitalPanel } from './simply-capital-panel'
+import { askAmount, fitsSimplyCapital, type SimplyCapitalPrep } from '@/lib/simply-capital/schema'
 import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
 import { UpdateRow } from './update-row'
 import { SubmissionsPanel, type SubmissionRow, type TimelineItem } from './submissions-panel'
@@ -443,6 +445,23 @@ export default async function DealDetailPage({
         lenders={(lenderRows ?? []) as { id: string; name: string }[]}
       />
       </CollapsibleSection>
+
+      {(() => {
+        const prep = ((deal as { simply_capital?: unknown }).simply_capital ?? null) as SimplyCapitalPrep | null
+        const ask = askAmount(deal.deal_type)
+        return (
+          <CollapsibleSection tab="lenders" title="Simply Capital" phoneClosed closed={!prep && !fitsSimplyCapital(ask)}>
+            <SimplyCapitalPanel
+              dealId={deal.id}
+              dealName={deal.company_name}
+              askAmount={ask}
+              prep={prep}
+              at={(deal as { simply_capital_at?: string | null }).simply_capital_at ?? null}
+              docNames={Object.fromEntries((documents ?? []).map((d) => [d.id as string, d.file_name as string]))}
+            />
+          </CollapsibleSection>
+        )
+      })()}
 
       <CollapsibleSection tab="activity" title="Updates">
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
