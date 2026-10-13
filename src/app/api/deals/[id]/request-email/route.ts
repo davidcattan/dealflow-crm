@@ -11,11 +11,13 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await ctx.params
-  const { to, subject, body, connectionId } = (await request.json().catch(() => ({}))) as {
+  const { to, subject, body, connectionId, logNote } = (await request.json().catch(() => ({}))) as {
     to?: { name?: string | null; email?: string }
     subject?: string
     body?: string
     connectionId?: string | null
+    // What to write in the deal's updates (default: "Drafted a request email…").
+    logNote?: string
   }
   if (!to?.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to.email)) return NextResponse.json({ error: 'Enter a valid email address' }, { status: 400 })
   if (!body?.trim()) return NextResponse.json({ error: 'The email is empty' }, { status: 400 })
@@ -36,7 +38,9 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
     await supabase.from('deal_updates').insert({
       deal_id: id,
       entry_date: new Date().toISOString().slice(0, 10),
-      note: `Drafted a request email to ${to.name || to.email} in ${accountEmail.split('@')[0]}'s Outlook: "${subject?.trim() || 'A few items to move forward'}".`,
+      note: logNote?.trim()
+        ? `${logNote.trim()} (draft in ${accountEmail.split('@')[0]}'s Outlook).`
+        : `Drafted a request email to ${to.name || to.email} in ${accountEmail.split('@')[0]}'s Outlook: "${subject?.trim() || 'A few items to move forward'}".`,
       source: 'manual',
     })
     return NextResponse.json({ ok: true, webLink: draft.webLink })

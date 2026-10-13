@@ -23,7 +23,7 @@ import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
 import { ProfilePanel } from './profile-panel'
 import { SimplyCapitalPanel } from './simply-capital-panel'
-import { askAmount, fitsSimplyCapital, snapshotRevenue, type SimplyCapitalPrep } from '@/lib/simply-capital/schema'
+import { askAmount, fitsSimplyCapital, followUpEmail, snapshotRevenue, type SimplyCapitalPrep } from '@/lib/simply-capital/schema'
 import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
 import { UpdateRow } from './update-row'
 import { SubmissionsPanel, type SubmissionRow, type TimelineItem } from './submissions-panel'
@@ -229,7 +229,7 @@ export default async function DealDetailPage({
   // him, and the application panel (shown in his match row, or on its own).
   const { data: simplyCapitalLender } = await supabase
     .from('lenders')
-    .select('id, min_loan_amount, max_loan_amount, min_revenue')
+    .select('id, min_loan_amount, max_loan_amount, min_revenue, contact_name, contact_email')
     .ilike('name', 'simply capital%')
     .limit(1)
     .maybeSingle()
@@ -253,6 +253,15 @@ export default async function DealDetailPage({
       prep={simplyCapitalPrep}
       at={(deal as { simply_capital_at?: string | null }).simply_capital_at ?? null}
       docNames={Object.fromEntries((documents ?? []).map((d) => [d.id as string, d.file_name as string]))}
+      followUp={{
+        to: simplyCapitalLender?.contact_email ? { name: simplyCapitalLender.contact_name ?? null, email: simplyCapitalLender.contact_email } : null,
+        ...followUpEmail({
+          company: simplyCapitalPrep?.form.company_name ?? deal.company_name,
+          firstName: simplyCapitalLender?.contact_name?.split(' ')[0] ?? null,
+          snapshot: deal.snapshot as Parameters<typeof followUpEmail>[0]['snapshot'],
+          prep: simplyCapitalPrep,
+        }),
+      }}
     />
   )
 

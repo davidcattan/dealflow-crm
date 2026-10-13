@@ -35,6 +35,7 @@ export function SimplyCapitalPanel({
   prep,
   at,
   docNames,
+  followUp,
 }: {
   dealId: string
   dealName: string
@@ -44,12 +45,45 @@ export function SimplyCapitalPanel({
   prep: SimplyCapitalPrep | null
   at: string | null
   docNames: Record<string, string>
+  // The "I filled out your application" email to his contact.
+  followUp: { to: { name: string | null; email: string } | null; subject: string; body: string }
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [zipping, setZipping] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
+  const [emailOpen, setEmailOpen] = useState(false)
+  const [subject, setSubject] = useState(followUp.subject)
+  const [body, setBody] = useState(followUp.body)
+  const [drafting, setDrafting] = useState(false)
+  const [drafted, setDrafted] = useState<string | null>(null)
+
+  async function createDraft() {
+    if (!followUp.to) return
+    setDrafting(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/deals/${dealId}/request-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: followUp.to,
+          subject,
+          body,
+          logNote: `Drafted a follow-up to ${followUp.to.name || followUp.to.email} (Simply Capital): application submitted, with the deal's numbers`,
+        }),
+      })
+      const result = await readJsonResponse<{ webLink?: string }>(res)
+      if (!result.ok) throw new Error(result.message)
+      setDrafted(result.body.webLink ?? '')
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Couldn’t create the draft')
+    } finally {
+      setDrafting(false)
+    }
+  }
 
   const amount = prep?.requested_amount ?? askAmount
   const fit = simplyCapitalFit(amount, revenue, range)
@@ -190,6 +224,69 @@ export function SimplyCapitalPanel({
               <li>Drag the files from the zip into the upload box.</li>
               <li>The borrower signs (Owner Signature) — not us — and tick the terms box.</li>
             </ul>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 px-3 py-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-medium text-slate-800">
+                4 · Email {followUp.to?.name?.split(' ')[0] ?? 'him'} that it’s submitted
+              </p>
+              {!emailOpen && (
+                <button
+                  type="button"
+                  onClick={() => setEmailOpen(true)}
+                  disabled={!followUp.to}
+                  className="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Draft follow-up email
+                </button>
+              )}
+            </div>
+            {!followUp.to && <p className="mt-1 text-xs text-slate-500">Add an email for his contact on the Simply Capital lender page first.</p>}
+            {emailOpen && followUp.to && (
+              <div className="mt-2 space-y-2" data-enter="off">
+                <p className="text-xs text-slate-500">
+                  To {followUp.to.name ? `${followUp.to.name} <${followUp.to.email}>` : followUp.to.email} · edit anything, then create the draft. Your
+                  signature is added. Nothing is sent.
+                </p>
+                <input
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                  aria-label="Subject"
+                />
+                <textarea
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  rows={Math.min(16, body.split('\n').length + 1)}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 font-mono text-[13px] leading-snug"
+                  aria-label="Email"
+                />
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={createDraft}
+                    disabled={drafting || !body.trim()}
+                    className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {drafting ? 'Creating…' : 'Create Outlook draft'}
+                  </button>
+                  {drafted !== null && (
+                    <span className="text-xs text-emerald-700">
+                      ✓ In your Outlook Drafts{drafted ? (
+                        <>
+                          {' '}
+                          ·{' '}
+                          <a href={drafted} target="_blank" rel="noopener noreferrer" className="underline">
+                            open it
+                          </a>
+                        </>
+                      ) : null}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div>

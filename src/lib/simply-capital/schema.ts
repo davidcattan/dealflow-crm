@@ -243,3 +243,71 @@ export function snapshotRevenue(snapshot: { entities?: { periods?: { label: stri
   const full = periods.find((p) => p.revenue !== null && !/ytd|month|q[1-4]|interim/i.test(p.label))
   return full?.revenue ?? periods.find((p) => p.revenue !== null)?.revenue ?? null
 }
+
+
+type Snap = {
+  entities?: {
+    name?: string
+    periods?: { label: string; revenue: number | null; ebitda: number | null }[]
+    assets?: { accounts_receivable: number | null; inventory: number | null; equipment: number | null; real_estate: number | null }
+    liabilities?: { total_debt: number | null }
+  }[]
+  combined?: {
+    periods?: { label: string; revenue: number | null; ebitda: number | null }[]
+    accounts_receivable: number | null
+    inventory: number | null
+    equipment: number | null
+    real_estate: number | null
+    total_debt: number | null
+  } | null
+} | null
+
+// "I filled out your application" note to his contact, with the headline
+// numbers from the underwriting snapshot. Lines without a number are left out.
+// "PIGEON HILL EQUIPMENT LLC" (as printed on a tax return) → "Pigeon Hill Equipment LLC".
+function niceName(name: string) {
+  if (name !== name.toUpperCase()) return name
+  return name
+    .toLowerCase()
+    .replace(/\b([a-z])/g, (m) => m.toUpperCase())
+    .replace(/\b(Llc|Inc|Lp|Llp|Pc|Pllc|Usa|Dba)\b/g, (m) => m.toUpperCase())
+}
+
+export function followUpEmail(opts: { company: string; firstName: string | null; snapshot: Snap; prep: SimplyCapitalPrep | null }) {
+  const company = niceName(opts.company)
+  const snap = opts.snapshot
+  const e = snap?.entities?.[0]
+  const c = snap?.combined
+  const periods = c?.periods?.length ? c.periods : (e?.periods ?? [])
+  const full = periods.find((p) => p.revenue !== null && !/ytd|month|q[1-4]|interim/i.test(p.label)) ?? periods.find((p) => p.revenue !== null)
+  const pick = (a: number | null | undefined, b: number | null | undefined) => (a ?? b ?? null)
+  const lines: string[] = []
+  const add = (label: string, v: number | null | undefined) => {
+    if (v !== null && v !== undefined) lines.push(`${label}: ${k(v)}`)
+  }
+  if (full) {
+    add(`Revenue (${full.label})`, full.revenue)
+    add('EBITDA', full.ebitda)
+  }
+  add('Accounts receivable', pick(c?.accounts_receivable, e?.assets?.accounts_receivable))
+  add('Inventory', pick(c?.inventory, e?.assets?.inventory))
+  add('Equipment', pick(c?.equipment, e?.assets?.equipment))
+  add('Real estate', pick(c?.real_estate, e?.assets?.real_estate))
+  add('Total debt', pick(c?.total_debt, e?.liabilities?.total_debt))
+  const amount = opts.prep?.form.funding_amount ?? opts.prep?.requested_amount ?? null
+  if (amount) lines.push(`Requesting: ${k(amount)}${opts.prep?.form.use_of_funds ? ` for ${opts.prep.form.use_of_funds.toLowerCase()}` : ''}`)
+
+  const body = [
+    `Hi ${opts.firstName || 'there'},`,
+    '',
+    lines.length
+      ? `I just filled out your application for ${company}. Quick snapshot:`
+      : `I just filled out your application for ${company}.`,
+    ...(lines.length ? ['', ...lines.map((l, i) => `${i + 1}. ${l}`)] : []),
+    '',
+    'Let me know if you need anything else.',
+    '',
+    'Best,',
+  ].join('\n')
+  return { subject: `${company} - application submitted`, body }
+}
