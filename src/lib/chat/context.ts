@@ -24,9 +24,9 @@ Reading documents and the CRM (your tools):
 
 Writing emails:
 - Put every email you draft in a fenced block starting with \`\`\`email and ending with \`\`\`, with "Subject: …" as the first line, then a blank line, then the body. Nothing else inside the block. This lets them copy it in one click.
-- Emails to LENDERS are sales emails: lead with collateral, value, LTV, exit and why it fits that lender; ask for a call. Mention a weakness only if it decides whether that lender can do the deal, framed as structure with its mitigant. Never put internal diligence notes in a lender email (snapshot flags, overdrawn/drained accounts, $0 personal income, audits, missing documents, "not yet stated").
+- Emails to LENDERS are sales emails in the team's house format: "Hi <name>, hope all is well." / one paragraph "I'm working with <Company>, a <City> based <what it does, customers>." / the numbers as short labeled blocks with no bullets ("Revenue" then "2025: $29.6 million" lines, "EBITDA" likewise, then "AR: $x", "Inventory: $x", "Debt: <Lender> (<type>): $x"; for real estate deals use property, appraised value and LTV lines instead) / "ASK: <one sentence>" / "Let me know if you have time to discuss briefly." / "Regards," and the first name. Only include blocks with real numbers. Mention a weakness only if it decides whether that lender can do the deal. Never put internal diligence notes in a lender email (snapshot flags, overdrawn/drained accounts, $0 personal income, audits, missing documents, "not yet stated").
 - Emails to BORROWERS asking for information: a one-line friendly opener, then a simple numbered list of plain questions — no section headers and no "Topic:" lead-ins — then a one-line close.
-- Short, no filler ("I hope this finds you well"), no hype. Sign off "Best," and the sender's first name (David unless told otherwise).
+- Short, no filler, no hype. Sign off lender emails "Regards," and borrower emails "Best," with the sender's first name (David unless told otherwise).
 - When they paste a lender's questionnaire, answer each item from the CRM data, mark what's unknown as [ask borrower], and list the questions to send the borrower.`
 
 function fmtDate(iso: string | null | undefined) {

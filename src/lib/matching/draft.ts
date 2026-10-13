@@ -21,26 +21,80 @@ Sell the deal:
 - Mention a weakness ONLY if it changes whether this lender can do the deal at all (e.g. no income for a cash-flow lender, owner-occupied for a business-purpose-only lender). Say it once, briefly, as a structural fact, paired with the mitigant (e.g. "asset-based — no reliance on income; low LTV and lot-sale exit").
 - The "flags", "request list" and coverage notes in the deal profile are the broker's INTERNAL diligence notes. Never repeat them: no overdrawn or drained accounts, no $0 income on personal returns, no audits, no "ordered by the occupant", no missing documents, no inconsistencies, no personal or family details, no tax IDs.
 - Never write that something is unknown or "not yet stated". If the loan amount isn't given, write "[amount]" so the broker fills it in; leave out any other unknowns entirely.
-- No filler or hype: no "I hope this finds you well", "I wanted to reach out", "great opportunity", "exciting". Confident, plain, specific.
+- No hype: no "I wanted to reach out", "great opportunity", "exciting". Confident, plain, specific. (The one-line "hope all is well" opener in the house format is fine.)
 - Use only facts and numbers given to you; never invent or inflate. Borrower projections (lot prices, after-improvement values) may be used but labeled as the sponsor's estimate.
 - Use the borrower's entity name and sponsor's name; keep it professional.
-- Sign off with "Best," and the sender's name.`
+- Sign off with "Regards," and the sender's first name.`
+
+// The team's house format (how Eli writes): greeting, one paragraph on the
+// company, then the numbers as short labeled blocks — no bullets — then the
+// ask and a one-line close. Example:
+//   Hi Tom, hope all is well.
+//
+//   I'm working with Orbit Innovations, a New York City based wholesale and
+//   manufacturing company that turns licensed IP … selling into Target,
+//   Walmart and Amazon.
+//
+//   Revenue
+//   2025: $29.6 million
+//   2026 Year to Date (July): $8.0 million
+//
+//   EBITDA
+//   2025: $1.8 million
+//
+//   AR: $4.1 million
+//   Inventory on Hand: $3.6 million
+//
+//   Debt: Hedaya Group (factor): $6.3 million
+//
+//   ASK: Client needs an ABL lender to replace Hedaya Group.
+//
+//   Let me know if you have time to discuss briefly.
+//
+//   Regards,
+//   Eli
+const HOUSE_FORMAT = `Write it in the team's house format, exactly in this shape (plain text, no bullet points, no bold, no section headers other than the labels shown):
+
+Hi <first name>, hope all is well.
+
+I'm working with <Company>, a <City/State> based <what the business does, in plain words — products, customers or markets that make it credible>.
+
+Revenue
+<year>: $<x> million
+<year> Year to Date (<month>): $<x> million
+
+EBITDA
+<year>: $<x> million
+
+AR: $<x>
+Inventory: $<x>   (split "on Hand" / "in Transit" if known)
+Equipment: $<x>
+Real Estate: $<x>
+
+Debt: <Lender> (<type>): $<x>
+
+ASK: <one sentence — what the client needs, the amount ([amount] if unknown) and the product, e.g. "Client needs an ABL lender to replace Hedaya Group.">
+
+<attachments line, only if documents are attached: "Package attached.">
+
+Let me know if you have time to discuss briefly.
+
+Regards,
+<sender's first name>
+
+Rules for the format:
+- Include only the blocks that have real numbers; skip the rest entirely (no empty labels, no "N/A").
+- Amounts: "$29.6 million" for millions, "$850K" for thousands. Newest year first within Revenue and EBITDA.
+- Real estate / asset-heavy deals without operating financials: replace Revenue/EBITDA with the property facts in the same labeled style (e.g. "Property: 5.42 acres with existing home, Flowery Branch, GA", "Appraised Value: $573K (March 2026)", "Loan to Value: 40%").
+- At most one short neutral note in parentheses after a number when it explains it (e.g. "(lost orders Q1 2026)"); never internal diligence flags.`
 
 const STYLE_RULES: Record<DraftStyle, string> = {
-  short: `SHORT style — under 120 words in the body:
-- "Hi <first name>,"
-- One sentence pitch: what the deal is (borrower type, location), the ask ([amount] if unknown), the collateral — written to make the lender want to read on.
-- 2-4 bullet lines ("- ") with the strongest numbers (value, LTV, exit, anything approved).
-- One sentence on why it fits THIS lender's program.
-- Only if truly needed, one short structural line (e.g. "Asset-based — repayment from lot sales").
-- One confident closing line asking for a quick call or their initial thoughts (mention the package is attached only if documents are attached).`,
-  long: `LONG style — 180-260 words in the body, scannable:
-- "Hi <first name>,"
-- Two-sentence pitch: borrower and location, the ask ([amount] if unknown) and what it funds, the collateral, and the plan.
-- "The deal:" followed by 4-6 bullet lines ("- "): collateral and value (with source, e.g. "appraised $573K, Mar 2026"), LTV, use of funds, the sponsor's plan and exit, anything already approved or in place, sponsor/borrower in one line.
-- "Why it fits:" one or two sentences tying the deal to this lender's product, size range and geography.
-- Optionally "Structure:" one line framing how it works (e.g. "Asset-based, 12–18 months with an interest reserve; repaid from lot sales").
-- One confident closing line asking for a call or term sheet; if documents are attached, name the main kinds in a few words (e.g. "appraisal and site budget attached").`,
+  short: `${HOUSE_FORMAT}
+
+SHORT: keep the company paragraph to one sentence and only the 3–5 most important numbers.`,
+  long: `${HOUSE_FORMAT}
+
+LONG: the company paragraph can be two sentences, include every relevant number, and add one line before the ASK starting "Why it fits:" that ties the deal to this lender's product, size and geography.`,
 }
 
 type Sender = { name: string; intro: string | null; signature: string | null }
@@ -190,10 +244,10 @@ export async function draftSubmissionEmail(
             : `--- Attachments ---\nNothing is attached — don't mention attachments.`,
           '',
           pitchText
-            ? `--- The broker's own email to ${pitchLender ?? 'another lender'} about this deal (sent ${String(pitch?.received_at ?? '').slice(0, 10)}) ---\n${pitchText}\n\nThis is how the broker actually pitched THIS deal. Use it as the template: keep its facts, numbers, framing, structure, length and tone, including any corrections it makes to the deal profile (the broker's email is newer and wins any conflict). Change only what is specific to this lender — the greeting and why it fits this lender — and keep it a fresh email, not a forward. The selling rules above still apply: leave out internal diligence details even if that email included them.`
+            ? `--- The broker's own email to ${pitchLender ?? 'another lender'} about this deal (sent ${String(pitch?.received_at ?? '').slice(0, 10)}) ---\n${pitchText}\n\nThis is how the broker actually pitched THIS deal. Keep its facts, numbers and framing, including any corrections it makes to the deal profile (the broker's email is newer and wins any conflict), but lay it out in the house format below. Change only what is specific to this lender, and keep it a fresh email, not a forward. The selling rules above still apply: leave out internal diligence details even if that email included them.`
             : null,
           styleExamples.length
-            ? `--- Examples of the broker's writing on other deals (match the voice and length only — don't copy their facts) ---\n${styleExamples.join('\n---\n')}`
+            ? `--- Examples of the broker's writing on other deals (match the voice only — the layout is the house format below; don't copy their facts) ---\n${styleExamples.join('\n---\n')}`
             : null,
           `Sender's name for the sign-off: ${sender.name}`,
           includeIntro && sender.intro
