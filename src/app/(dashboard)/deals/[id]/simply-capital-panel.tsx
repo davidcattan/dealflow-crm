@@ -6,7 +6,7 @@ import { zipSync } from 'fflate'
 import { readJsonResponse } from '@/lib/fetch-json'
 import { ErrorText } from '@/components/error-text'
 import { markSimplyCapitalSent } from './submission-actions'
-import { CHECKLIST, fitsSimplyCapital, prefillUrl, rangeLabel, type Range, type SimplyCapitalPrep } from '@/lib/simply-capital/schema'
+import { CHECKLIST, prefillUrl, rangeLabel, simplyCapitalFit, type Range, type SimplyCapitalPrep } from '@/lib/simply-capital/schema'
 
 const money = (n: number | null | undefined) => (n == null ? '—' : `$${Math.round(n).toLocaleString('en-US')}`)
 const STATUS = {
@@ -30,6 +30,7 @@ export function SimplyCapitalPanel({
   dealId,
   dealName,
   askAmount,
+  revenue,
   range,
   prep,
   at,
@@ -38,6 +39,7 @@ export function SimplyCapitalPanel({
   dealId: string
   dealName: string
   askAmount: number | null
+  revenue: number | null
   range?: Range
   prep: SimplyCapitalPrep | null
   at: string | null
@@ -50,7 +52,8 @@ export function SimplyCapitalPanel({
   const [sent, setSent] = useState(false)
 
   const amount = prep?.requested_amount ?? askAmount
-  const fits = fitsSimplyCapital(amount, range)
+  const fit = simplyCapitalFit(amount, revenue, range)
+  const fits = fit.fits === true
 
   async function prepare() {
     if (!confirm(`${prep ? 'Re-prepare' : 'Prepare'} Simply Capital's application from this deal's files? It uses the paid AI — usually 5–20¢.`)) return
@@ -123,10 +126,11 @@ export function SimplyCapitalPanel({
             Simply Capital application
             <span
               className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                fits ? 'bg-emerald-100 text-emerald-800' : amount ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-800'
+                fits ? 'bg-emerald-100 text-emerald-800' : fit.fits === false ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-800'
               }`}
+              title={`His program: ${rangeLabel(range)}`}
             >
-              {fits ? `Fits his range · ${money(amount)}` : amount ? `Outside ${rangeLabel(range)} · ${money(amount)}` : 'Loan amount unknown'}
+              {fits ? `Fits his program · ${fit.detail}` : fit.fits === false ? `Outside his program · ${fit.detail}` : 'Loan amount and revenue unknown'}
             </span>
           </h2>
           <p className="mt-0.5 text-xs text-slate-500">
@@ -240,8 +244,8 @@ export function SimplyCapitalPanel({
       {!prep && (
         <p className="mt-3 text-sm text-slate-500">
           {fits
-            ? `This deal is in his ${rangeLabel(range)} range. Prepare the application to get the pre-filled form and the file bundle.`
-            : `Simply Capital lends ${rangeLabel(range)}. Prepare the application to get the pre-filled form and the file bundle.`}
+            ? `This deal fits his program (${rangeLabel(range)}). Prepare the application to get the pre-filled form and the file bundle.`
+            : `His program: ${rangeLabel(range)}. Prepare the application to get the pre-filled form and the file bundle.`}
         </p>
       )}
     </section>

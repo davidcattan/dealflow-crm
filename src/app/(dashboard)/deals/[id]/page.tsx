@@ -23,7 +23,7 @@ import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
 import { ProfilePanel } from './profile-panel'
 import { SimplyCapitalPanel } from './simply-capital-panel'
-import { askAmount, fitsSimplyCapital, type SimplyCapitalPrep } from '@/lib/simply-capital/schema'
+import { askAmount, fitsSimplyCapital, snapshotRevenue, type SimplyCapitalPrep } from '@/lib/simply-capital/schema'
 import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
 import { UpdateRow } from './update-row'
 import { SubmissionsPanel, type SubmissionRow, type TimelineItem } from './submissions-panel'
@@ -229,7 +229,7 @@ export default async function DealDetailPage({
   // him, and the application panel (shown in his match row, or on its own).
   const { data: simplyCapitalLender } = await supabase
     .from('lenders')
-    .select('id, min_loan_amount, max_loan_amount')
+    .select('id, min_loan_amount, max_loan_amount, min_revenue')
     .ilike('name', 'simply capital%')
     .limit(1)
     .maybeSingle()
@@ -237,15 +237,18 @@ export default async function DealDetailPage({
   const simplyCapitalRange = {
     min: Number(simplyCapitalLender?.min_loan_amount ?? 0) || null,
     max: Number(simplyCapitalLender?.max_loan_amount ?? 0) || null,
+    minRevenue: Number(simplyCapitalLender?.min_revenue ?? 0) || null,
   }
+  const dealRevenue = snapshotRevenue(deal.snapshot as Parameters<typeof snapshotRevenue>[0])
   const simplyCapitalAsk = simplyCapitalPrep?.requested_amount ?? askAmount(deal.deal_type)
-  const simplyCapitalFits = fitsSimplyCapital(simplyCapitalAsk, simplyCapitalRange)
+  const simplyCapitalFits = fitsSimplyCapital(simplyCapitalAsk, dealRevenue, simplyCapitalRange)
   const simplyCapitalMatched = Boolean(simplyCapitalLender && (matches ?? []).some((m) => m.lender_id === simplyCapitalLender.id))
   const simplyCapitalPanel = (
     <SimplyCapitalPanel
       dealId={deal.id}
       dealName={deal.company_name}
       askAmount={askAmount(deal.deal_type)}
+      revenue={dealRevenue}
       range={simplyCapitalRange}
       prep={simplyCapitalPrep}
       at={(deal as { simply_capital_at?: string | null }).simply_capital_at ?? null}

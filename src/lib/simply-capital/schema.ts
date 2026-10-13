@@ -8,8 +8,11 @@ import { z } from 'zod'
 export const SIMPLY_CAPITAL = {
   name: 'Simply Capital',
   formUrl: 'https://form.jotform.com/261184683266161',
-  min: 300_000,
-  max: 500_000,
+  // Defaults if his lender record doesn't say: loans under $600K for
+  // businesses with $500K–$5M in revenue (David, Oct 2026).
+  maxLoan: 600_000,
+  minRevenue: 500_000,
+  maxRevenue: 5_000_000,
 }
 
 export const CHECKLIST = [
@@ -142,19 +145,39 @@ export function askAmount(...texts: (string | null | undefined)[]) {
   return best
 }
 
-export type Range = { min: number | null; max: number | null }
+export type Range = { min: number | null; max: number | null; minRevenue: number | null }
 
-// His range as set on his lender record (min/max loan), else $300–500K.
-export function fitsSimplyCapital(amount: number | null, range?: Range) {
-  if (amount === null) return false
-  const min = range?.min ?? (range?.max ? 0 : SIMPLY_CAPITAL.min)
-  const max = range?.max ?? SIMPLY_CAPITAL.max
-  return amount >= min && amount <= max
+const k = (n: number) => (n >= 1_000_000 ? `$${+(n / 1_000_000).toFixed(1)}M` : `$${Math.round(n / 1000)}K`)
+
+// Does the deal fit his program? Loan size against his lender record's
+// min/max, revenue against $500K–$5M. Unknowns don't count against it; with
+// nothing known it's "unknown" (null).
+export function simplyCapitalFit(amount: number | null, revenue: number | null, range?: Range) {
+  const maxLoan = range?.max ?? SIMPLY_CAPITAL.maxLoan
+  const minLoan = range?.min ?? 0
+  const minRev = range?.minRevenue ?? SIMPLY_CAPITAL.minRevenue
+  const loanOk = amount === null ? null : amount >= minLoan && amount <= maxLoan
+  const revOk = revenue === null ? null : revenue >= minRev && revenue <= SIMPLY_CAPITAL.maxRevenue
+  const parts = [amount !== null ? `${k(amount)} ask` : null, revenue !== null ? `${k(revenue)} revenue` : null].filter(Boolean).join(' · ')
+  const fits = loanOk === false || revOk === false ? false : loanOk || revOk ? true : null
+  return { fits, detail: parts }
+}
+
+export function fitsSimplyCapital(amount: number | null, revenue: number | null, range?: Range) {
+  return simplyCapitalFit(amount, revenue, range).fits === true
 }
 
 export function rangeLabel(range?: Range) {
-  const k = (n: number) => (n >= 1_000_000 ? `$${n / 1_000_000}M` : `$${Math.round(n / 1000)}K`)
-  const min = range?.min ?? (range?.max ? null : SIMPLY_CAPITAL.min)
-  const max = range?.max ?? SIMPLY_CAPITAL.max
-  return min ? `${k(min)}–${k(max)}` : `up to ${k(max)}`
+  const maxLoan = range?.max ?? SIMPLY_CAPITAL.maxLoan
+  const minRev = range?.minRevenue ?? SIMPLY_CAPITAL.minRevenue
+  const loan = range?.min ? `${k(range.min)}–${k(maxLoan)} loans` : `loans under ${k(maxLoan)}`
+  return `${loan}, ${k(minRev)}–${k(SIMPLY_CAPITAL.maxRevenue)} revenue`
+}
+
+// Latest full-year revenue from the underwriting snapshot (combined if
+// there are several entities), else the latest period of any kind.
+export function snapshotRevenue(snapshot: { entities?: { periods?: { label: string; revenue: number | null }[] }[]; combined?: { periods?: { label: string; revenue: number | null }[] } | null } | null) {
+  const periods = snapshot?.combined?.periods?.length ? snapshot.combined.periods : (snapshot?.entities?.[0]?.periods ?? [])
+  const full = periods.find((p) => p.revenue !== null && !/ytd|month|q[1-4]|interim/i.test(p.label))
+  return full?.revenue ?? periods.find((p) => p.revenue !== null)?.revenue ?? null
 }
