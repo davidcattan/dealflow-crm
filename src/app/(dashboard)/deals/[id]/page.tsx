@@ -22,8 +22,6 @@ import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
 import { ProfilePanel } from './profile-panel'
-import { SimplyCapitalPanel } from './simply-capital-panel'
-import { askAmount, fitsSimplyCapital, followUpEmail, snapshotRevenue, type SimplyCapitalPrep } from '@/lib/simply-capital/schema'
 import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
 import { UpdateRow } from './update-row'
 import { SubmissionsPanel, type SubmissionRow, type TimelineItem } from './submissions-panel'
@@ -224,46 +222,6 @@ export default async function DealDetailPage({
   // A run logs two rows (research + structuring), newest first.
   const uwRows = (usageRows ?? []).filter((r) => r.feature === 'underwriting').slice(0, 2)
   const lastRunCost = uwRows.length > 0 ? uwRows.reduce((n, r) => n + Number(r.cost_usd), 0) : null
-
-  // Simply Capital: his lender record (range), whether matching suggested
-  // him, and the application panel (shown in his match row, or on its own).
-  const { data: simplyCapitalLender } = await supabase
-    .from('lenders')
-    .select('id, min_loan_amount, max_loan_amount, min_revenue, contact_name, contact_email')
-    .ilike('name', 'simply capital%')
-    .limit(1)
-    .maybeSingle()
-  const simplyCapitalPrep = ((deal as { simply_capital?: unknown }).simply_capital ?? null) as SimplyCapitalPrep | null
-  const simplyCapitalRange = {
-    min: Number(simplyCapitalLender?.min_loan_amount ?? 0) || null,
-    max: Number(simplyCapitalLender?.max_loan_amount ?? 0) || null,
-    minRevenue: Number(simplyCapitalLender?.min_revenue ?? 0) || null,
-  }
-  const dealRevenue = snapshotRevenue(deal.snapshot as Parameters<typeof snapshotRevenue>[0])
-  const simplyCapitalAsk = simplyCapitalPrep?.requested_amount ?? askAmount(deal.deal_type)
-  const simplyCapitalFits = fitsSimplyCapital(simplyCapitalAsk, dealRevenue, simplyCapitalRange)
-  const simplyCapitalMatched = Boolean(simplyCapitalLender && (matches ?? []).some((m) => m.lender_id === simplyCapitalLender.id))
-  const simplyCapitalPanel = (
-    <SimplyCapitalPanel
-      dealId={deal.id}
-      dealName={deal.company_name}
-      askAmount={askAmount(deal.deal_type)}
-      revenue={dealRevenue}
-      range={simplyCapitalRange}
-      prep={simplyCapitalPrep}
-      at={(deal as { simply_capital_at?: string | null }).simply_capital_at ?? null}
-      docNames={Object.fromEntries((documents ?? []).map((d) => [d.id as string, d.file_name as string]))}
-      followUp={{
-        to: simplyCapitalLender?.contact_email ? { name: simplyCapitalLender.contact_name ?? null, email: simplyCapitalLender.contact_email } : null,
-        ...followUpEmail({
-          company: simplyCapitalPrep?.form.company_name ?? deal.company_name,
-          firstName: simplyCapitalLender?.contact_name?.split(' ')[0] ?? null,
-          snapshot: deal.snapshot as Parameters<typeof followUpEmail>[0]['snapshot'],
-          prep: simplyCapitalPrep,
-        }),
-      }}
-    />
-  )
 
   const matchesWithLender: MatchWithLender[] = (matches ?? []).map((m) => {
     const lender = Array.isArray(m.lenders) ? m.lenders[0] : m.lenders
@@ -640,8 +598,6 @@ export default async function DealDetailPage({
 
       <CollapsibleSection tab="lenders" title="Lender matching" phoneClosed>
       <MatchingPanel
-        applicationLenderId={simplyCapitalLender?.id ?? null}
-        application={simplyCapitalPanel}
         dealId={deal.id}
         matches={matchesWithLender}
         lastRunAt={lastMatchRunAt}
@@ -657,12 +613,6 @@ export default async function DealDetailPage({
         }
       />
       </CollapsibleSection>
-
-      {!simplyCapitalMatched && (
-        <CollapsibleSection tab="lenders" title="Simply Capital" phoneClosed closed={!simplyCapitalPrep && !simplyCapitalFits}>
-          {simplyCapitalPanel}
-        </CollapsibleSection>
-      )}
 
       <CollapsibleSection tab="lenders" title="Find new lenders" phoneClosed closed={Boolean((deal as { lender_search?: unknown }).lender_search)}>
       <LenderSearchPanel
