@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
-export const DRAFT_STYLES = ['short', 'long'] as const
+// 'skeleton' = the fixed template filled with numbers; 'ai' = written by the AI.
+export const DRAFT_STYLES = ['skeleton', 'ai'] as const
 export type DraftStyle = (typeof DRAFT_STYLES)[number]
 
 export const DraftEmailSchema = z.object({

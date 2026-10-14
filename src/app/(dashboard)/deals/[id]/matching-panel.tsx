@@ -1,5 +1,6 @@
 'use client'
 
+import type { DraftStyle } from '@/lib/matching/draft-schema'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
@@ -60,7 +61,7 @@ function DraftEmail({
   body: string
   outlookDraftCreatedAt: string | null
   onCreated: () => void
-  onRedraft: (style: 'short' | 'long') => void
+  onRedraft: (style: DraftStyle) => void
   redrafting: boolean
   documents: DealDoc[]
   selectedDocIds: string[]
@@ -123,9 +124,9 @@ function DraftEmail({
         </button>
         <div className="flex items-center gap-2">
           {open && (
-            <span className="flex items-center gap-1 text-xs text-amber-800" title="Fills the email skeleton again with this deal's latest numbers (free)">
+            <span className="flex items-center gap-1 text-xs text-amber-800">
               {redrafting ? (
-                'Refilling…'
+                'Redrafting…'
               ) : (
                 <>
                   <label className="mr-1 flex items-center gap-1" title="Start the email with your intro from Settings">
@@ -139,10 +140,19 @@ function DraftEmail({
                   </label>
                   <button
                     type="button"
-                    onClick={() => onRedraft('short')}
+                    onClick={() => onRedraft('skeleton')}
+                    title="Fills the email skeleton again with this deal's latest numbers (free)"
                     className="rounded border border-amber-300 px-2 py-0.5 hover:bg-amber-100"
                   >
                     Refill numbers
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRedraft('ai')}
+                    title="The AI writes it from the deal's details — for personal loans (HELOC), real estate, anything the skeleton doesn't fit (a few cents)"
+                    className="rounded border border-amber-300 px-2 py-0.5 hover:bg-amber-100"
+                  >
+                    Write with AI
                   </button>
                 </>
               )}
@@ -245,7 +255,7 @@ function DraftEmail({
       {staleNote && (
         <p className="mt-1 text-xs font-medium text-amber-800">
           {staleNote}{' '}
-          <button type="button" onClick={() => onRedraft('short')} disabled={redrafting} className="underline disabled:opacity-50">
+          <button type="button" onClick={() => onRedraft('skeleton')} disabled={redrafting} className="underline disabled:opacity-50">
             {redrafting ? 'Refilling…' : 'Refill'}
           </button>
         </p>
@@ -493,7 +503,7 @@ export function MatchingPanel({
     }
   }
 
-  async function draftFor(matchId: string, style: 'short' | 'long' = 'short') {
+  async function draftFor(matchId: string, style: DraftStyle = 'skeleton') {
     setDraftingId(matchId)
     setDraftError(null)
     try {
@@ -734,7 +744,7 @@ export function MatchingPanel({
                 />
               )}
               {draftingId === m.id && (
-                <p className="mt-3 text-xs text-slate-500">Filling in the email…</p>
+                <p className="mt-3 text-xs text-slate-500">Drafting the email…</p>
               )}
               {draftError?.id === m.id && (
                 <p className="mt-3 text-xs text-red-600">
@@ -749,6 +759,14 @@ export function MatchingPanel({
                     className="rounded-md border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
                   >
                     Draft email
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => draftFor(m.id, 'ai')}
+                    title="The AI writes it from the deal's details — for personal loans (HELOC), real estate, anything the skeleton doesn't fit (a few cents)"
+                    className="rounded-md border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                  >
+                    Write with AI
                   </button>
                 </div>
               )}

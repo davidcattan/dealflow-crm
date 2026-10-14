@@ -21,7 +21,7 @@ export async function POST(
 
   const { id, matchId } = await ctx.params
   const { style, includeIntro } = (await request.json().catch(() => ({}))) as { style?: string; includeIntro?: boolean }
-  const draftStyle: DraftStyle = DRAFT_STYLES.includes(style as DraftStyle) ? (style as DraftStyle) : 'short'
+  const draftStyle: DraftStyle = DRAFT_STYLES.includes(style as DraftStyle) ? (style as DraftStyle) : 'skeleton'
 
   const { data: match } = await supabase
     .from('deal_matches')
