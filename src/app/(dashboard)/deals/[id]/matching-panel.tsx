@@ -61,7 +61,7 @@ function DraftEmail({
   body: string
   outlookDraftCreatedAt: string | null
   onCreated: () => void
-  onRedraft: (style: DraftStyle) => void
+  onRedraft: (style: DraftStyle, instructions?: string) => void
   redrafting: boolean
   documents: DealDoc[]
   selectedDocIds: string[]
@@ -80,6 +80,7 @@ function DraftEmail({
   const [copied, setCopied] = useState(false)
   const [creating, setCreating] = useState(false)
   const [outlookError, setOutlookError] = useState<string | null>(null)
+  const [fix, setFix] = useState('')
 
   async function copy() {
     try {
@@ -272,6 +273,30 @@ function DraftEmail({
             <span className="font-medium">Subject:</span> {subject}
           </p>
           <p className="whitespace-pre-wrap">{body}</p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (fix.trim()) onRedraft('ai', fix.trim())
+            }}
+            className="rounded-md border border-amber-200 bg-white p-2"
+          >
+            <label className="block text-xs font-medium text-amber-800">Tell the AI what to change</label>
+            <textarea
+              value={fix}
+              onChange={(e) => setFix(e.target.value)}
+              rows={2}
+              placeholder="e.g. Just show total debt — don't break down the three clinics. Make the ASK $2 million."
+              className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={redrafting || !fix.trim()}
+              title="The AI edits this email with your changes (a few cents)"
+              className="mt-1 rounded border border-amber-300 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+            >
+              {redrafting ? 'Rewriting…' : 'Rewrite with my changes'}
+            </button>
+          </form>
           <p className="text-xs text-amber-700">
             Draft only — nothing is sent automatically. Review and send it yourself in Outlook.
           </p>
@@ -503,14 +528,14 @@ export function MatchingPanel({
     }
   }
 
-  async function draftFor(matchId: string, style: DraftStyle = 'skeleton') {
+  async function draftFor(matchId: string, style: DraftStyle = 'skeleton', instructions?: string) {
     setDraftingId(matchId)
     setDraftError(null)
     try {
       const res = await fetch(`/api/deals/${dealId}/matches/${matchId}/draft`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ style, includeIntro }),
+        body: JSON.stringify({ style, includeIntro, instructions }),
       })
       const result = await readJsonResponse(res)
       if (!result.ok) throw new Error(result.message)
@@ -720,7 +745,7 @@ export function MatchingPanel({
                   body={m.draftBody}
                   outlookDraftCreatedAt={m.outlookDraftCreatedAt}
                   onCreated={() => router.refresh()}
-                  onRedraft={(style) => draftFor(m.id, style)}
+                  onRedraft={(style, instructions) => draftFor(m.id, style, instructions)}
                   redrafting={draftingId === m.id}
                   documents={documents}
                   selectedDocIds={selectedDocIds}

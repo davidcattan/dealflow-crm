@@ -155,9 +155,10 @@ export async function draftSubmissionEmail(
   lenderId: string,
   reasoning = '',
   style: DraftStyle = 'skeleton',
-  includeIntro = true
+  includeIntro = true,
+  revise?: Revision
 ) {
-  if (style === 'ai') return draftWithAi(dealId, lenderId, reasoning, includeIntro)
+  if (style === 'ai' || revise) return draftWithAi(dealId, lenderId, reasoning, includeIntro, revise)
   const supabase = await createClient()
 
   const [{ data: deal, error: dealError }, { data: lender, error: lenderError }, { data: contacts }, { data: documents }] = await Promise.all([
@@ -198,11 +199,16 @@ export async function draftSubmissionEmail(
   }
 }
 
+// The broker's own fix-up request on an existing draft ("just total debt,
+// don't break down the three clinics"): the AI edits that draft.
+export type Revision = { instructions: string; subject: string; body: string }
+
 async function draftWithAi(
   dealId: string,
   lenderId: string,
   reasoning: string,
-  includeIntro: boolean
+  includeIntro: boolean,
+  revise?: Revision
 ) {
   const supabase = await createClient()
 
@@ -307,6 +313,7 @@ async function draftWithAi(
           COMMON_RULES,
           '',
           AI_RULES,
+          revise ? revisionPrompt(revise, sender) : null,
         ]
           .filter(Boolean)
           .join('\n'),
@@ -328,4 +335,24 @@ async function draftWithAi(
     recipientName: primaryContact?.name ?? null,
     attachmentCount: documentNames.length,
   }
+}
+
+// The current draft (without the intro/signature we add back ourselves) and
+// the broker's requested changes, which win over the format rules.
+function revisionPrompt(revise: Revision, sender: Sender) {
+  let body = revise.body
+  for (const part of [sender.signature, sender.intro]) if (part) body = body.replace(part, '')
+  body = body.replace(/\n(best|regards|thanks|thank you|cheers)[,!]?\s*(\n[^\n]{0,40})?\s*$/i, '').trim()
+  return [
+    '',
+    '--- The current draft ---',
+    `Subject: ${revise.subject}`,
+    '',
+    body,
+    '',
+    "--- The broker's changes (follow these exactly — they override the format rules above) ---",
+    revise.instructions,
+    '',
+    'Rewrite the current draft with these changes. Keep everything they don\'t mention as it is (same facts, wording and layout); change only what they ask for.',
+  ].join('\n')
 }
