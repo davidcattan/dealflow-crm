@@ -22,6 +22,47 @@ export type MatchWithLender = {
   draftStatus: 'none' | 'drafted' | 'sent'
   outlookDraftCreatedAt: string | null
   draftGeneratedAt?: string | null
+  // Emails you actually sent this lender about the deal (newest first).
+  sent?: SentEmail[]
+}
+
+export type SentEmail = { subject: string; body: string; at: string; to: string }
+
+// What went out: shown instead of the draft once the inbox sync has picked
+// up your sent email to this lender.
+function SentEmails({ sent }: { sent: SentEmail[] }) {
+  const [open, setOpen] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+  const shown = showAll ? sent : sent.slice(0, 1)
+  return (
+    <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="text-xs font-medium text-emerald-800 hover:underline">
+        {open ? 'Hide' : 'View'} submission email — sent {new Date(sent[0].at).toLocaleDateString()}
+        {sent.length > 1 ? ` (${sent.length} emails)` : ''}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-3">
+          {shown.map((e, i) => (
+            <div key={i} className={`space-y-1 text-sm text-slate-700 ${i > 0 ? 'border-t border-emerald-200 pt-3' : ''}`}>
+              <p className="text-xs text-emerald-800">
+                Sent {new Date(e.at).toLocaleString()}
+                {e.to ? ` to ${e.to}` : ''}
+              </p>
+              <p>
+                <span className="font-medium">Subject:</span> {e.subject}
+              </p>
+              <p className="whitespace-pre-wrap">{e.body}</p>
+            </div>
+          ))}
+          {sent.length > 1 && (
+            <button type="button" onClick={() => setShowAll((v) => !v)} className="text-xs text-emerald-800 underline">
+              {showAll ? 'Show only the latest' : `Show all ${sent.length} emails to this lender`}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export type DealDoc = { id: string; name: string; size: number | null }
@@ -737,7 +778,8 @@ export function MatchingPanel({
                 </div>
               </div>
               <p className="mt-2 text-sm text-slate-600">{m.reasoning}</p>
-              {m.draftStatus === 'drafted' && m.draftSubject && m.draftBody && (
+              {m.sent && m.sent.length > 0 && <SentEmails sent={m.sent} />}
+              {!m.sent?.length && m.draftStatus === 'drafted' && m.draftSubject && m.draftBody && (
                 <DraftEmail
                   dealId={dealId}
                   matchId={m.id}
@@ -776,7 +818,7 @@ export function MatchingPanel({
                   <ErrorText message={draftError.message} />
                 </p>
               )}
-              {m.selected && m.draftStatus !== 'drafted' && draftingId !== m.id && (
+              {m.selected && m.draftStatus !== 'drafted' && !m.sent?.length && draftingId !== m.id && (
                 <div className="mt-3 flex gap-2">
                   <button
                     type="button"

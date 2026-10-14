@@ -16,7 +16,8 @@ import type { Snapshot } from '@/lib/snapshot/schema'
 import { docTextsOf, withCollateralRequests } from '@/lib/snapshot/collateral'
 import { estimateUnderwriting } from '@/lib/underwriting/estimate'
 import { buildManualPrompt } from '@/lib/underwriting/prompt'
-import { MatchingPanel, type MatchWithLender, type LoanTypeRecommendation } from './matching-panel'
+import { MatchingPanel, type MatchWithLender, type LoanTypeRecommendation, type SentEmail } from './matching-panel'
+import { ownText } from '@/lib/outlook/own-text'
 import { DocumentUploader } from './document-uploader'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
@@ -241,9 +242,31 @@ export default async function DealDetailPage({
   const uwRows = (usageRows ?? []).filter((r) => r.feature === 'underwriting').slice(0, 2)
   const lastRunCost = uwRows.length > 0 ? uwRows.reduce((n, r) => n + Number(r.cost_usd), 0) : null
 
+  // What you actually emailed each lender on this deal (from the Sent
+  // folders, picked up by the inbox sync), newest first.
+  const { data: sentRows } = await supabase
+    .from('inbox_messages')
+    .select('lender_id, subject, body_text, summary, received_at, to_emails')
+    .eq('deal_id', id)
+    .eq('classification', 'sent')
+    .not('lender_id', 'is', null)
+    .order('received_at', { ascending: false })
+  const sentByLender = new Map<string, SentEmail[]>()
+  for (const r of sentRows ?? []) {
+    const list = sentByLender.get(r.lender_id as string) ?? []
+    list.push({
+      subject: (r.subject as string | null) ?? '',
+      body: r.body_text ? ownText(r.body_text as string) : ((r.summary as string | null) ?? ''),
+      at: r.received_at as string,
+      to: (r.to_emails as string | null) ?? '',
+    })
+    sentByLender.set(r.lender_id as string, list)
+  }
+
   const matchesWithLender: MatchWithLender[] = (matches ?? []).map((m) => {
     const lender = Array.isArray(m.lenders) ? m.lenders[0] : m.lenders
     return {
+      sent: sentByLender.get(m.lender_id as string) ?? [],
       id: m.id,
       lender_id: m.lender_id,
       lender_name: lender?.name ?? 'Unknown lender',
