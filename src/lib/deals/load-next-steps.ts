@@ -1,9 +1,24 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { extractAskedFor, nextStep, type NextStep } from './next-step'
+import type { AiNextStep } from './key-facts'
 
-// Works out the next step for each of the given deals in a handful of
-// queries (no AI).
+// The AI's step category → the To do list's sections and colors.
+const AI_STEP: Record<AiNextStep['category'], Pick<NextStep, 'rank' | 'urgency'>> = {
+  answer_lender: { rank: 1, urgency: 'you' },
+  call_todo: { rank: 2, urgency: 'you' },
+  borrower: { rank: 3, urgency: 'you' },
+  send_out: { rank: 4, urgency: 'you' },
+  everyone_passed: { rank: 5, urgency: 'you' },
+  follow_up_lender: { rank: 6, urgency: 'follow_up' },
+  waiting_on_borrower: { rank: 9, urgency: 'waiting' },
+  waiting_on_lender: { rank: 9, urgency: 'waiting' },
+  done: { rank: 10, urgency: 'done' },
+}
+
+// The next step for each of the given deals: the AI's (from the deal's
+// key facts, which read every email, call and note) when it's newer than the
+// deal's latest activity; otherwise worked out by rules from the deal's data.
 export async function loadNextSteps(supabase: SupabaseClient, dealIds: string[]): Promise<Map<string, NextStep>> {
   const out = new Map<string, NextStep>()
   if (dealIds.length === 0) return out
@@ -35,7 +50,36 @@ export async function loadNextSteps(supabase: SupabaseClient, dealIds: string[])
   const count = <T extends { deal_id: string }>(rows: T[] | null, id: string, pred: (r: T) => boolean = () => true) =>
     (rows ?? []).filter((r) => r.deal_id === id && pred(r)).length
 
+  // AI steps (empty before migration 044) and when each deal last had news.
+  const [{ data: kfRows }, { data: emailRows }, { data: docRows }] = await Promise.all([
+    supabase.from('deals').select('id, key_facts, key_facts_at').in('id', dealIds),
+    supabase.from('inbox_messages').select('deal_id, received_at').in('deal_id', dealIds).order('received_at', { ascending: false }).limit(3000),
+    supabase.from('documents').select('deal_id, uploaded_at').in('deal_id', dealIds),
+  ])
+  const newsAt = new Map<string, string>()
+  const bump = (id: string, at: string | null | undefined) => {
+    if (at && (!newsAt.has(id) || at > newsAt.get(id)!)) newsAt.set(id, at)
+  }
+  for (const r of emailRows ?? []) bump(r.deal_id as string, r.received_at as string)
+  for (const r of docRows ?? []) bump(r.deal_id as string, r.uploaded_at as string)
+  for (const r of updates ?? []) bump(r.deal_id as string, r.created_at as string)
+  for (const r of calls ?? []) bump(r.deal_id as string, r.created_at as string)
+  const aiStep = new Map<string, NextStep>()
+  for (const r of kfRows ?? []) {
+    const step = (r.key_facts as { next_step?: AiNextStep | null } | null)?.next_step
+    const at = r.key_facts_at as string | null
+    const news = newsAt.get(r.id as string)
+    if (step?.text && at && (!news || news <= at) && AI_STEP[step.category]) {
+      aiStep.set(r.id as string, { ...AI_STEP[step.category], text: step.text })
+    }
+  }
+
   for (const d of deals ?? []) {
+    const ai = aiStep.get(d.id)
+    if (ai) {
+      out.set(d.id, ai)
+      continue
+    }
     const mySubs = (subs ?? []).filter((s) => s.deal_id === d.id)
     const lenderName = (s: (typeof mySubs)[number]) => {
       const l = Array.isArray(s.lenders) ? s.lenders[0] : s.lenders

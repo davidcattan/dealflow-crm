@@ -20,8 +20,11 @@ export type FactLink = { kind: 'doc' | 'email' | 'call' | 'notes' | 'snapshot'; 
 export type KeyFact = { label: string; value: string; source: string; note?: string; pinned?: boolean; link?: FactLink | null }
 // v: the format version — older (wordier) key facts are re-read once.
 export type LoanRecommendation = { loan_type: string; why: string }
-export type KeyFacts = { summary?: string; recommendation?: LoanRecommendation | null; facts: KeyFact[]; missing: string[]; v?: number }
-export const KEY_FACTS_VERSION = 5
+// The deal's next step, decided by the AI from everything said and sent.
+export const STEP_CATEGORIES = ['answer_lender', 'call_todo', 'borrower', 'send_out', 'everyone_passed', 'follow_up_lender', 'waiting_on_borrower', 'waiting_on_lender', 'done'] as const
+export type AiNextStep = { text: string; category: (typeof STEP_CATEGORIES)[number] }
+export type KeyFacts = { summary?: string; recommendation?: LoanRecommendation | null; next_step?: AiNextStep | null; facts: KeyFact[]; missing: string[]; v?: number }
+export const KEY_FACTS_VERSION = 6
 
 const Schema = z.object({
   summary: z
@@ -29,6 +32,18 @@ const Schema = z.object({
     .describe(
       'What we know, in ONE sentence of at most 30 words — what the business/property is, the ask, and where it stands. e.g. "San Jose contract electronics maker, $4.6M revenue, wants a ~$400K ABL line to replace Huntington; financials in, waiting on credit and inventory list."'
     ),
+  next_step: z
+    .object({
+      text: z
+        .string()
+        .describe('The single next thing that should happen on this deal, at most 15 words, specific: who and what. e.g. "Send Encina the inventory list they asked for Oct 14", "Borrower sending 2025 returns Friday — check Monday".'),
+      category: z
+        .enum(STEP_CATEGORIES)
+        .describe(
+          'answer_lender = a lender asked us something or is interested and we owe them a reply/call; call_todo = something we promised on a call; borrower = we need to ask/chase the borrower for docs or info; send_out = ready to underwrite, match or send to lenders; everyone_passed = all lenders declined, need new ones; follow_up_lender = we sent it and a lender has gone quiet 5+ days; waiting_on_borrower / waiting_on_lender = the ball is in their court and nothing is overdue; done = funded/closed/dead.'
+        ),
+    })
+    .describe('Read the latest emails, calls and notes: what was promised, asked or agreed most recently decides it. Newer beats older.'),
   recommendation: z
     .object({
       loan_type: z.enum(LOAN_TYPE_CATEGORIES).describe('The loan product that best fits what this borrower has and needs.'),
@@ -137,7 +152,54 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
   })
   const facts = [...pinned, ...ai.filter((f) => !pinnedLabels.has(f.label.toLowerCase()))]
   const missing = res.parsed_output.missing.filter((m) => !pinnedLabels.has(m.toLowerCase()))
-  const result = { summary: res.parsed_output.summary, recommendation: res.parsed_output.recommendation, facts: facts.slice(0, Math.max(8, pinned.length)), missing: missing.slice(0, 3), v: KEY_FACTS_VERSION }
+  const result = { summary: res.parsed_output.summary, recommendation: res.parsed_output.recommendation, next_step: res.parsed_output.next_step, facts: facts.slice(0, Math.max(8, pinned.length)), missing: missing.slice(0, 3), v: KEY_FACTS_VERSION }
   await supabase.from('deals').update({ key_facts: result, key_facts_at: new Date().toISOString() }).eq('id', dealId)
   return result
+}
+
+// Background catch-up (from the scheduled inbox job): re-read a few active
+// deals whose key facts are missing, out of date, or older than their latest
+// email / note / call / document. A few cents each; spreads out over runs.
+export async function refreshStaleKeyFacts(supabase: SupabaseClient, limit = 8) {
+  const { data: deals, error } = await supabase
+    .from('deals')
+    .select('id, key_facts, key_facts_at')
+    .not('status', 'in', '(dead,closed,old)')
+  if (error || !deals?.length) return 0
+  const ids = deals.map((d) => d.id as string)
+  const [{ data: emails }, { data: updates }, { data: docs }, { data: calls }] = await Promise.all([
+    supabase.from('inbox_messages').select('deal_id, received_at').in('deal_id', ids).order('received_at', { ascending: false }).limit(3000),
+    supabase.from('deal_updates').select('deal_id, created_at').in('deal_id', ids).order('created_at', { ascending: false }).limit(3000),
+    supabase.from('documents').select('deal_id, uploaded_at').in('deal_id', ids),
+    supabase.from('deal_calls').select('deal_id, created_at').in('deal_id', ids).eq('status', 'done'),
+  ])
+  const latest = new Map<string, string>()
+  const bump = (id: string, at: string | null | undefined) => {
+    if (at && (!latest.has(id) || at > latest.get(id)!)) latest.set(id, at)
+  }
+  for (const r of emails ?? []) bump(r.deal_id as string, r.received_at as string)
+  for (const r of updates ?? []) bump(r.deal_id as string, r.created_at as string)
+  for (const r of docs ?? []) bump(r.deal_id as string, r.uploaded_at as string)
+  for (const r of calls ?? []) bump(r.deal_id as string, r.created_at as string)
+
+  const due = deals
+    .filter((d) => {
+      const at = d.key_facts_at as string | null
+      const v = (d.key_facts as { v?: number } | null)?.v ?? 0
+      const last = latest.get(d.id as string)
+      return !at || v < KEY_FACTS_VERSION || Boolean(last && last > at)
+    })
+    // Most recently active first: those are the ones on today's To do.
+    .sort((a, b) => (latest.get(b.id as string) ?? '').localeCompare(latest.get(a.id as string) ?? ''))
+    .slice(0, limit)
+  let done = 0
+  for (const d of due) {
+    try {
+      await buildKeyFacts(supabase, d.id as string)
+      done++
+    } catch {
+      // One bad deal shouldn't stop the rest.
+    }
+  }
+  return done
 }

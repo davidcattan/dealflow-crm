@@ -35,41 +35,109 @@ function fmtDay(iso: string) {
   return new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
+// Swipe a row right (phone) or hover it and click "Done" (computer) to
+// dismiss it. It comes back if something new happens on the deal.
 function Row({ item, rank, showOwner, onDismiss }: { item: TodoItem; rank: number; showOwner: boolean; onDismiss: (i: TodoItem) => void }) {
   const look = LOOK[rank] ?? LOOK[9]
+  const [dx, setDx] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const touch = useRef<{ x: number; y: number; id: number; swiping: boolean } | null>(null)
+  const swiped = useRef(false)
+  const rowRef = useRef<HTMLLIElement>(null)
+
+  const reset = () => {
+    touch.current = null
+    setDragging(false)
+    setDx(0)
+  }
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse') return
+    touch.current = { x: e.clientX, y: e.clientY, id: e.pointerId, swiping: false }
+    swiped.current = false
+  }
+  const onPointerMove = (e: React.PointerEvent<HTMLLIElement>) => {
+    const t = touch.current
+    if (!t || e.pointerId !== t.id) return
+    const mx = e.clientX - t.x
+    const my = e.clientY - t.y
+    if (!t.swiping) {
+      // Scrolling up/down: leave it to the page.
+      if (Math.abs(my) > 10 && Math.abs(my) >= Math.abs(mx)) return void (touch.current = null)
+      if (mx < 10 || mx < Math.abs(my) * 1.5) return
+      t.swiping = true
+      setDragging(true)
+      e.currentTarget.setPointerCapture(e.pointerId)
+    }
+    setDx(Math.max(0, mx))
+  }
+  const onPointerUp = () => {
+    const t = touch.current
+    touch.current = null
+    setDragging(false)
+    if (!t?.swiping) return
+    swiped.current = true
+    const width = rowRef.current?.offsetWidth ?? 320
+    if (dx > Math.min(110, width * 0.35)) {
+      setDx(width)
+      setTimeout(() => onDismiss(item), 180)
+    } else setDx(0)
+  }
+
   return (
-    <li className="flex items-center hover:bg-slate-50">
-      <Link href={`/deals/${item.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-3.5 active:bg-slate-100 sm:pl-4">
-        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm ${look.tint}`} aria-hidden="true">
-          {look.icon}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-baseline gap-2">
-            <span className="truncate text-[15px] font-semibold text-slate-900">{item.name}</span>
-            {item.days >= 2 && (
-              <span className={`shrink-0 text-[11px] ${item.days >= 5 ? 'text-amber-700' : 'text-slate-400'}`}>{item.days}d</span>
-            )}
-          </span>
-          <span className="line-clamp-2 text-sm text-slate-600">{item.text}</span>
-          {item.detail && <span className="mt-0.5 line-clamp-1 text-xs text-slate-400">{item.detail}</span>}
-        </span>
-      </Link>
-      {/* Whose deal — set it here; it moves to that person's list. */}
-      <span className={`shrink-0 pl-2 ${showOwner || !item.owner ? '' : 'max-sm:hidden'}`}>
-        <OwnerSelect dealId={item.id} owner={item.owner} />
-      </span>
-      {/* Done / not now — comes back if something new happens on the deal. */}
-      <button
-        type="button"
-        onClick={() => onDismiss(item)}
-        title="Dismiss — it comes back if something new happens on this deal"
-        aria-label="Dismiss"
-        className="mx-2 shrink-0 rounded-full p-1.5 text-slate-300 hover:bg-slate-100 hover:text-slate-700 sm:mr-3"
+    <li
+      ref={rowRef}
+      className="relative overflow-hidden"
+      style={{ touchAction: 'pan-y' }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={reset}
+      // A swipe isn't a tap: don't open the deal.
+      onClickCapture={(e) => {
+        if (swiped.current) {
+          e.preventDefault()
+          e.stopPropagation()
+          swiped.current = false
+        }
+      }}
+    >
+      <div aria-hidden="true" className={`absolute inset-0 flex items-center bg-emerald-500 pl-5 text-sm font-semibold text-white ${dx > 0 ? '' : 'invisible'}`}>
+        ✓ Done
+      </div>
+      <div
+        className="group/row relative flex items-center bg-white hover:bg-slate-50"
+        style={{ transform: dx ? `translateX(${dx}px)` : undefined, transition: dragging ? 'none' : 'transform 180ms ease-out' }}
       >
-        <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
-          <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
-        </svg>
-      </button>
+        <Link href={`/deals/${item.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-3.5 active:bg-slate-100 sm:pl-4">
+          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm ${look.tint}`} aria-hidden="true">
+            {look.icon}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-baseline gap-2">
+              <span className="truncate text-[15px] font-semibold text-slate-900">{item.name}</span>
+              {item.days >= 2 && (
+                <span className={`shrink-0 text-[11px] ${item.days >= 5 ? 'text-amber-700' : 'text-slate-400'}`}>{item.days}d</span>
+              )}
+            </span>
+            <span className="line-clamp-2 text-sm text-slate-600">{item.text}</span>
+            {item.detail && <span className="mt-0.5 line-clamp-1 text-xs text-slate-400">{item.detail}</span>}
+          </span>
+        </Link>
+        {/* Whose deal — set it here; it moves to that person's list. */}
+        <span className={`shrink-0 pl-2 ${showOwner || !item.owner ? '' : 'max-sm:hidden'}`}>
+          <OwnerSelect dealId={item.id} owner={item.owner} />
+        </span>
+        {/* Done / not now. Phones: small check (or swipe). Computers: shows on hover. */}
+        <button
+          type="button"
+          onClick={() => onDismiss(item)}
+          title="Done — it comes back if something new happens on this deal"
+          aria-label="Done"
+          className="mx-2 flex shrink-0 items-center gap-1 rounded-full border border-emerald-200 bg-white px-2 py-1 text-xs font-medium text-emerald-700 transition-opacity hover:bg-emerald-50 focus:opacity-100 sm:mr-3 sm:px-2.5 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/row:opacity-100"
+        >
+          ✓<span className="max-sm:hidden">Done</span>
+        </button>
+      </div>
     </li>
   )
 }

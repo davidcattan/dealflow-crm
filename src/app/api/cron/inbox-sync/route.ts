@@ -4,6 +4,7 @@ import { runInboxSync, type SyncSummary } from '@/lib/inbox/sync'
 import { startRun, finishRun } from '@/lib/inbox/run-log'
 import { isQuietHours } from '@/lib/inbox/quiet-hours'
 import { advancePendingCalls } from '@/lib/calls/process'
+import { refreshStaleKeyFacts } from '@/lib/deals/key-facts'
 
 // Needs Fluid Compute on Vercel Pro (max 800s).
 export const maxDuration = 800
@@ -51,7 +52,10 @@ export async function GET(request: Request) {
       total.moreWaiting = batch.moreWaiting
     } while (batch.moreWaiting && Date.now() - startedAt < 6 * 60 * 1000)
     await finishRun(supabase, runId, { summary: total })
-    return NextResponse.json(total)
+    // Then bring a few deals' key facts and next steps up to date with what
+    // just came in (a few cents each).
+    const refreshed = await refreshStaleKeyFacts(supabase, 8).catch(() => 0)
+    return NextResponse.json({ ...total, keyFactsRefreshed: refreshed })
   } catch (err) {
     console.error('Scheduled inbox sync failed', err)
     const message = err instanceof Error ? err.message : 'Sync failed'
