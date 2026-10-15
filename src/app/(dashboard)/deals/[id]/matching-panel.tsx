@@ -75,6 +75,37 @@ type AttachmentAdvice = {
   run: () => void
 }
 
+// "Tell the AI what to change" — the email is rewritten with the request.
+function FixBox({ redrafting, onRewrite }: { redrafting: boolean; onRewrite: (text: string) => void }) {
+  const [fix, setFix] = useState('')
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (fix.trim()) onRewrite(fix.trim())
+      }}
+      className="rounded-md border border-amber-200 bg-white p-2"
+    >
+      <label className="block text-xs font-medium text-amber-800">Tell the AI what to change</label>
+      <textarea
+        value={fix}
+        onChange={(e) => setFix(e.target.value)}
+        rows={2}
+        placeholder="e.g. Just show total debt — don't break down the three clinics. Make the ASK $2 million."
+        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
+      />
+      <button
+        type="submit"
+        disabled={redrafting || !fix.trim()}
+        title="The AI edits this email with your changes (a few cents)"
+        className="mt-1 rounded border border-amber-300 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+      >
+        {redrafting ? 'Rewriting…' : 'Rewrite with my changes'}
+      </button>
+    </form>
+  )
+}
+
 function DraftEmail({
   dealId,
   matchId,
@@ -121,7 +152,6 @@ function DraftEmail({
   const [copied, setCopied] = useState(false)
   const [creating, setCreating] = useState(false)
   const [outlookError, setOutlookError] = useState<string | null>(null)
-  const [fix, setFix] = useState('')
 
   async function copy() {
     try {
@@ -314,30 +344,8 @@ function DraftEmail({
             <span className="font-medium">Subject:</span> {subject}
           </p>
           <p className="whitespace-pre-wrap">{body}</p>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              if (fix.trim()) onRedraft('ai', fix.trim())
-            }}
-            className="rounded-md border border-amber-200 bg-white p-2"
-          >
-            <label className="block text-xs font-medium text-amber-800">Tell the AI what to change</label>
-            <textarea
-              value={fix}
-              onChange={(e) => setFix(e.target.value)}
-              rows={2}
-              placeholder="e.g. Just show total debt — don't break down the three clinics. Make the ASK $2 million."
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
-            />
-            <button
-              type="submit"
-              disabled={redrafting || !fix.trim()}
-              title="The AI edits this email with your changes (a few cents)"
-              className="mt-1 rounded border border-amber-300 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100 disabled:opacity-50"
-            >
-              {redrafting ? 'Rewriting…' : 'Rewrite with my changes'}
-            </button>
-          </form>
+          {/* Keyed by the email text: once the rewrite lands, the box starts empty. */}
+          <FixBox key={body} redrafting={redrafting} onRewrite={(text) => onRedraft('ai', text)} />
           <p className="text-xs text-amber-700">
             Draft only — nothing is sent automatically. Review and send it yourself in Outlook.
           </p>
