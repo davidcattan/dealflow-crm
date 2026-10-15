@@ -22,6 +22,7 @@ import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
 import { AtAGlance } from './at-a-glance'
+import { KeyFacts } from './key-facts'
 import { ActivityTimeline } from './activity'
 import type { DealContact } from './deal-contacts'
 import { ProfilePanel } from './profile-panel'
@@ -458,6 +459,14 @@ export default async function DealDetailPage({
             person: x.people?.[0] ? (x.people[0].name ?? x.people[0].email.split('@')[0]) : null,
           }))}
           last={lastActivity}
+        />
+      </CollapsibleSection>
+
+      <CollapsibleSection tab="overview" title="Key facts">
+        <KeyFacts
+          dealId={deal.id}
+          keyFacts={((deal as { key_facts?: unknown }).key_facts ?? null) as Parameters<typeof KeyFacts>[0]['keyFacts']}
+          at={(deal as { key_facts_at?: string | null }).key_facts_at ?? null}
         />
       </CollapsibleSection>
 

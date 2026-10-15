@@ -1,5 +1,6 @@
 import 'server-only'
 import { autofillDeal } from '@/lib/deals/autofill'
+import { buildKeyFacts } from '@/lib/deals/key-facts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   getValidAccessToken,
@@ -848,6 +849,8 @@ async function saveAttachments(
   // Fill in the deal's business name, industry… from the new files (cheap;
   // only fills blanks and placeholder names).
   if (newIds.length) await autofillDeal(supabase, dealId, newIds).catch((err) => console.error('Autofill failed', err))
+  // …and refresh the deal's key facts from the new files (cheap).
+  if (newIds.length) await buildKeyFacts(supabase, dealId).catch(() => null)
   return saved
 }
 

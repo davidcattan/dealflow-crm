@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { friendlyAiError } from '@/lib/ai-errors'
 import { autofillDeal } from '@/lib/deals/autofill'
+import { buildKeyFacts } from '@/lib/deals/key-facts'
 
 export const maxDuration = 120
 
@@ -17,6 +18,9 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
   const body = (await request.json().catch(() => ({}))) as { documentIds?: string[] }
   try {
     const changed = await autofillDeal(supabase, id, body.documentIds)
+    // New files arrived: refresh the deal's key facts too (cheap; skipped
+    // quietly before migration 044).
+    if (body.documentIds?.length) await buildKeyFacts(supabase, id).catch(() => null)
     return NextResponse.json({ ok: true, changed })
   } catch (err) {
     return NextResponse.json({ error: friendlyAiError(err, 'Couldn’t read the documents') }, { status: 500 })
