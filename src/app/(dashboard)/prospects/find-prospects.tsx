@@ -121,15 +121,16 @@ export function FindProspects({ lists }: { lists: string[] }) {
       {message && <p className="mt-1 text-xs text-emerald-700">{message}</p>}
       {open && (
         <div className="mt-2 space-y-3 text-sm">
-          <div className="grid gap-2 sm:grid-cols-[1fr_14rem]">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,26rem)_14rem]">
             <label className="flex flex-col gap-1 text-xs text-slate-500">
-              Companies — websites work best, one per line. Finds the CFO, CEO, owner and president.
+              Companies or websites, one per line
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                rows={4}
-                placeholder={'polder.com\nbuckknives.com\nDunn Tire'}
-                className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                // Small to start; grows a line at a time as you paste more.
+                rows={Math.min(8, Math.max(2, text.split('\n').length))}
+                placeholder={'polder.com\nDunn Tire'}
+                className="resize-y rounded-md border border-slate-300 px-2 py-1.5 text-sm"
               />
             </label>
             <div className="flex flex-col gap-2">
