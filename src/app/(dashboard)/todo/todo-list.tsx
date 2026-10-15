@@ -124,18 +124,27 @@ function Row({ item, rank, showOwner, onDismiss }: { item: TodoItem; rank: numbe
           </span>
         </Link>
         {/* Whose deal — set it here; it moves to that person's list. */}
-        <span className={`shrink-0 pl-2 ${showOwner || !item.owner ? '' : 'max-sm:hidden'}`}>
+        <span className={`shrink-0 pl-2 [@media(hover:hover)]:pr-3 ${showOwner || !item.owner ? '' : 'max-sm:hidden'}`}>
           <OwnerSelect dealId={item.id} owner={item.owner} />
         </span>
-        {/* Done / not now. Phones: small check (or swipe). Computers: shows on hover. */}
+        {/* Done / not now. Computers: a full-height green "Done" slides in
+            from the right edge on hover. Phones: swipe right (or tap ✓). */}
         <button
           type="button"
           onClick={() => onDismiss(item)}
           title="Done — it comes back if something new happens on this deal"
           aria-label="Done"
-          className="mx-2 flex shrink-0 items-center gap-1 rounded-full border border-emerald-200 bg-white px-2 py-1 text-xs font-medium text-emerald-700 transition-opacity hover:bg-emerald-50 focus:opacity-100 sm:mr-3 sm:px-2.5 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/row:opacity-100"
+          className="ml-2 hidden w-0 shrink-0 items-center justify-center self-stretch overflow-hidden whitespace-nowrap bg-emerald-500 text-sm font-semibold text-white transition-[width] duration-150 ease-out hover:bg-emerald-600 focus:w-24 group-hover/row:w-24 [@media(hover:hover)]:flex"
         >
-          ✓<span className="max-sm:hidden">Done</span>
+          ✓ Done
+        </button>
+        <button
+          type="button"
+          onClick={() => onDismiss(item)}
+          aria-label="Done"
+          className="mx-2 shrink-0 rounded-full p-1.5 text-base leading-none text-emerald-600 [@media(hover:hover)]:hidden"
+        >
+          ✓
         </button>
       </div>
     </li>
