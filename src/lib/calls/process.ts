@@ -141,12 +141,25 @@ export async function advanceCall(supabase: SupabaseClient, callId: string) {
   }
 }
 
+// Notes typed during a call (no recording): organized into the same call
+// notes as a recorded call — summary, key points, next steps, updates.
+export async function summarizeTypedNotes(supabase: SupabaseClient, callId: string) {
+  const { data: call } = await supabase.from('deal_calls').select('*').eq('id', callId).single()
+  if (!call || !call.deal_id) throw new Error('Call not found')
+  try {
+    await summarizeCall(supabase, call.id, call.deal_id, String(call.transcript ?? ''), { callWith: call.call_with ?? null, lenderId: call.lender_id ?? null }, true)
+  } catch (err) {
+    await fail(supabase, callId, err instanceof Error ? err.message : 'Couldn’t organize the notes')
+  }
+}
+
 async function summarizeCall(
   supabase: SupabaseClient,
   callId: string,
   dealId: string,
   transcript: string,
-  who: { callWith: string | null; lenderId: string | null }
+  who: { callWith: string | null; lenderId: string | null },
+  typed = false
 ) {
   const [{ data: deal }, { data: subs }, { data: updates }, { data: lender }] = await Promise.all([
     supabase.from('deals').select('company_name, contact_name, loan_type, deal_type, notes, status').eq('id', dealId).single(),
@@ -176,11 +189,14 @@ async function summarizeCall(
     .filter(Boolean)
     .join('\n')
 
-  const prompt = `You are the note-taker for JED Capital Group, a commercial loan brokerage (David and Eli Cattan). Below is the transcript of a phone/Teams/Zoom call one of them recorded on speaker about this deal. Speakers are labeled A, B, C… — work out from context who is the broker, the borrower and any lender.
+  const intro = typed
+    ? 'Below are the rough notes one of them typed during a phone call about this deal (no recording) — shorthand, typos and half-sentences are normal.'
+    : 'Below is the transcript of a phone/Teams/Zoom call one of them recorded on speaker about this deal. Speakers are labeled A, B, C… — work out from context who is the broker, the borrower and any lender.'
+  const prompt = `You are the note-taker for JED Capital Group, a commercial loan brokerage (David and Eli Cattan). ${intro}
 
 ${context}
 
-TRANSCRIPT:
+${typed ? 'TYPED NOTES' : 'TRANSCRIPT'}:
 ${transcript.slice(0, 120_000)}
 
 Write the call notes. Stick to what was actually said — never invent numbers, names or commitments. If the audio was unclear on something, leave it out rather than guess. Loan type changes must be one of: ${LOAN_TYPE_CATEGORIES.join(', ')}.`

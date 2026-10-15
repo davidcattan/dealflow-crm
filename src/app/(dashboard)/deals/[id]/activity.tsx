@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { addDealUpdate } from './actions'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { readJsonResponse } from '@/lib/fetch-json'
 import { UpdateRow } from './update-row'
 import { CallCard, CallRecorder, useCallPolling, whoLabel, type CallRow, type CallTarget, type WhoOptions } from './calls-panel'
 import { MoveToDeal, type DealChoice } from './move-to-deal'
@@ -69,7 +70,7 @@ export function ActivityTimeline({
           onClick={() => setAdding(adding === 'note' ? null : 'note')}
           className={`rounded-md px-3 py-1.5 text-sm font-medium ${adding === 'note' ? 'bg-slate-900 text-white' : 'border border-slate-300 text-slate-700 hover:bg-slate-50'}`}
         >
-          + Add note
+          📝 Write notes
         </button>
         <div className="ml-auto flex gap-1 text-xs">
           {FILTERS.filter((f) => f.key === 'all' || counts[f.key]).map((f) => (
@@ -85,33 +86,7 @@ export function ActivityTimeline({
         </div>
       </div>
 
-      {adding === 'note' && (
-        <form
-          action={async (fd) => {
-            await addDealUpdate(fd)
-            setAdding(null)
-          }}
-          className="mt-3 flex flex-wrap items-end gap-2"
-        >
-          <input type="hidden" name="deal_id" value={dealId} />
-          <input
-            type="date"
-            name="entry_date"
-            defaultValue={new Date().toISOString().slice(0, 10)}
-            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-          />
-          <input
-            name="note"
-            required
-            autoFocus
-            placeholder="e.g. followed up with borrower, waiting on docs"
-            className="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm max-sm:basis-full"
-          />
-          <button type="submit" className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800">
-            Save
-          </button>
-        </form>
-      )}
+      {adding === 'note' && <NotesPad dealId={dealId} whoOptions={whoOptions} onDone={() => setAdding(null)} />}
 
       {filtered.length === 0 ? (
         <p className="py-6 text-center text-sm text-slate-400">Nothing yet — record a call above or add a note.</p>
@@ -201,5 +176,132 @@ function CallItem({ call, whoOptions }: { call: CallRow; whoOptions: WhoOptions 
         </div>
       )}
     </li>
+  )
+}
+
+// A notepad for a call you can't record (or any note). Saved in this browser
+// as you type, so closing the tab or losing signal doesn't lose it. When
+// done: save it as a note (free), or have the AI organize it into call notes
+// with suggested updates, like a recorded call.
+function NotesPad({ dealId, whoOptions, onDone }: { dealId: string; whoOptions: WhoOptions; onDone: () => void }) {
+  const router = useRouter()
+  const key = `call-notes:${dealId}`
+  const [text, setText] = useState('')
+  const [who, setWho] = useState('')
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [busy, setBusy] = useState<'save' | 'organize' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  // Bring back anything typed earlier on this deal.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(key)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restore once on open
+      if (saved) setText(saved)
+    } catch {
+      // Storage blocked — fine.
+    }
+  }, [key])
+  function type(v: string) {
+    setText(v)
+    try {
+      if (v) localStorage.setItem(key, v)
+      else localStorage.removeItem(key)
+    } catch {
+      // Fine without it.
+    }
+  }
+
+  const lenders = [...whoOptions.dealLenders, ...whoOptions.otherLenders]
+  async function save(organize: boolean) {
+    setBusy(organize ? 'organize' : 'save')
+    setError(null)
+    const lenderId = who.startsWith('lender:') ? who.slice(7) : null
+    try {
+      const res = await fetch(`/api/deals/${dealId}/calls/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          date,
+          organize,
+          callWith: who.startsWith('lender:') ? 'lender' : who || null,
+          lenderId,
+          lenderName: lenderId ? (lenders.find((l) => l.id === lenderId)?.name ?? null) : null,
+        }),
+      })
+      const r = await readJsonResponse(res)
+      if (!r.ok) throw new Error(r.message)
+      type('')
+      router.refresh()
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Couldn’t save — your notes are still here.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <select value={who} onChange={(e) => setWho(e.target.value)} className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm">
+          <option value="">General note</option>
+          <option value="borrower">Call with {whoOptions.borrowerName}</option>
+          <option value="broker">Call with the referral partner</option>
+          {whoOptions.dealLenders.length > 0 && (
+            <optgroup label="Call with a lender on this deal">
+              {whoOptions.dealLenders.map((l) => (
+                <option key={l.id} value={`lender:${l.id}`}>
+                  {l.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {whoOptions.otherLenders.length > 0 && (
+            <optgroup label="Another lender">
+              {whoOptions.otherLenders.map((l) => (
+                <option key={l.id} value={`lender:${l.id}`}>
+                  {l.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm" />
+        <span className="text-xs text-slate-400">{text ? 'Saved on this computer as you type' : ''}</span>
+      </div>
+      <textarea
+        value={text}
+        onChange={(e) => type(e.target.value)}
+        autoFocus
+        rows={Math.min(14, Math.max(4, text.split('\n').length + 1))}
+        placeholder="Type as you talk — shorthand is fine. e.g. needs 375k, wants 30yr fixed, rate 7.25 adj, will send 2 yrs returns by Fri"
+        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+      />
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={Boolean(busy) || !text.trim()}
+          onClick={() => save(false)}
+          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+        >
+          {busy === 'save' ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          disabled={Boolean(busy) || !text.trim()}
+          onClick={() => save(true)}
+          title="Turns your notes into a summary, next steps and suggested updates — like a recorded call"
+          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          {busy === 'organize' ? 'Organizing…' : '✨ Save & organize with AI (a few cents)'}
+        </button>
+        <button type="button" onClick={onDone} className="ml-auto text-xs text-slate-500 hover:underline">
+          Close (keeps your notes)
+        </button>
+      </div>
+    </div>
   )
 }
