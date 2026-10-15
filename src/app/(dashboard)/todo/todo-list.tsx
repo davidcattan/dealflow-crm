@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { OwnerSelect } from '@/components/owner-select'
 import { TEAM, type TeamMember } from '@/lib/team'
-import { addTodo, deleteTodo, dismissStep, setTodoDone } from './actions'
+import { addTodo, deleteTodo, dismissStep, markDealDead, restoreDealStatus, setTodoDone } from './actions'
+import type { DealStatus } from '@/lib/types'
 
 export type TodoItem = { id: string; name: string; owner: TeamMember | null; text: string; detail: string | null; days: number }
 export type TodoSection = { rank: number; title: string; items: TodoItem[] }
@@ -58,8 +59,29 @@ function CheckCircle({ checked, onCheck, label }: { checked: boolean; onCheck: (
 // How long a checked row stays (filled in) before it goes.
 const CHECK_DELAY = 600
 
-function Row({ item, showOwner, onDismiss }: { item: TodoItem; showOwner: boolean; onDismiss: (i: TodoItem) => void }) {
+// Tapping a row (anywhere but the deal name) covers it with "Mark as dead".
+function Row({
+  item,
+  showOwner,
+  onDismiss,
+  onKill,
+}: {
+  item: TodoItem
+  showOwner: boolean
+  onDismiss: (i: TodoItem) => void
+  onKill: (i: TodoItem) => void
+}) {
   const [checked, setChecked] = useState(false)
+  const [menu, setMenu] = useState(false)
+  // Clicking anywhere else closes it.
+  useEffect(() => {
+    if (!menu) return
+    const close = (e: PointerEvent) => {
+      if (!rowRef.current?.contains(e.target as Node)) setMenu(false)
+    }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [menu])
   const check = () => {
     setChecked(true)
     setTimeout(() => onDismiss(item), CHECK_DELAY)
@@ -136,13 +158,22 @@ function Row({ item, showOwner, onDismiss }: { item: TodoItem; showOwner: boolea
         <span className="shrink-0 py-3 pl-3.5 sm:pl-4">
           <CheckCircle checked={checked} onCheck={check} label="Done — it comes back if something new happens on this deal" />
         </span>
-        <Link
-          href={`/deals/${item.id}`}
-          className={`flex min-w-0 flex-1 items-center gap-3 py-3 pl-3 transition-opacity duration-300 active:bg-slate-100 ${checked ? 'opacity-40' : ''}`}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setMenu(true)}
+          onKeyDown={(e) => e.key === 'Enter' && setMenu(true)}
+          className={`flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 pl-3 transition-opacity duration-300 ${checked ? 'opacity-40' : ''}`}
         >
           <span className="min-w-0 flex-1">
             <span className="flex items-baseline gap-2">
-              <span className="truncate text-[15px] font-semibold text-slate-900">{item.name}</span>
+              <Link
+                href={`/deals/${item.id}`}
+                onClick={(e) => e.stopPropagation()}
+                className="truncate text-[15px] font-semibold text-slate-900 hover:underline"
+              >
+                {item.name}
+              </Link>
               {item.days >= 2 && (
                 <span className={`shrink-0 text-[11px] ${item.days >= 5 ? 'text-amber-700' : 'text-slate-400'}`}>{item.days}d</span>
               )}
@@ -150,11 +181,33 @@ function Row({ item, showOwner, onDismiss }: { item: TodoItem; showOwner: boolea
             <span className="line-clamp-2 text-sm text-slate-600">{item.text}</span>
             {item.detail && <span className="mt-0.5 line-clamp-1 text-xs text-slate-400">{item.detail}</span>}
           </span>
-        </Link>
+        </div>
         {/* Whose deal — set it here; it moves to that person's list. */}
         <span className={`shrink-0 pl-2 pr-3 ${showOwner || !item.owner ? '' : 'max-sm:hidden'}`}>
           <OwnerSelect dealId={item.id} owner={item.owner} />
         </span>
+        {menu && (
+          <div className="absolute inset-0 z-10 flex items-center justify-end gap-2 bg-white/90 px-3 backdrop-blur-[2px] sm:px-4">
+            <span className="mr-auto truncate text-sm font-medium text-slate-500">{item.name}</span>
+            <button
+              type="button"
+              onClick={() => setMenu(false)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMenu(false)
+                onKill(item)
+              }}
+              className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700"
+            >
+              Mark as dead
+            </button>
+          </div>
+        )}
       </div>
     </li>
   )
@@ -308,6 +361,7 @@ export function TodoList({
     setDismissedIds((s) => new Set(s).add(i.id))
     setLastDismissed(i)
     setLastDone(null)
+    setLastDead(null)
     void dismissStep(i.id, i.text).then((r) => {
       if (r && 'error' in r && r.error) {
         setDismissError(r.error)
@@ -332,6 +386,38 @@ export function TodoList({
     setLastDismissed(null)
     void dismissStep(i.id, null)
   }
+  // Mark as dead: hide right away, with Undo putting the old status back.
+  const [lastDead, setLastDead] = useState<{ item: TodoItem; prev: DealStatus | null } | null>(null)
+  function kill(i: TodoItem) {
+    setDismissedIds((s) => new Set(s).add(i.id))
+    setLastDismissed(null)
+    setLastDone(null)
+    setLastDead({ item: i, prev: null })
+    void markDealDead(i.id).then((r) => {
+      if ('error' in r && r.error) {
+        setDismissError(r.error)
+        setDismissedIds((s) => {
+          const next = new Set(s)
+          next.delete(i.id)
+          return next
+        })
+        setLastDead(null)
+      } else if ('prev' in r) setLastDead((d) => (d?.item.id === i.id ? { item: i, prev: r.prev ?? null } : d))
+    })
+    if (undoTimer.current) clearTimeout(undoTimer.current)
+    undoTimer.current = setTimeout(() => setLastDead(null), 6000)
+  }
+  function undoKill() {
+    if (!lastDead?.prev) return
+    const { item, prev } = lastDead
+    setDismissedIds((s) => {
+      const next = new Set(s)
+      next.delete(item.id)
+      return next
+    })
+    setLastDead(null)
+    void restoreDealStatus(item.id, prev)
+  }
   sections = sections.map((sec) => ({ ...sec, items: sec.items.filter((x) => !dismissedIds.has(x.id)) })).filter((sec) => sec.items.length)
   waiting = waiting.filter((x) => !dismissedIds.has(x.id))
 
@@ -345,6 +431,7 @@ export function TodoList({
     setDoneIds((s) => new Set(s).add(t.id))
     setLastDone(t)
     setLastDismissed(null)
+    setLastDead(null)
     void setTodoDone(t.id, true)
     if (undoTimer.current) clearTimeout(undoTimer.current)
     undoTimer.current = setTimeout(() => setLastDone(null), 6000)
@@ -444,7 +531,7 @@ export function TodoList({
             </h2>
             <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               {s.items.map((i) => (
-                <Row key={i.id} item={i} showOwner={both} onDismiss={dismiss} />
+                <Row key={i.id} item={i} showOwner={both} onDismiss={dismiss} onKill={kill} />
               ))}
             </ul>
           </section>
@@ -459,7 +546,7 @@ export function TodoList({
           </summary>
           <ul className="mt-1.5 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             {waiting.map((i) => (
-              <Row key={i.id} item={i} showOwner={both} onDismiss={dismiss} />
+              <Row key={i.id} item={i} showOwner={both} onDismiss={dismiss} onKill={kill} />
             ))}
           </ul>
         </details>
@@ -469,6 +556,14 @@ export function TodoList({
         <div className="fixed inset-x-4 bottom-20 z-50 mx-auto flex max-w-sm items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white shadow-lg sm:bottom-6">
           <span className="truncate">Dismissed: {lastDismissed.name}</span>
           <button type="button" onClick={undoDismiss} className="shrink-0 font-semibold text-emerald-300">
+            Undo
+          </button>
+        </div>
+      )}
+      {lastDead && (
+        <div className="fixed inset-x-4 bottom-20 z-50 mx-auto flex max-w-sm items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white shadow-lg sm:bottom-6">
+          <span className="truncate">Marked dead: {lastDead.item.name}</span>
+          <button type="button" onClick={undoKill} disabled={!lastDead.prev} className="shrink-0 font-semibold text-emerald-300 disabled:opacity-50">
             Undo
           </button>
         </div>
