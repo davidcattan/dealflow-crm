@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { PROSPECT_STATUSES, PROSPECT_STATUS_COLORS, PROSPECT_STATUS_LABELS, type Prospect, type ProspectStatus } from '@/lib/prospects/types'
@@ -139,11 +139,24 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [previewId, setPreviewId] = useState<string | null>(null)
   const drafts = useDrafts()
-  const togglePick = (id: string) =>
+  // Click a checkbox to select; press and drag down the checkboxes to select
+  // several; shift-click for everything in between.
+  const drag = useRef<{ adding: boolean } | null>(null)
+  const lastClicked = useRef<string | null>(null)
+  useEffect(() => {
+    const end = () => {
+      drag.current = null
+      document.body.style.userSelect = ''
+    }
+    window.addEventListener('pointerup', end)
+    return () => window.removeEventListener('pointerup', end)
+  }, [])
+  const setOne = (id: string, on: boolean) =>
     setPicked((s) => {
+      if (s.has(id) === on) return s
       const next = new Set(s)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (on) next.add(id)
+      else next.delete(id)
       return next
     })
   const [filter, setFilter] = useState<ProspectStatus | 'all'>('all')
@@ -266,9 +279,34 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {shown.map((p) => [
-                <tr key={p.id} className={`align-top ${picked.has(p.id) ? 'bg-sky-50' : ''}`}>
-                  <td className="px-3 py-2">
-                    <input type="checkbox" checked={picked.has(p.id)} onChange={() => togglePick(p.id)} className="rounded border-slate-300" />
+                <tr
+                  key={p.id}
+                  onPointerEnter={() => drag.current && setOne(p.id, drag.current.adding)}
+                  className={`align-top ${picked.has(p.id) ? 'bg-sky-50' : ''}`}
+                >
+                  <td
+                    onPointerDown={(e) => {
+                      if (e.button !== 0) return
+                      e.preventDefault()
+                      if (e.shiftKey && lastClicked.current) {
+                        const ids = shown.map((x) => x.id)
+                        const a = ids.indexOf(lastClicked.current)
+                        const b = ids.indexOf(p.id)
+                        if (a >= 0 && b >= 0) {
+                          setPicked((s) => new Set([...s, ...ids.slice(Math.min(a, b), Math.max(a, b) + 1)]))
+                          return
+                        }
+                      }
+                      const adding = !picked.has(p.id)
+                      drag.current = { adding }
+                      lastClicked.current = p.id
+                      document.body.style.userSelect = 'none'
+                      setOne(p.id, adding)
+                    }}
+                    title="Select — press and drag down to select several"
+                    className="cursor-pointer select-none px-3 py-2"
+                  >
+                    <input type="checkbox" checked={picked.has(p.id)} readOnly tabIndex={-1} className="pointer-events-none rounded border-slate-300" />
                   </td>
                   <td className="px-3 py-2">
                     <div className="font-medium text-slate-800">{p.company_display || p.company}</div>
