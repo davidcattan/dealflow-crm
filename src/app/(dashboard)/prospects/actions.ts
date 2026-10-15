@@ -69,3 +69,51 @@ export async function setProspectStatus(id: string, status: string) {
   revalidatePath('/prospects')
   return { ok: true }
 }
+
+export type ProspectEmail = { id: string; at: string; sent: boolean; who: string; subject: string; body: string }
+
+// Every email with this person, read live from each connected Outlook
+// (David's and Eli's) — including ones sent before they were imported.
+export async function getProspectEmails(email: string): Promise<{ emails: ProspectEmail[]; error?: string }> {
+  const addr = email.trim().toLowerCase()
+  if (!addr.includes('@')) return { emails: [] }
+  const supabase = await createClient()
+  const { data: conns } = await supabase.from('outlook_connections').select('id, account_email')
+  const team = new Set((conns ?? []).map((c) => String(c.account_email).toLowerCase()))
+  const { getValidAccessToken, searchMessagesWith } = await import('@/lib/outlook/graph')
+  const { ownText } = await import('@/lib/outlook/own-text')
+  const { mailboxOwner } = await import('@/lib/outlook/mailbox-label')
+
+  const seen = new Set<string>()
+  const emails: ProspectEmail[] = []
+  let failed = 0
+  for (const c of conns ?? []) {
+    try {
+      const { accessToken } = await getValidAccessToken(supabase, c.id as string)
+      for (const m of await searchMessagesWith(accessToken, addr)) {
+        const key = m.internetMessageId ?? `${m.subject}|${m.at}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        const sent = team.has(m.fromEmail)
+        emails.push({
+          id: m.id,
+          at: m.at,
+          sent,
+          who: sent ? (mailboxOwner(m.fromEmail) ?? m.fromEmail) : m.fromName || m.fromEmail,
+          subject: m.subject || '(no subject)',
+          body: ownText(m.bodyText).slice(0, 6000),
+        })
+      }
+    } catch {
+      failed++
+    }
+  }
+  emails.sort((a, b) => b.at.localeCompare(a.at))
+  // Emailed before they were imported (or from a mailbox the sync missed):
+  // bring "Not contacted" up to date.
+  const lastSent = emails.find((e) => e.sent)
+  if (lastSent) {
+    await supabase.from('prospects').update({ status: 'emailed', last_emailed_at: lastSent.at }).eq('email', addr).eq('status', 'new')
+  }
+  return { emails, ...(failed && !emails.length ? { error: "Couldn't reach Outlook — check Settings → Outlook." } : {}) }
+}

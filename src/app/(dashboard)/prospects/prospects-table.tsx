@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { PROSPECT_STATUSES, PROSPECT_STATUS_COLORS, PROSPECT_STATUS_LABELS, type Prospect, type ProspectStatus } from '@/lib/prospects/types'
-import { importProspects, setProspectStatus } from './actions'
+import { getProspectEmails, importProspects, setProspectStatus, type ProspectEmail } from './actions'
 import { parseCsv } from '@/lib/prospects/csv'
 import { readXlsx } from '@/lib/prospects/xlsx'
 import { FIELD_LABELS, mapColumns, toPeople, type FieldKey, type ImportPerson } from '@/lib/prospects/columns'
@@ -227,9 +227,73 @@ function Preview({ p, onClose }: { p: Prospect; onClose: () => void }) {
   )
 }
 
+// Opens under a prospect when you click their company: where they stand and
+// every email with them (read live from Outlook).
+function ProspectDetail({ p }: { p: Prospect }) {
+  const [emails, setEmails] = useState<ProspectEmail[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [openId, setOpenId] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    getProspectEmails(p.email).then((r) => {
+      if (!live) return
+      setEmails(r.emails)
+      setError(r.error ?? null)
+    })
+    return () => {
+      live = false
+    }
+  }, [p.email])
+
+  return (
+    <tr>
+      <td colSpan={6} className="bg-slate-50 px-4 py-3">
+        <div className="max-w-3xl space-y-2 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PROSPECT_STATUS_COLORS[p.status]}`}>{PROSPECT_STATUS_LABELS[p.status]}</span>
+            {p.last_emailed_at && <span className="text-xs text-slate-500">Last emailed {new Date(p.last_emailed_at).toLocaleDateString()}</span>}
+            {p.phone && (
+              <a href={`tel:${p.phone}`} className="text-xs text-slate-600 underline">
+                {p.phone}
+              </a>
+            )}
+            {p.linkedin && (
+              <a href={p.linkedin.startsWith('http') ? p.linkedin : `https://${p.linkedin}`} target="_blank" rel="noopener noreferrer" className="text-xs text-slate-600 underline">
+                LinkedIn
+              </a>
+            )}
+          </div>
+          {p.reply_summary && <p className="text-xs text-slate-600">Their reply: {p.reply_summary}</p>}
+          {emails === null ? (
+            <p className="text-xs text-slate-500">Looking up emails with {p.email}…</p>
+          ) : emails.length === 0 ? (
+            <p className="text-xs text-slate-500">{error ?? `No emails with ${p.email} yet.`}</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {emails.map((e) => (
+                <li key={e.id} className="rounded border border-slate-200 bg-white">
+                  <button type="button" onClick={() => setOpenId(openId === e.id ? null : e.id)} className="w-full px-2.5 py-1.5 text-left">
+                    <span className={`mr-2 rounded px-1.5 py-0.5 text-[10px] font-medium ${e.sent ? 'bg-sky-100 text-sky-800' : 'bg-violet-100 text-violet-800'}`}>
+                      {e.sent ? `${e.who} sent` : 'They replied'}
+                    </span>
+                    <span className="text-xs text-slate-400">{new Date(e.at).toLocaleString()}</span>
+                    <span className="ml-2 font-medium text-slate-800">{e.subject}</span>
+                  </button>
+                  {openId === e.id && <p className="whitespace-pre-wrap border-t border-slate-100 px-2.5 py-2 text-xs text-slate-700">{e.body || '(no text)'}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [previewId, setPreviewId] = useState<string | null>(null)
+  const [detailId, setDetailId] = useState<string | null>(null)
   const drafts = useDrafts()
   // Click a checkbox to select; press and drag down the checkboxes to select
   // several; shift-click for everything in between.
@@ -364,7 +428,7 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
                 </th>
                 <th className="px-3 py-2 font-medium">Company</th>
                 <th className="px-3 py-2 font-medium">Contact</th>
-                <th className="px-3 py-2 font-medium">Their facility</th>
+                <th className="px-3 py-2 font-medium">Their facility (if known)</th>
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium">Latest</th>
               </tr>
@@ -400,7 +464,15 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
                     <input type="checkbox" checked={picked.has(p.id)} readOnly tabIndex={-1} className="pointer-events-none rounded border-slate-300" />
                   </td>
                   <td className="px-3 py-2">
-                    <div className="font-medium text-slate-800">{p.company_display || p.company}</div>
+                    <button
+                      type="button"
+                      onClick={() => setDetailId(detailId === p.id ? null : p.id)}
+                      title="Show status and emails"
+                      className="text-left font-medium text-slate-800 hover:underline"
+                    >
+                      <span className={`mr-1 inline-block text-slate-400 transition-transform ${detailId === p.id ? 'rotate-90' : ''}`}>›</span>
+                      {p.company_display || p.company}
+                    </button>
                     {p.source && <div className="text-xs text-slate-400">{p.source}</div>}
                   </td>
                   <td className="px-3 py-2">
@@ -444,6 +516,7 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
                     </div>
                   </td>
                 </tr>,
+                detailId === p.id ? <ProspectDetail key={`${p.id}-detail`} p={p} /> : null,
                 previewId === p.id ? <Preview key={`${p.id}-preview`} p={p} onClose={() => setPreviewId(null)} /> : null,
               ])}
             </tbody>

@@ -358,3 +358,39 @@ export async function listSentMessagesSince(accessToken: string, sinceIso: strin
     bodyText: toInboxMessage({ ...m, from: null }).bodyText,
   }))
 }
+
+export type FoundMessage = {
+  id: string
+  internetMessageId: string | null
+  subject: string
+  fromEmail: string
+  fromName: string
+  to: string[]
+  at: string
+  bodyText: string
+}
+
+// Every email in this mailbox (any folder) to or from one address — read
+// live from Outlook, so it includes mail from before the CRM was connected.
+export async function searchMessagesWith(accessToken: string, email: string, top = 30): Promise<FoundMessage[]> {
+  const search = encodeURIComponent(`"participants:${email.replace(/"/g, '')}"`)
+  const select = '$select=id,internetMessageId,subject,from,toRecipients,ccRecipients,sentDateTime,receivedDateTime,isDraft,body'
+  const json = await graphFetch(`/me/messages?$search=${search}&${select}&$top=${top}`, accessToken, TEXT_BODY)
+  return ((json.value ?? []) as Array<Record<string, unknown>>)
+    .filter((m) => !m.isDraft)
+    .map((m) => {
+      const from = m.from as { emailAddress?: { address?: string; name?: string } } | undefined
+      const rcpts = [...((m.toRecipients as unknown[]) ?? []), ...((m.ccRecipients as unknown[]) ?? [])] as { emailAddress?: { address?: string } }[]
+      const body = m.body as { content?: string } | undefined
+      return {
+        id: m.id as string,
+        internetMessageId: (m.internetMessageId as string | undefined) ?? null,
+        subject: (m.subject as string | undefined) ?? '',
+        fromEmail: (from?.emailAddress?.address ?? '').toLowerCase(),
+        fromName: from?.emailAddress?.name ?? '',
+        to: rcpts.map((r) => (r.emailAddress?.address ?? '').toLowerCase()).filter(Boolean),
+        at: ((m.sentDateTime as string | undefined) ?? (m.receivedDateTime as string | undefined) ?? '') as string,
+        bodyText: (body?.content ?? '').replace(/<[^>]+>/g, ' ').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim(),
+      }
+    })
+}
