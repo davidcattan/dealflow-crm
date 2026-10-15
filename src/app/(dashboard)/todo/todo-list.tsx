@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { OwnerSelect } from '@/components/owner-select'
 import { TEAM, type TeamMember } from '@/lib/team'
@@ -58,89 +59,103 @@ function CheckCircle({ checked, onCheck, label }: { checked: boolean; onCheck: (
 // How long a checked row stays (filled in) before it goes.
 const CHECK_DELAY = 600
 
-// Hovering a row (computer) or tapping it (phone) shows a big "Done".
+// How far (px) a phone swipe has to go before letting go dismisses the row.
+const SWIPE_DONE = 100
+
+// Computer: hover a row and it shows a big "Done". Phone: swipe it right —
+// the green fills in as you drag — or tap the circle. Tapping the row opens
+// the deal.
 function Row({ item, showOwner, onDismiss }: { item: TodoItem; showOwner: boolean; onDismiss: (i: TodoItem) => void }) {
+  const router = useRouter()
   const [checked, setChecked] = useState(false)
-  // 'hover' = mouse resting on the row (computer); 'tap' = tapped (phone).
-  const [menu, setMenuState] = useState<'hover' | 'tap' | null>(null)
-  const setMenu = (open: boolean) => setMenuState(open ? 'tap' : null)
+  const [hover, setHover] = useState(false)
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Short pause first so it doesn't flash on every row the mouse passes.
-  const onEnter = (e: React.PointerEvent) => {
-    if (e.pointerType !== 'mouse') return
-    hoverTimer.current = setTimeout(() => setMenuState((m) => m ?? 'hover'), 250)
-  }
-  const onLeave = (e: React.PointerEvent) => {
-    if (e.pointerType !== 'mouse') return
-    if (hoverTimer.current) clearTimeout(hoverTimer.current)
-    setMenuState(null)
-  }
-  // Clicking anywhere else closes it.
+  const [dx, setDx] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const rowRef = useRef<HTMLLIElement>(null)
+  const swiped = useRef(false)
+  const latest = useRef({ item, onDismiss })
   useEffect(() => {
-    if (!menu) return
-    const close = (e: PointerEvent) => {
-      if (!rowRef.current?.contains(e.target as Node)) setMenu(false)
-    }
-    document.addEventListener('pointerdown', close)
-    return () => document.removeEventListener('pointerdown', close)
-  }, [menu])
+    latest.current = { item, onDismiss }
+  })
+
   const check = () => {
     setChecked(true)
     setTimeout(() => onDismiss(item), CHECK_DELAY)
   }
-  const [dx, setDx] = useState(0)
-  const [dragging, setDragging] = useState(false)
-  const touch = useRef<{ x: number; y: number; id: number; swiping: boolean } | null>(null)
-  const swiped = useRef(false)
-  const rowRef = useRef<HTMLLIElement>(null)
 
-  const reset = () => {
-    touch.current = null
-    setDragging(false)
-    setDx(0)
-  }
-  const onPointerDown = (e: React.PointerEvent) => {
-    if (e.pointerType === 'mouse') return
-    touch.current = { x: e.clientX, y: e.clientY, id: e.pointerId, swiping: false }
-    swiped.current = false
-  }
-  const onPointerMove = (e: React.PointerEvent<HTMLLIElement>) => {
-    const t = touch.current
-    if (!t || e.pointerId !== t.id) return
-    const mx = e.clientX - t.x
-    const my = e.clientY - t.y
-    if (!t.swiping) {
-      // Scrolling up/down: leave it to the page.
-      if (Math.abs(my) > 10 && Math.abs(my) >= Math.abs(mx)) return void (touch.current = null)
-      if (mx < 10 || mx < Math.abs(my) * 1.5) return
-      t.swiping = true
-      setDragging(true)
-      e.currentTarget.setPointerCapture(e.pointerId)
+  // Native touch listeners: they can stop the page from scrolling sideways
+  // while you swipe, which React's can't.
+  useEffect(() => {
+    const el = rowRef.current
+    if (!el) return
+    let start: { x: number; y: number; swiping: boolean } | null = null
+    let dist = 0
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return
+      start = { x: e.touches[0].clientX, y: e.touches[0].clientY, swiping: false }
+      dist = 0
+      swiped.current = false
     }
-    setDx(Math.max(0, mx))
+    const onMove = (e: TouchEvent) => {
+      if (!start) return
+      const mx = e.touches[0].clientX - start.x
+      const my = e.touches[0].clientY - start.y
+      if (!start.swiping) {
+        // Scrolling up/down: leave it to the page.
+        if (Math.abs(my) > 10 && Math.abs(my) >= Math.abs(mx)) return void (start = null)
+        if (mx < 10 || mx < Math.abs(my) * 1.5) return
+        start.swiping = true
+        setDragging(true)
+      }
+      e.preventDefault()
+      const before = dist
+      dist = Math.max(0, mx)
+      // A little buzz (Android) when it's far enough to dismiss.
+      if (before < SWIPE_DONE && dist >= SWIPE_DONE) navigator.vibrate?.(10)
+      setDx(dist)
+    }
+    const onEnd = () => {
+      const was = start
+      start = null
+      if (!was?.swiping) return
+      setDragging(false)
+      swiped.current = true
+      if (dist >= SWIPE_DONE) {
+        setDx(el.offsetWidth)
+        setTimeout(() => latest.current.onDismiss(latest.current.item), 200)
+      } else setDx(0)
+    }
+    el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchmove', onMove, { passive: false })
+    el.addEventListener('touchend', onEnd)
+    el.addEventListener('touchcancel', onEnd)
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove', onMove)
+      el.removeEventListener('touchend', onEnd)
+      el.removeEventListener('touchcancel', onEnd)
+    }
+  }, [])
+
+  // Short pause first so it doesn't flash on every row the mouse passes.
+  const onEnter = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'mouse') return
+    hoverTimer.current = setTimeout(() => setHover(true), 250)
   }
-  const onPointerUp = () => {
-    const t = touch.current
-    touch.current = null
-    setDragging(false)
-    if (!t?.swiping) return
-    swiped.current = true
-    const width = rowRef.current?.offsetWidth ?? 320
-    if (dx > Math.min(110, width * 0.35)) {
-      setDx(width)
-      setTimeout(() => onDismiss(item), 180)
-    } else setDx(0)
+  const onLeave = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    setHover(false)
   }
+
+  const progress = Math.min(1, dx / SWIPE_DONE)
+  const ready = dx >= SWIPE_DONE
 
   return (
     <li
       ref={rowRef}
       className="relative overflow-hidden"
       style={{ touchAction: 'pan-y' }}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={reset}
       // A swipe isn't a tap: don't open the deal.
       onClickCapture={(e) => {
         if (swiped.current) {
@@ -150,35 +165,37 @@ function Row({ item, showOwner, onDismiss }: { item: TodoItem; showOwner: boolea
         }
       }}
     >
-      <div aria-hidden="true" className={`absolute inset-0 flex items-center bg-emerald-500 pl-5 text-sm font-semibold text-white ${dx > 0 ? '' : 'invisible'}`}>
-        ✓ Done
+      {/* Behind the row: fills in green as you swipe. */}
+      <div
+        aria-hidden="true"
+        className={`absolute inset-0 flex items-center gap-2 pl-4 text-sm font-semibold text-white transition-colors ${ready ? 'bg-emerald-500' : 'bg-emerald-300'} ${dx > 0 ? '' : 'invisible'}`}
+      >
+        <span
+          className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white"
+          style={{ transform: `scale(${0.6 + 0.4 * progress})`, background: ready ? 'white' : 'transparent', color: ready ? '#10b981' : 'white' }}
+        >
+          ✓
+        </span>
+        <span style={{ opacity: progress }}>{ready ? 'Let go — done' : 'Done'}</span>
       </div>
       <div
         className="relative flex items-center bg-white hover:bg-slate-50"
-        style={{ transform: dx ? `translateX(${dx}px)` : undefined, transition: dragging ? 'none' : 'transform 180ms ease-out' }}
+        style={{ transform: dx ? `translateX(${dx}px)` : undefined, transition: dragging ? 'none' : 'transform 200ms ease-out' }}
       >
         <span className="shrink-0 py-3 pl-3.5 sm:pl-4">
           <CheckCircle checked={checked} onCheck={check} label="Done — it comes back if something new happens on this deal" />
         </span>
-        {/* Hover (computer) or tap (phone): the row turns into "Done".
-            The circle and the owner stay usable beside it. */}
         <div className="relative flex min-w-0 flex-1 self-stretch" onPointerEnter={onEnter} onPointerLeave={onLeave}>
           <div
-            role="button"
+            role="link"
             tabIndex={0}
-            onClick={() => setMenu(true)}
-            onKeyDown={(e) => e.key === 'Enter' && setMenu(true)}
-            className={`flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 pl-3 transition-opacity duration-300 ${checked ? 'opacity-40' : ''}`}
+            onClick={() => router.push(`/deals/${item.id}`)}
+            onKeyDown={(e) => e.key === 'Enter' && router.push(`/deals/${item.id}`)}
+            className={`flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 pl-3 transition-opacity duration-300 active:bg-slate-100 ${checked ? 'opacity-40' : ''}`}
           >
             <span className="min-w-0 flex-1">
               <span className="flex items-baseline gap-2">
-                <Link
-                  href={`/deals/${item.id}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="truncate text-[15px] font-semibold text-slate-900 hover:underline"
-                >
-                  {item.name}
-                </Link>
+                <span className="truncate text-[15px] font-semibold text-slate-900">{item.name}</span>
                 {item.days >= 2 && (
                   <span className={`shrink-0 text-[11px] ${item.days >= 5 ? 'text-amber-700' : 'text-slate-400'}`}>{item.days}d</span>
                 )}
@@ -187,7 +204,8 @@ function Row({ item, showOwner, onDismiss }: { item: TodoItem; showOwner: boolea
               {item.detail && <span className="mt-0.5 line-clamp-1 text-xs text-slate-400">{item.detail}</span>}
             </span>
           </div>
-          {menu && !checked && (
+          {/* Computer hover: the row turns into "open deal" + a big Done. */}
+          {hover && !checked && (
             <div className="absolute inset-0 z-10 flex items-center gap-2 bg-slate-50/95 pl-3 pr-1 backdrop-blur-[2px]">
               <span className="min-w-0 flex-1">
                 <Link href={`/deals/${item.id}`} className="block truncate text-[15px] font-semibold text-slate-900 hover:underline">
@@ -195,19 +213,10 @@ function Row({ item, showOwner, onDismiss }: { item: TodoItem; showOwner: boolea
                 </Link>
                 <span className="block truncate text-xs text-slate-500">{item.text}</span>
               </span>
-              {menu === 'tap' && (
-                <button
-                  type="button"
-                  onClick={() => setMenu(false)}
-                  className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-              )}
               <button
                 type="button"
                 onClick={() => {
-                  setMenu(false)
+                  setHover(false)
                   check()
                 }}
                 title="It comes back if something new happens on this deal"
@@ -386,7 +395,7 @@ export function TodoList({
       }
     })
     if (undoTimer.current) clearTimeout(undoTimer.current)
-    undoTimer.current = setTimeout(() => setLastDismissed(null), 6000)
+    undoTimer.current = setTimeout(() => setLastDismissed(null), 5000)
   }
   function undoDismiss() {
     if (!lastDismissed) return
@@ -414,7 +423,7 @@ export function TodoList({
     setLastDismissed(null)
     void setTodoDone(t.id, true)
     if (undoTimer.current) clearTimeout(undoTimer.current)
-    undoTimer.current = setTimeout(() => setLastDone(null), 6000)
+    undoTimer.current = setTimeout(() => setLastDone(null), 5000)
   }
   function undo() {
     if (!lastDone) return
