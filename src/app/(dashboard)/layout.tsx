@@ -51,6 +51,7 @@ export default async function DashboardLayout({
             </nav>
           </div>
           <div className="hidden items-center gap-3 text-sm text-slate-500 sm:flex">
+            <NavMore email={user.email ?? null} logout={logout} />
             <Link
               href="/activity"
               title={unread ? `${unread} new update${unread === 1 ? '' : 's'} from email` : 'Activity'}
@@ -66,7 +67,6 @@ export default async function DashboardLayout({
               )}
             </Link>
             <InboxHealthBadge health={health} />
-            <NavMore email={user.email ?? null} logout={logout} />
           </div>
         </div>
       </header>
