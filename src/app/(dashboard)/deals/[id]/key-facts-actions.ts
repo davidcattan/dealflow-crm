@@ -50,3 +50,24 @@ export async function removeKeyFact(dealId: string, label: string) {
   revalidatePath(`/deals/${dealId}`)
   return { ok: true }
 }
+
+// The email or call a key fact came from, to show right there.
+export async function getFactSource(dealId: string, kind: 'email' | 'call', id: string) {
+  const supabase = await createClient()
+  if (kind === 'email') {
+    const { data } = await supabase.from('inbox_messages').select('subject, from_email, received_at, summary, body_text, classification').eq('id', id).eq('deal_id', dealId).maybeSingle()
+    if (!data) return null
+    const { ownText } = await import('@/lib/outlook/own-text')
+    return {
+      title: `${data.classification === 'sent' ? 'Email we sent' : `Email from ${data.from_email}`} · ${String(data.received_at).slice(0, 10)} · ${data.subject ?? ''}`,
+      text: data.body_text ? ownText(String(data.body_text)).slice(0, 8000) : (data.summary ?? ''),
+    }
+  }
+  const { data } = await supabase.from('deal_calls').select('created_at, result, transcript').eq('id', id).eq('deal_id', dealId).maybeSingle()
+  if (!data) return null
+  const r = data.result as { title?: string; summary?: string; key_points?: string[] } | null
+  return {
+    title: `Call · ${String(data.created_at).slice(0, 10)}${r?.title ? ` · ${r.title}` : ''}`,
+    text: r ? [r.summary, ...(r.key_points ?? []).map((k) => `• ${k}`)].filter(Boolean).join('\n') : String(data.transcript ?? '').slice(0, 8000),
+  }
+}

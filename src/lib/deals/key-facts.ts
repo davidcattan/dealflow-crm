@@ -13,10 +13,13 @@ import type { DocumentRecord } from '@/lib/types'
 // Cheap model: this is finding and copying facts, not judgment. ~1–3¢.
 const MODEL = 'claude-haiku-5-5'
 
-export type KeyFact = { label: string; value: string; source: string; note?: string; pinned?: boolean }
+// Where a fact came from, so it can be opened: a document (and page), an
+// email, a call, the notes, or the underwriting.
+export type FactLink = { kind: 'doc' | 'email' | 'call' | 'notes' | 'snapshot'; id?: string; page?: number }
+export type KeyFact = { label: string; value: string; source: string; note?: string; pinned?: boolean; link?: FactLink | null }
 // v: the format version — older (wordier) key facts are re-read once.
 export type KeyFacts = { summary?: string; facts: KeyFact[]; missing: string[]; v?: number }
-export const KEY_FACTS_VERSION = 3
+export const KEY_FACTS_VERSION = 4
 
 const Schema = z.object({
   summary: z
@@ -33,6 +36,8 @@ const Schema = z.object({
           .describe('As short as possible — a number, a name or an address. "$4.6M", "$910K", "Huntington ($235K SBA)". No explanations, no parentheses beyond a few words.'),
         note: z.string().describe('Optional extra context in one short sentence (conflicting figures, breakdowns); "" if none.'),
         source: z.string().describe('2–4 words: "Tax returns", "Call 10/14", "Balance sheet 9/30", "Email from Mark".'),
+        ref: z.string().describe('The [tag] of the section it came from, e.g. "D3", "E2", "C1", "NOTES", "SNAPSHOT"; "" if it came from the deal basics.'),
+        page: z.number().describe('For a document, the page number it is on ([p.N]); 0 otherwise.'),
       })
     )
     .describe('The 8 facts that matter MOST for this kind of deal, most important first. Only facts actually found. Never more than 8.'),
@@ -49,8 +54,8 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
   const [{ data: deal }, { data: updates }, { data: calls }, { data: emails }, { data: docs }, { data: contacts }] = await Promise.all([
     supabase.from('deals').select('*').eq('id', dealId).single(),
     supabase.from('deal_updates').select('entry_date, note').eq('deal_id', dealId).order('created_at', { ascending: false }).limit(25),
-    supabase.from('deal_calls').select('created_at, transcript, result, call_with').eq('deal_id', dealId).order('created_at', { ascending: false }).limit(6),
-    supabase.from('inbox_messages').select('received_at, from_email, subject, summary, body_text, classification').eq('deal_id', dealId).order('received_at', { ascending: false }).limit(15),
+    supabase.from('deal_calls').select('id, created_at, transcript, result, call_with').eq('deal_id', dealId).order('created_at', { ascending: false }).limit(6),
+    supabase.from('inbox_messages').select('id, received_at, from_email, subject, summary, body_text, classification').eq('deal_id', dealId).order('received_at', { ascending: false }).limit(15),
     supabase.from('documents').select('*').eq('deal_id', dealId).order('uploaded_at', { ascending: false }),
     supabase.from('deal_contacts').select('name, title, email, phone').eq('deal_id', dealId),
   ])
@@ -66,22 +71,26 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
     deal.description ? `Description: ${deal.description}` : '',
     deal.notes ? `Deal notes: ${deal.notes}` : '',
   ]
-  if ((updates ?? []).length) parts.push(`\n--- Notes / updates (newest first) ---\n${(updates ?? []).map((u) => `[${u.entry_date ?? ''}] ${u.note}`).join('\n')}`)
-  for (const c of calls ?? []) {
+  if ((updates ?? []).length) parts.push(`\n--- [NOTES] Notes / updates (newest first) ---\n${(updates ?? []).map((u) => `[${u.entry_date ?? ''}] ${u.note}`).join('\n')}`)
+  const refs = new Map<string, FactLink>([['NOTES', { kind: 'notes' }], ['SNAPSHOT', { kind: 'snapshot' }]])
+  for (const [i, c] of (calls ?? []).entries()) {
+    refs.set(`C${i + 1}`, { kind: 'call', id: c.id as string })
     const r = c.result as { title?: string; summary?: string; key_points?: string[] } | null
     const body = r ? [r.title, r.summary, ...(r.key_points ?? [])].filter(Boolean).join('\n') : String(c.transcript ?? '').slice(0, 4000)
-    parts.push(`\n--- Call (${String(c.created_at).slice(0, 10)}${c.call_with ? `, with ${c.call_with}` : ''}) ---\n${body}`)
+    parts.push(`\n--- [C${i + 1}] Call (${String(c.created_at).slice(0, 10)}${c.call_with ? `, with ${c.call_with}` : ''}) ---\n${body}`)
   }
-  for (const e of emails ?? []) {
+  for (const [i, e] of (emails ?? []).entries()) {
+    refs.set(`E${i + 1}`, { kind: 'email', id: e.id as string })
     const text = e.body_text ? ownText(String(e.body_text)).slice(0, 2500) : (e.summary ?? '')
-    parts.push(`\n--- Email ${e.classification === 'sent' ? 'we sent' : `from ${e.from_email}`} (${String(e.received_at).slice(0, 10)}): ${e.subject ?? ''} ---\n${text}`)
+    parts.push(`\n--- [E${i + 1}] Email ${e.classification === 'sent' ? 'we sent' : `from ${e.from_email}`} (${String(e.received_at).slice(0, 10)}): ${e.subject ?? ''} ---\n${text}`)
   }
-  if (deal.snapshot) parts.push(`\n--- Underwriting snapshot ---\n${snapshotToText(deal.snapshot as Snapshot).slice(0, 12000)}`)
+  if (deal.snapshot) parts.push(`\n--- [SNAPSHOT] Underwriting snapshot ---\n${snapshotToText(deal.snapshot as Snapshot).slice(0, 12000)}`)
   if (deal.borrower_profile) parts.push(`\n--- Borrower profile (from tax returns) ---\n${JSON.stringify(deal.borrower_profile).slice(0, 6000)}`)
 
   // Documents: the first pages of each (where addresses, totals and names
   // usually are), up to a budget.
   let budget = 60_000
+  let docNo = 0
   for (const d of (docs ?? []) as DocumentRecord[]) {
     if (budget <= 0) break
     try {
@@ -89,7 +98,9 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
       if (!t) continue
       const text = t.pages.slice(0, 4).map((p, i) => `[p.${i + 1}] ${p}`).join('\n').slice(0, Math.min(budget, 9000))
       if (!text.replace(/\[p\.\d+\]\s*/g, '').trim()) continue
-      parts.push(`\n--- Document: ${d.file_name} ---\n${text}`)
+      docNo++
+      refs.set(`D${docNo}`, { kind: 'doc', id: d.id })
+      parts.push(`\n--- [D${docNo}] Document: ${d.file_name} ---\n${text}`)
       budget -= text.length
     } catch {
       // Unreadable file — skip it.
@@ -110,7 +121,11 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
   const old = (deal.key_facts as KeyFacts | null)?.facts ?? []
   const pinned = old.filter((f) => f.pinned)
   const pinnedLabels = new Set(pinned.map((f) => f.label.toLowerCase()))
-  const facts = [...pinned, ...res.parsed_output.facts.filter((f) => !pinnedLabels.has(f.label.toLowerCase()))]
+  const ai = res.parsed_output.facts.map(({ ref, page, ...f }) => {
+    const base = refs.get(ref.trim().replace(/^\[|\]$/g, '').toUpperCase())
+    return { ...f, link: base ? { ...base, ...(base.kind === 'doc' && page > 0 ? { page } : {}) } : null }
+  })
+  const facts = [...pinned, ...ai.filter((f) => !pinnedLabels.has(f.label.toLowerCase()))]
   const missing = res.parsed_output.missing.filter((m) => !pinnedLabels.has(m.toLowerCase()))
   const result = { summary: res.parsed_output.summary, facts: facts.slice(0, Math.max(8, pinned.length)), missing: missing.slice(0, 3), v: KEY_FACTS_VERSION }
   await supabase.from('deals').update({ key_facts: result, key_facts_at: new Date().toISOString() }).eq('id', dealId)

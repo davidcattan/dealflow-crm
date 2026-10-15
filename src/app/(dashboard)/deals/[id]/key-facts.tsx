@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState, useTransition } from 'react'
-import type { KeyFacts as Facts } from '@/lib/deals/key-facts'
-import { refreshKeyFacts, removeKeyFact, saveKeyFact } from './key-facts-actions'
+import type { KeyFacts as Facts, KeyFact } from '@/lib/deals/key-facts'
+import { useSetTab } from '@/components/phone-tabs'
+import { getFactSource, refreshKeyFacts, removeKeyFact, saveKeyFact } from './key-facts-actions'
 
 function FactEditor({
   initial,
@@ -32,7 +33,32 @@ function FactEditor({
 }
 
 // The few facts that matter for this deal, with where each came from.
-export function KeyFacts({ dealId, keyFacts, at, stale }: { dealId: string; keyFacts: Facts | null; at: string | null; stale: boolean }) {
+export function KeyFacts({
+  dealId,
+  keyFacts,
+  at,
+  stale,
+  docUrls,
+}: {
+  dealId: string
+  keyFacts: Facts | null
+  at: string | null
+  stale: boolean
+  docUrls: Record<string, string>
+}) {
+  const setTab = useSetTab()
+  const [source, setSource] = useState<{ title: string; text: string } | null>(null)
+
+  // Open where a fact came from: the document (at its page), the email or
+  // call (shown right here), or the tab with the notes / underwriting.
+  async function openSource(f: KeyFact) {
+    const l = f.link
+    if (!l) return
+    if (l.kind === 'doc' && l.id && docUrls[l.id]) window.open(`${docUrls[l.id]}${l.page ? `#page=${l.page}` : ''}`, '_blank', 'noopener')
+    else if ((l.kind === 'email' || l.kind === 'call') && l.id) setSource((await getFactSource(dealId, l.kind, l.id)) ?? { title: 'Not found', text: 'That email or call is no longer on this deal.' })
+    else if (l.kind === 'notes') setTab?.('activity')
+    else if (l.kind === 'snapshot') setTab?.('ai')
+  }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null) // a label, or '__new'
@@ -66,7 +92,7 @@ export function KeyFacts({ dealId, keyFacts, at, stale }: { dealId: string; keyF
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-slate-500">
-          {at ? `Updated ${new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · hover a fact for its source` : 'From the docs, emails, calls and notes'}
+          {at ? `Updated ${new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · click a fact to see where it came from` : 'From the docs, emails, calls and notes'}
         </p>
         <div className="flex items-center gap-3 text-xs">
           <button type="button" onClick={() => setEditing('__new')} className="text-slate-600 hover:underline">
@@ -108,12 +134,37 @@ export function KeyFacts({ dealId, keyFacts, at, stale }: { dealId: string; keyF
                     </button>
                   </span>
                 </dt>
-                <dd className="truncate font-medium text-slate-800">{f.value}</dd>
+                <dd className="truncate font-medium text-slate-800">
+                  {f.link ? (
+                    <button
+                      type="button"
+                      onClick={() => openSource(f)}
+                      title={`Open the source: ${f.source}`}
+                      className="max-w-full truncate text-left underline decoration-slate-300 underline-offset-2 hover:decoration-slate-700"
+                    >
+                      {f.value}
+                    </button>
+                  ) : (
+                    f.value
+                  )}
+                </dd>
               </div>
             )
           )}
           {editing === '__new' && <FactEditor saving={pending} onCancel={() => setEditing(null)} onSave={(l, v) => save(null, l, v)} />}
         </dl>
+      )}
+
+      {source && (
+        <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-medium text-slate-600">{source.title}</p>
+            <button type="button" onClick={() => setSource(null)} className="text-xs text-slate-500 hover:underline">
+              Close
+            </button>
+          </div>
+          <p className="mt-1.5 max-h-72 overflow-y-auto whitespace-pre-wrap text-xs text-slate-700">{source.text || '(no text saved)'}</p>
+        </div>
       )}
 
       {(keyFacts?.missing ?? []).length > 0 && (

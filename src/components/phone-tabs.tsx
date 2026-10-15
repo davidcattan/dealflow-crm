@@ -9,9 +9,15 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 type Tab = { key: string; label: string; count?: number }
 
 const Ctx = createContext<string | null>(null)
+const PickCtx = createContext<((key: string) => void) | null>(null)
 
 export function usePhoneTab() {
   return useContext(Ctx)
+}
+
+// Switch tabs from inside the page (e.g. a key fact opening its source).
+export function useSetTab() {
+  return useContext(PickCtx)
 }
 
 export function PhoneTabs({ tabs, children }: { tabs: Tab[]; children: ReactNode }) {
@@ -24,6 +30,7 @@ export function PhoneTabs({ tabs, children }: { tabs: Tab[]; children: ReactNode
 
   return (
     <Ctx.Provider value={active}>
+      <PickCtx.Provider value={pick}>
       <div className="sticky top-0 z-30 -mx-4 border-b border-slate-200 bg-slate-50/95 px-4 py-2 backdrop-blur sm:mx-0 sm:px-0 sm:py-0">
         <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none] sm:gap-6 [&::-webkit-scrollbar]:hidden">
           {tabs.map((t) => (
@@ -44,6 +51,7 @@ export function PhoneTabs({ tabs, children }: { tabs: Tab[]; children: ReactNode
         </div>
       </div>
       {children}
+      </PickCtx.Provider>
     </Ctx.Provider>
   )
 }

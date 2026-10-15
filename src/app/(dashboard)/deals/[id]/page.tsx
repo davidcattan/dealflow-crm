@@ -368,7 +368,7 @@ export default async function DealDetailPage({
   const keyFactsStale =
     Boolean(keyFactsAt && newestActivity && newestActivity > keyFactsAt) ||
     // Older, wordier format: read once more in the short format.
-    Boolean(keyFactsAt && ((deal as { key_facts?: { v?: number } | null }).key_facts?.v ?? 1) < 3)
+    Boolean(keyFactsAt && ((deal as { key_facts?: { v?: number } | null }).key_facts?.v ?? 1) < 4)
 
   const isPast = ['dead', 'old', 'closed'].includes(deal.status)
   const dealActions = (
@@ -484,6 +484,7 @@ export default async function DealDetailPage({
           keyFacts={((deal as { key_facts?: unknown }).key_facts ?? null) as Parameters<typeof KeyFacts>[0]['keyFacts']}
           at={(deal as { key_facts_at?: string | null }).key_facts_at ?? null}
           stale={keyFactsStale}
+          docUrls={Object.fromEntries(docsWithUrls.filter((d) => d.url).map((d) => [d.id, d.url as string]))}
         />
       </CollapsibleSection>
 
