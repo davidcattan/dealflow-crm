@@ -9,6 +9,7 @@ import { snapshotToText } from '@/lib/snapshot/text'
 import type { Snapshot } from '@/lib/snapshot/schema'
 import { ownText } from '@/lib/outlook/own-text'
 import type { DocumentRecord } from '@/lib/types'
+import { LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 
 // Cheap model: this is finding and copying facts, not judgment. ~1–3¢.
 const MODEL = 'claude-haiku-5-5'
@@ -18,8 +19,9 @@ const MODEL = 'claude-haiku-5-5'
 export type FactLink = { kind: 'doc' | 'email' | 'call' | 'notes' | 'snapshot'; id?: string; page?: number }
 export type KeyFact = { label: string; value: string; source: string; note?: string; pinned?: boolean; link?: FactLink | null }
 // v: the format version — older (wordier) key facts are re-read once.
-export type KeyFacts = { summary?: string; facts: KeyFact[]; missing: string[]; v?: number }
-export const KEY_FACTS_VERSION = 4
+export type LoanRecommendation = { loan_type: string; why: string }
+export type KeyFacts = { summary?: string; recommendation?: LoanRecommendation | null; facts: KeyFact[]; missing: string[]; v?: number }
+export const KEY_FACTS_VERSION = 5
 
 const Schema = z.object({
   summary: z
@@ -27,6 +29,14 @@ const Schema = z.object({
     .describe(
       'What we know, in ONE sentence of at most 30 words — what the business/property is, the ask, and where it stands. e.g. "San Jose contract electronics maker, $4.6M revenue, wants a ~$400K ABL line to replace Huntington; financials in, waiting on credit and inventory list."'
     ),
+  recommendation: z
+    .object({
+      loan_type: z.enum(LOAN_TYPE_CATEGORIES).describe('The loan product that best fits what this borrower has and needs.'),
+      why: z
+        .string()
+        .describe('At most 20 words, grounded in the facts: what collateral/cash flow supports it and why not the obvious alternative. e.g. "AR $910K + inventory $558K support a ~$400K line; EBITDA too thin for a cash-flow term loan."'),
+    })
+    .describe("A broker's recommendation of the best-fit loan type for this deal, from the facts found."),
   facts: z
     .array(
       z.object({
@@ -127,7 +137,7 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
   })
   const facts = [...pinned, ...ai.filter((f) => !pinnedLabels.has(f.label.toLowerCase()))]
   const missing = res.parsed_output.missing.filter((m) => !pinnedLabels.has(m.toLowerCase()))
-  const result = { summary: res.parsed_output.summary, facts: facts.slice(0, Math.max(8, pinned.length)), missing: missing.slice(0, 3), v: KEY_FACTS_VERSION }
+  const result = { summary: res.parsed_output.summary, recommendation: res.parsed_output.recommendation, facts: facts.slice(0, Math.max(8, pinned.length)), missing: missing.slice(0, 3), v: KEY_FACTS_VERSION }
   await supabase.from('deals').update({ key_facts: result, key_facts_at: new Date().toISOString() }).eq('id', dealId)
   return result
 }

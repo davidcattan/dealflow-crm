@@ -104,7 +104,15 @@ export function KeyFacts({
         </div>
       </div>
       {error && <p className="mb-2 text-xs text-red-600">{error}</p>}
-      {keyFacts?.summary && <p className="mb-3 text-[15px] leading-snug text-slate-900">{keyFacts.summary}</p>}
+      {keyFacts?.summary && <p className="mb-2 text-[15px] leading-snug text-slate-900">{keyFacts.summary}</p>}
+      {keyFacts?.recommendation && (
+        <p className="mb-3 text-sm text-slate-700">
+          <span className="mr-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
+            Recommended: {keyFacts.recommendation.loan_type}
+          </span>
+          <span className="text-slate-500">{keyFacts.recommendation.why}</span>
+        </p>
+      )}
 
       {facts.length === 0 && editing !== '__new' ? (
         <p className="text-sm text-slate-400">
