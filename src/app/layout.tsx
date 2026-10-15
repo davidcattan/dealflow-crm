@@ -19,6 +19,12 @@ export const metadata: Metadata = {
   // Solid (no transparency) icons in two sizes: iOS frames icons in white
   // when they have an alpha channel or are too small for the device.
   icons: {
+    // Browser tab icon. Listed here because declaring the Apple icons below
+    // switches off the automatic app/icon.png tag.
+    icon: [
+      { url: "/icon.png", sizes: "64x64", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
     apple: [
       { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
       { url: "/apple-touch-icon-1024.png", sizes: "1024x1024", type: "image/png" },
