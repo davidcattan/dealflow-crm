@@ -45,7 +45,7 @@ export function ActivityTimeline({
 }) {
   useCallPolling(calls)
   const [filter, setFilter] = useState<(typeof FILTERS)[number]['key']>('all')
-  const [adding, setAdding] = useState<'note' | 'call' | null>(null)
+  const [adding, setAdding] = useState<'note' | null>(null)
   const [showAll, setShowAll] = useState(false)
 
   const items: Item[] = [
@@ -59,6 +59,10 @@ export function ActivityTimeline({
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      {/* The call recorder, always ready (the red record button). */}
+      <div className="mb-4">
+        <CallRecorder target={target} whoOptions={whoOptions} hint="Put the call (cell, Teams or Zoom) on speaker, then hit record." />
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -66,13 +70,6 @@ export function ActivityTimeline({
           className={`rounded-md px-3 py-1.5 text-sm font-medium ${adding === 'note' ? 'bg-slate-900 text-white' : 'border border-slate-300 text-slate-700 hover:bg-slate-50'}`}
         >
           + Add note
-        </button>
-        <button
-          type="button"
-          onClick={() => setAdding(adding === 'call' ? null : 'call')}
-          className={`rounded-md px-3 py-1.5 text-sm font-medium ${adding === 'call' ? 'bg-slate-900 text-white' : 'border border-slate-300 text-slate-700 hover:bg-slate-50'}`}
-        >
-          🎙 Record a call
         </button>
         <div className="ml-auto flex gap-1 text-xs">
           {FILTERS.filter((f) => f.key === 'all' || counts[f.key]).map((f) => (
@@ -115,14 +112,9 @@ export function ActivityTimeline({
           </button>
         </form>
       )}
-      {adding === 'call' && (
-        <div className="mt-3">
-          <CallRecorder target={target} whoOptions={whoOptions} hint="Put the call (cell, Teams or Zoom) on speaker, then hit record." />
-        </div>
-      )}
 
       {filtered.length === 0 ? (
-        <p className="py-6 text-center text-sm text-slate-400">Nothing yet — add a note or record a call.</p>
+        <p className="py-6 text-center text-sm text-slate-400">Nothing yet — record a call above or add a note.</p>
       ) : (
         <ul className="mt-4 space-y-3">
           {shown.map((item) =>
