@@ -17,21 +17,32 @@ function ImportList() {
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="text-sm font-medium text-slate-700 hover:underline">
+      <button type="button" onClick={() => {
+          setOpen((v) => !v)
+          setResult(null)
+        }} className="text-sm font-medium text-slate-700 hover:underline">
         {open ? 'Close import' : '+ Import a list'}
       </button>
+      {result && <p className={`mt-1 text-xs ${result.startsWith('Imported') ? 'text-emerald-700' : 'text-red-600'}`}>{result}</p>}
       {open && (
         <form
           className="mt-2 flex flex-wrap items-end gap-2 text-sm"
           onSubmit={(e) => {
             e.preventDefault()
-            const file = (e.currentTarget.elements.namedItem('file') as HTMLInputElement).files?.[0]
+            const form = e.currentTarget
+            const file = (form.elements.namedItem('file') as HTMLInputElement).files?.[0]
             if (!file) return setResult('Pick a CSV file first.')
             start(async () => {
               const res = await importProspects(await file.text(), source)
               if ('error' in res && res.error) setResult(res.error)
               else if ('added' in res) {
-                setResult(`Added ${res.added} new ${res.added === 1 ? 'person' : 'people'}${res.updated ? `, refreshed ${res.updated} already here` : ''}.`)
+                setResult(
+                  `Imported "${source.trim() || 'list'}": added ${res.added} new ${res.added === 1 ? 'person' : 'people'}${res.updated ? `, updated ${res.updated} already here` : ''}.`
+                )
+                // Done: clear the form and fold it away.
+                form.reset()
+                setSource('')
+                setOpen(false)
                 router.refresh()
               }
             })
@@ -53,7 +64,6 @@ function ImportList() {
           <button disabled={pending} className="rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-800 disabled:opacity-50">
             {pending ? 'Importing…' : 'Import'}
           </button>
-          {result && <p className="w-full text-xs text-slate-600">{result}</p>}
           <p className="w-full text-xs text-slate-400">
             Nobody is added twice (matched by email). People already here keep their status, except &quot;Not contacted&quot; ones the file
             marks as emailed.
