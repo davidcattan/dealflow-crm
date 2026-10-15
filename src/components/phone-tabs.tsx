@@ -1,11 +1,10 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 
 // A long page (like a deal) is split into tabs instead of one endless
 // scroll — on phones and computers; each CollapsibleSection says which tab
-// it belongs to.
+// it belongs to. Always opens on the first tab (a deal's Overview).
 
 type Tab = { key: string; label: string; count?: number }
 
@@ -16,28 +15,10 @@ export function usePhoneTab() {
 }
 
 export function PhoneTabs({ tabs, children }: { tabs: Tab[]; children: ReactNode }) {
-  const pathname = usePathname()
   const [active, setActive] = useState(tabs[0]?.key ?? '')
-
-  // Come back to the same tab when returning to this page.
-  useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem(`tab:${pathname}`)
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the tab once on load
-      if (saved && tabs.some((t) => t.key === saved)) setActive(saved)
-    } catch {
-      // Storage blocked — start on the first tab.
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per page
-  }, [pathname])
 
   function pick(key: string) {
     setActive(key)
-    try {
-      sessionStorage.setItem(`tab:${pathname}`, key)
-    } catch {
-      // Fine without it.
-    }
     window.scrollTo({ top: 0 })
   }
 

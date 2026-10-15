@@ -354,6 +354,19 @@ export default async function DealDetailPage({
       .sort((a, b) => (a.at < b.at ? 1 : -1))
       .map((x) => ({ ...x, text: x.text.length > 220 ? `${x.text.slice(0, 220)}…` : x.text }))[0] ?? null
 
+  // Key facts need a fresh read when anything arrived after they were made.
+  const keyFactsAt = (deal as { key_facts_at?: string | null }).key_facts_at ?? null
+  const newestActivity = [
+    ...docList.map((d) => d.uploaded_at),
+    ...((updates ?? []) as DealUpdate[]).map((u) => u.created_at),
+    ...calls.filter((c) => c.status === 'done').map((c) => c.created_at),
+    ...dealEmails.map((e) => e.received_at ?? ''),
+  ]
+    .filter(Boolean)
+    .sort()
+    .pop()
+  const keyFactsStale = Boolean(keyFactsAt && newestActivity && newestActivity > keyFactsAt)
+
   const isPast = ['dead', 'old', 'closed'].includes(deal.status)
   const dealActions = (
     <>
@@ -467,6 +480,7 @@ export default async function DealDetailPage({
           dealId={deal.id}
           keyFacts={((deal as { key_facts?: unknown }).key_facts ?? null) as Parameters<typeof KeyFacts>[0]['keyFacts']}
           at={(deal as { key_facts_at?: string | null }).key_facts_at ?? null}
+          stale={keyFactsStale}
         />
       </CollapsibleSection>
 

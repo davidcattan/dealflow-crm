@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import type { KeyFacts as Facts } from '@/lib/deals/key-facts'
 import { refreshKeyFacts, removeKeyFact, saveKeyFact } from './key-facts-actions'
 
@@ -32,7 +32,7 @@ function FactEditor({
 }
 
 // The few facts that matter for this deal, with where each came from.
-export function KeyFacts({ dealId, keyFacts, at }: { dealId: string; keyFacts: Facts | null; at: string | null }) {
+export function KeyFacts({ dealId, keyFacts, at, stale }: { dealId: string; keyFacts: Facts | null; at: string | null; stale: boolean }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null) // a label, or '__new'
@@ -46,6 +46,15 @@ export function KeyFacts({ dealId, keyFacts, at }: { dealId: string; keyFacts: F
     if ('error' in res && res.error) setError(res.error)
     setBusy(false)
   }
+  // Opening a deal with no key facts yet, or with something new since they
+  // were read (a document, email, call or note): read it again by itself.
+  const ran = useRef(false)
+  useEffect(() => {
+    if (ran.current || !(stale || !keyFacts)) return
+    ran.current = true
+    void refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per deal visit
+  }, [dealId])
   const save = (oldLabel: string | null, label: string, value: string) =>
     start(async () => {
       const res = await saveKeyFact(dealId, oldLabel, label, value)
@@ -64,7 +73,7 @@ export function KeyFacts({ dealId, keyFacts, at }: { dealId: string; keyFacts: F
             + Add fact
           </button>
           <button type="button" onClick={refresh} disabled={busy} title="The AI reads the deal again — a few cents" className="text-slate-600 hover:underline disabled:opacity-50">
-            {busy ? 'Reading the deal…' : facts.length ? '↻ Refresh' : '✨ Find key facts (a few cents)'}
+            {busy ? 'Reading the deal…' : '↻ Refresh'}
           </button>
         </div>
       </div>
@@ -72,8 +81,9 @@ export function KeyFacts({ dealId, keyFacts, at }: { dealId: string; keyFacts: F
 
       {facts.length === 0 && editing !== '__new' ? (
         <p className="text-sm text-slate-400">
-          Nothing yet. Click <span className="font-medium text-slate-600">Find key facts</span> — it pulls things like the property address, value and liens (or revenue, AR and
-          current lender) from everything on this deal. New documents update it automatically.
+          {busy
+            ? 'Reading the documents, emails, calls and notes for the key facts…'
+            : 'No key facts found yet — they fill in by themselves as documents, emails and calls come in. You can also + Add fact.'}
         </p>
       ) : (
         <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
