@@ -78,6 +78,7 @@ export function KeyFacts({ dealId, keyFacts, at, stale }: { dealId: string; keyF
         </div>
       </div>
       {error && <p className="mb-2 text-xs text-red-600">{error}</p>}
+      {keyFacts?.summary && <p className="mb-3 text-[15px] leading-snug text-slate-900">{keyFacts.summary}</p>}
 
       {facts.length === 0 && editing !== '__new' ? (
         <p className="text-sm text-slate-400">

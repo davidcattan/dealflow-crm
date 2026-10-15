@@ -368,7 +368,7 @@ export default async function DealDetailPage({
   const keyFactsStale =
     Boolean(keyFactsAt && newestActivity && newestActivity > keyFactsAt) ||
     // Older, wordier format: read once more in the short format.
-    Boolean(keyFactsAt && ((deal as { key_facts?: { v?: number } | null }).key_facts?.v ?? 1) < 2)
+    Boolean(keyFactsAt && ((deal as { key_facts?: { v?: number } | null }).key_facts?.v ?? 1) < 3)
 
   const isPast = ['dead', 'old', 'closed'].includes(deal.status)
   const dealActions = (

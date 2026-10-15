@@ -15,10 +15,15 @@ const MODEL = 'claude-haiku-5-5'
 
 export type KeyFact = { label: string; value: string; source: string; note?: string; pinned?: boolean }
 // v: the format version — older (wordier) key facts are re-read once.
-export type KeyFacts = { facts: KeyFact[]; missing: string[]; v?: number }
-export const KEY_FACTS_VERSION = 2
+export type KeyFacts = { summary?: string; facts: KeyFact[]; missing: string[]; v?: number }
+export const KEY_FACTS_VERSION = 3
 
 const Schema = z.object({
+  summary: z
+    .string()
+    .describe(
+      'What we know, in ONE sentence of at most 30 words — what the business/property is, the ask, and where it stands. e.g. "San Jose contract electronics maker, $4.6M revenue, wants a ~$400K ABL line to replace Huntington; financials in, waiting on credit and inventory list."'
+    ),
   facts: z
     .array(
       z.object({
@@ -107,7 +112,7 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
   const pinnedLabels = new Set(pinned.map((f) => f.label.toLowerCase()))
   const facts = [...pinned, ...res.parsed_output.facts.filter((f) => !pinnedLabels.has(f.label.toLowerCase()))]
   const missing = res.parsed_output.missing.filter((m) => !pinnedLabels.has(m.toLowerCase()))
-  const result = { facts: facts.slice(0, Math.max(8, pinned.length)), missing: missing.slice(0, 3), v: KEY_FACTS_VERSION }
+  const result = { summary: res.parsed_output.summary, facts: facts.slice(0, Math.max(8, pinned.length)), missing: missing.slice(0, 3), v: KEY_FACTS_VERSION }
   await supabase.from('deals').update({ key_facts: result, key_facts_at: new Date().toISOString() }).eq('id', dealId)
   return result
 }
