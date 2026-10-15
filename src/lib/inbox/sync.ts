@@ -21,6 +21,8 @@ import { addresses } from '@/lib/deals/duplicates'
 import { ownText } from '@/lib/outlook/own-text'
 import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
 import { isNotBorrowerEmail, isTeamName, referralOnlyPartnerFor, referralPartnerFor } from './partners'
+import { companyDomain, type Prospect } from '@/lib/prospects/types'
+import { readProspectReply } from '@/lib/prospects/reply'
 import type { Snapshot } from '@/lib/snapshot/schema'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
 
@@ -183,6 +185,9 @@ type Context = {
   threadByConversation: Map<string, { dealId: string; lenderId: string }>
   dealByConversation: Map<string, string>
   dealByContactEmail: Map<string, string>
+  // Outreach prospects (empty until migration 043 is run).
+  prospectByEmail: Map<string, Prospect>
+  prospectsByDomain: Map<string, Prospect[]>
 }
 
 function isBillingError(err: unknown) {
@@ -226,6 +231,13 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
         .not('outlook_conversation_id', 'is', null),
     ])
   const threads = [...(matchThreads ?? []), ...(submissionThreads ?? [])]
+  const { data: prospectRows } = await supabase.from('prospects').select('*')
+  const prospectByEmail = new Map<string, Prospect>()
+  const prospectsByDomain = new Map<string, Prospect[]>()
+  for (const p of (prospectRows ?? []) as Prospect[]) {
+    prospectByEmail.set(p.email.toLowerCase(), p)
+    if (p.domain) prospectsByDomain.set(p.domain, [...(prospectsByDomain.get(p.domain) ?? []), p])
+  }
   // The other people on each deal (e.g. a treasurer next to the CFO) —
   // empty until migration 042 is run.
   const { data: dealContacts } = await supabase.from('deal_contacts').select('deal_id, email').not('email', 'is', null)
@@ -270,6 +282,8 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
       threads.map((t) => [t.outlook_conversation_id as string, { dealId: t.deal_id, lenderId: t.lender_id }])
     ),
     dealByConversation: new Map((filedThreads ?? []).map((t) => [t.conversation_id as string, t.deal_id as string])),
+    prospectByEmail,
+    prospectsByDomain,
     dealByContactEmail: new Map([
       ...(deals ?? [])
         .filter((d) => !INACTIVE.includes(d.status))
@@ -301,6 +315,13 @@ async function processMessage(
   try {
     const internalDomain = firmDomain(message.from, ctx.accountEmail)
     const thread = ctx.threadByConversation.get(message.conversationId) ?? null
+    // A reply from someone we cold-emailed (or a colleague at their company)
+    // gets sorted by the cheap model instead of the deal classifier — unless
+    // it already turned into a deal, which the normal flow handles.
+    const prospect = !internalDomain && !thread ? prospectFor(ctx, message.from) : null
+    if (prospect && !(prospect.deal_id && ctx.dealById.has(prospect.deal_id))) {
+      return await handleProspectReply(supabase, ctx, message, prospect)
+    }
     let senderLenderId = ctx.lenderByEmail.get(message.from) ?? null
     if (!senderLenderId && !internalDomain && !referralOnlyPartnerFor(message.from)) {
       // New person at a known lender: recognize the lender and save them
@@ -617,6 +638,17 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
   const external = m.to.filter((r) => !(firm && r.email.endsWith(`@${firm}`)) && r.email !== ctx.accountEmail)
   if (external.length === 0) return // teammates only
 
+  // Cold outreach: mark the prospects as emailed (no deal or lender involved).
+  for (const r of external) {
+    const p = ctx.prospectByEmail.get(r.email.toLowerCase())
+    if (!p) continue
+    const update: Record<string, unknown> = { last_emailed_at: m.sentDateTime, updated_at: new Date().toISOString() }
+    if (p.status === 'new') update.status = 'emailed'
+    await supabase.from('prospects').update(update).eq('id', p.id)
+    p.last_emailed_at = m.sentDateTime
+    if (p.status === 'new') p.status = 'emailed'
+  }
+
   // Lenders among the recipients (saving new people at known lenders).
   const lenderIds: string[] = []
   for (const r of external) {
@@ -817,6 +849,121 @@ async function saveAttachments(
   // only fills blanks and placeholder names).
   if (newIds.length) await autofillDeal(supabase, dealId, newIds).catch((err) => console.error('Autofill failed', err))
   return saved
+}
+
+// The prospect behind a sender: their own email, or (for a colleague who
+// answers for them) the one prospect at that company domain we emailed.
+function prospectFor(ctx: Context, email: string): Prospect | null {
+  const exact = ctx.prospectByEmail.get(email.toLowerCase())
+  if (exact) return exact
+  const domain = companyDomain(email)
+  if (!domain) return null
+  const atCompany = (ctx.prospectsByDomain.get(domain) ?? []).filter((p) => p.status !== 'new')
+  return atCompany[0] ?? null
+}
+
+const PROSPECT_LABELS: Record<string, string> = {
+  not_interested: 'not interested',
+  wrong_person: 'says someone else handles it',
+  unclear: 'replied',
+}
+
+async function handleProspectReply(
+  supabase: SupabaseClient,
+  ctx: Context,
+  message: InboxMessage,
+  prospect: Prospect
+): Promise<{ counter: Counter; record: Record<string, unknown> }> {
+  const reply = await readProspectReply(supabase, prospect, message.subject, ownText(message.bodyText))
+  const company = prospect.company_display || prospect.company
+  const sender = message.fromName || message.from
+  const stamp = { replied_at: message.receivedDateTime, reply_summary: reply.summary, updated_at: new Date().toISOString() }
+
+  if (reply.outcome === 'auto_reply') {
+    return {
+      counter: 'other',
+      record: { classification: 'other', summary: reply.summary, action_taken: `Auto-reply from prospect ${company} — ignored` },
+    }
+  }
+
+  if (reply.outcome === 'interested') {
+    const facility = [prospect.amount, prospect.lender ? `with ${prospect.lender}` : null, prospect.deal_year ? `(${prospect.deal_year})` : null]
+      .filter(Boolean)
+      .join(' ')
+    const person = [prospect.first_name, prospect.last_name].filter(Boolean).join(' ')
+    const fromProspect = message.from.toLowerCase() === prospect.email.toLowerCase()
+    const { data: created, error } = await supabase
+      .from('deals')
+      .insert({
+        company_name: company,
+        contact_name: fromProspect ? person || sender : sender,
+        contact_email: message.from,
+        contact_phone: fromProspect ? prospect.phone : null,
+        website: prospect.website,
+        loan_type: 'ABL (AR & Inventory)',
+        deal_type: facility ? `Refinance of existing ${facility} facility` : 'Refinance of existing facility',
+        description: `${company} replied to JED's outreach: ${reply.summary}${facility ? `\n\nExisting facility (from the ABL Advisor deal tables): ${facility}.` : ''}`,
+        notes: [
+          `Source: outreach (${prospect.source ?? 'ABL Advisor'}).`,
+          person ? `Contacted: ${person}${prospect.title ? `, ${prospect.title}` : ''} (${prospect.email}).` : null,
+        ]
+          .filter(Boolean)
+          .join(' '),
+        status: 'new',
+        source_message_id: message.id,
+      })
+      .select('id')
+      .single()
+    if (error || !created) throw new Error(`Could not create deal: ${error?.message ?? 'unknown error'}`)
+    const dealId = created.id as string
+    await supabase.from('prospects').update({ ...stamp, status: 'deal', deal_id: dealId }).eq('id', prospect.id)
+    prospect.status = 'deal'
+    prospect.deal_id = dealId
+    await supabase.from('deal_updates').insert({ deal_id: dealId, entry_date: today(), note: `Outreach reply from ${sender}: ${reply.summary}`, source: 'email' })
+    const newDeal = { id: dealId, company_name: company, contact_name: sender, status: 'new', ref: `D${ctx.deals.length + 1}` }
+    ctx.deals.push(newDeal)
+    ctx.dealByRef.set(newDeal.ref, newDeal)
+    ctx.dealById.set(dealId, newDeal)
+    ctx.dealByContactEmail.set(message.from.toLowerCase(), dealId)
+    const actions = [`Created deal "${company}" from an outreach reply`]
+    if (message.hasAttachments) {
+      const saved = await saveAttachments(supabase, dealId, await getMessageAttachments(ctx.accessToken, message.id))
+      if (saved) actions.push(`saved ${saved} attachment${saved === 1 ? '' : 's'}`)
+    }
+    return {
+      counter: 'newDeals',
+      record: { classification: 'new_deal', deal_id: dealId, body_text: message.bodyText, summary: reply.summary, action_taken: actions.join(', ') },
+    }
+  }
+
+  const status = reply.do_not_contact ? 'do_not_contact' : reply.outcome === 'not_interested' ? 'not_interested' : reply.outcome === 'wrong_person' ? 'wrong_person' : 'replied'
+  const referral = [reply.referral_name, reply.referral_email].filter(Boolean).join(', ')
+  await supabase
+    .from('prospects')
+    .update({
+      ...stamp,
+      status,
+      ...(referral ? { notes: [prospect.notes, `[${today()}] Pointed us to ${referral}.`].filter(Boolean).join('\n') } : {}),
+    })
+    .eq('id', prospect.id)
+  prospect.status = status
+  // Worth a look: they wrote something real, or named the right person.
+  if (status === 'replied' || status === 'wrong_person') {
+    await notify(supabase, {
+      kind: 'needs_review',
+      title: `Prospect ${PROSPECT_LABELS[reply.outcome] ?? 'replied'}: ${company}`,
+      body: `${sender}: ${reply.summary}${referral ? ` (Pointed to ${referral}.)` : ''} See the Prospects page.`,
+    })
+  }
+  return {
+    counter: 'other',
+    record: {
+      classification: 'other',
+      body_text: message.bodyText,
+      summary: reply.summary,
+      action_taken: `Prospect reply (${PROSPECT_LABELS[reply.outcome] ?? reply.outcome}) — ${company} marked ${status.replace(/_/g, ' ')}`,
+    },
+  }
 }
 
 async function act({

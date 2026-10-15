@@ -105,6 +105,7 @@ export function MobileNav({ unread, health, email }: { unread: number; health: I
           >
             <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-slate-200" />
             <SheetLink href="/lenders" onClick={() => setMoreOpen(false)}>Lenders</SheetLink>
+            <SheetLink href="/prospects" onClick={() => setMoreOpen(false)}>Prospects</SheetLink>
             <SheetLink href="/" onClick={() => setMoreOpen(false)}>Dashboard</SheetLink>
             <SheetLink href="/inbox" onClick={() => setMoreOpen(false)}>
               Inbox
