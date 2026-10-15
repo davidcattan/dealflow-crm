@@ -166,3 +166,43 @@ export async function setLenderNda(lenderId: string, signedOn: string | null) {
   revalidatePath(`/lenders/${lenderId}`)
   return { ok: true }
 }
+
+export type ContactEmail = {
+  id: string
+  at: string
+  sent: boolean
+  subject: string
+  summary: string | null
+  body: string
+  dealId: string | null
+  dealName: string | null
+}
+
+// Every email the CRM has with one person — what they sent (inbox) and what
+// the team sent them (Sent folders) — newest first.
+export async function getContactEmails(email: string): Promise<ContactEmail[]> {
+  const addr = email.trim().toLowerCase()
+  if (!addr.includes('@')) return []
+  const supabase = await createClient()
+  const like = addr.replace(/[%_,()]/g, '')
+  const { data } = await supabase
+    .from('inbox_messages')
+    .select('id, received_at, classification, from_email, to_emails, subject, summary, body_text, deal_id, deals(company_name)')
+    .or(`from_email.ilike.${like},to_emails.ilike.%${like}%`)
+    .order('received_at', { ascending: false })
+    .limit(60)
+  const { ownText } = await import('@/lib/outlook/own-text')
+  return (data ?? []).map((r) => {
+    const deal = (Array.isArray(r.deals) ? r.deals[0] : r.deals) as { company_name?: string } | null
+    return {
+      id: r.id as string,
+      at: r.received_at as string,
+      sent: r.classification === 'sent',
+      subject: (r.subject as string | null) ?? '(no subject)',
+      summary: (r.summary as string | null) ?? null,
+      body: r.body_text ? ownText(r.body_text as string).slice(0, 6000) : '',
+      dealId: (r.deal_id as string | null) ?? null,
+      dealName: deal?.company_name ?? null,
+    }
+  })
+}
