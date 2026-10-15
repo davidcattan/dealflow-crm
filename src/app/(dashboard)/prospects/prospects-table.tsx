@@ -10,6 +10,7 @@ import { readXlsx } from '@/lib/prospects/xlsx'
 import { FIELD_LABELS, mapColumns, toPeople, type FieldKey, type ImportPerson } from '@/lib/prospects/columns'
 import { prospectEmail } from '@/lib/prospects/email'
 import { readJsonResponse } from '@/lib/fetch-json'
+import { FindProspects } from './find-prospects'
 
 type Parsed = {
   fileName: string
@@ -342,6 +343,7 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
 
   return (
     <div className="space-y-3">
+      <FindProspects />
       <ImportList />
       {(picked.size > 0 || drafts.message) && (
         <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 shadow-sm">

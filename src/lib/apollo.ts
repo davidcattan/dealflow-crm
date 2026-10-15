@@ -106,3 +106,45 @@ export async function companyInfo(domain: string): Promise<ApolloCompany> {
     industry: (o.industry as string | null) ?? null,
   }
 }
+
+// ---- Prospecting (companies that might need financing) ----
+
+export type ApolloOrg = { id: string; name: string; domain: string | null; city: string | null; state: string | null; employees: number | null }
+
+// Companies by name (for when you only have a name, not a website).
+export async function findCompanies(name: string): Promise<ApolloOrg[]> {
+  const body = await apollo('/mixed_companies/search', {
+    method: 'POST',
+    body: JSON.stringify({ q_organization_name: name, per_page: 5 }),
+  })
+  const orgs = ((body.organizations ?? body.accounts) as Record<string, unknown>[] | undefined) ?? []
+  return orgs.map((o) => ({
+    id: String(o.id),
+    name: String(o.name ?? ''),
+    domain: (o.primary_domain as string | null) ?? cleanDomain(o.website_url as string | null),
+    city: (o.city as string | null) ?? null,
+    state: (o.state as string | null) ?? null,
+    employees: (o.estimated_num_employees as number | null) ?? null,
+  }))
+}
+
+export type ApolloCandidate = ApolloPerson & { company: string | null }
+
+// Free: people at a company with the given titles (default: finance and
+// owners). Last names come back partly hidden until revealed.
+export async function searchPeopleWithTitles(domain: string, titles: string[]): Promise<ApolloCandidate[]> {
+  const params = new URLSearchParams()
+  params.append('q_organization_domains_list[]', domain)
+  for (const t of titles) params.append('person_titles[]', t)
+  params.set('per_page', '25')
+  const body = await apollo(`/mixed_people/api_search?${params.toString()}`, { method: 'POST' })
+  const people = (body.people as Record<string, unknown>[] | undefined) ?? []
+  return people.map((p) => ({
+    id: String(p.id),
+    name: [p.first_name, p.last_name_obfuscated ?? p.last_name].filter(Boolean).join(' '),
+    title: (p.title as string | null) ?? null,
+    hasEmail: Boolean(p.has_email),
+    city: (p.city as string | null) ?? null,
+    company: ((p.organization as { name?: string } | undefined)?.name as string | undefined) ?? null,
+  }))
+}
