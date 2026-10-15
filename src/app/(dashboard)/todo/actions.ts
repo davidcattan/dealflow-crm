@@ -47,3 +47,15 @@ export async function setDealOwner(dealId: string, owner: string | null) {
   revalidatePath(`/deals/${dealId}`)
   return { ok: true }
 }
+
+// Hide a deal's current next step until something new happens on the deal.
+export async function dismissStep(dealId: string, text: string | null) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('deals')
+    .update({ step_dismissed: text, step_dismissed_at: text ? new Date().toISOString() : null })
+    .eq('id', dealId)
+  if (error) return { error: error.message.includes('step_dismissed') ? 'Run migration 045_step_dismiss.sql in Supabase first.' : error.message }
+  revalidatePath('/todo')
+  return { ok: true }
+}

@@ -66,6 +66,16 @@ export default async function TodoPage({ searchParams }: { searchParams: Promise
 
   const mine = (owner: string | null | undefined) => who === 'all' || !isTeamMember(owner) || owner === who
 
+  // Steps dismissed on this page stay hidden until the deal has new activity
+  // (empty before migration 045).
+  const { data: dismissedRows } = await supabase.from('deals').select('id, step_dismissed, step_dismissed_at').not('step_dismissed', 'is', null)
+  const dismissed = new Map((dismissedRows ?? []).map((r) => [r.id as string, { text: r.step_dismissed as string, at: r.step_dismissed_at as string }]))
+  const isDismissed = (dealId: string, text: string) => {
+    const d = dismissed.get(dealId)
+    const act = last.get(dealId)
+    return Boolean(d && d.text === text && (!act || act <= d.at))
+  }
+
   const items: Item[] = active
     .filter((d) => mine(d.owner))
     .map((d) => ({
@@ -75,7 +85,7 @@ export default async function TodoPage({ searchParams }: { searchParams: Promise
       step: steps.get(d.id)!,
       lastActivity: last.get(d.id) ?? d.updated_at,
     }))
-    .filter((i) => i.step)
+    .filter((i) => i.step && !isDismissed(i.id, i.step.text))
     // Most pressing kind first; within a kind, whatever's been sitting longest.
     .sort((a, b) => (a.step.rank ?? 9) - (b.step.rank ?? 9) || a.lastActivity.localeCompare(b.lastActivity))
 

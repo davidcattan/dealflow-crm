@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { OwnerSelect } from '@/components/owner-select'
 import { TEAM, type TeamMember } from '@/lib/team'
-import { addTodo, deleteTodo, setTodoDone } from './actions'
+import { addTodo, deleteTodo, dismissStep, setTodoDone } from './actions'
 
 export type TodoItem = { id: string; name: string; owner: TeamMember | null; text: string; detail: string | null; days: number }
 export type TodoSection = { rank: number; title: string; items: TodoItem[] }
@@ -35,7 +35,7 @@ function fmtDay(iso: string) {
   return new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-function Row({ item, rank, showOwner }: { item: TodoItem; rank: number; showOwner: boolean }) {
+function Row({ item, rank, showOwner, onDismiss }: { item: TodoItem; rank: number; showOwner: boolean; onDismiss: (i: TodoItem) => void }) {
   const look = LOOK[rank] ?? LOOK[9]
   return (
     <li className="flex items-center hover:bg-slate-50">
@@ -55,9 +55,21 @@ function Row({ item, rank, showOwner }: { item: TodoItem; rank: number; showOwne
         </span>
       </Link>
       {/* Whose deal — set it here; it moves to that person's list. */}
-      <span className={`shrink-0 pl-2 pr-3 sm:pr-4 ${showOwner || !item.owner ? '' : 'max-sm:hidden'}`}>
+      <span className={`shrink-0 pl-2 ${showOwner || !item.owner ? '' : 'max-sm:hidden'}`}>
         <OwnerSelect dealId={item.id} owner={item.owner} />
       </span>
+      {/* Done / not now — comes back if something new happens on the deal. */}
+      <button
+        type="button"
+        onClick={() => onDismiss(item)}
+        title="Dismiss — it comes back if something new happens on this deal"
+        aria-label="Dismiss"
+        className="mx-2 shrink-0 rounded-full p-1.5 text-slate-300 hover:bg-slate-100 hover:text-slate-700 sm:mr-3"
+      >
+        <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
+          <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+        </svg>
+      </button>
     </li>
   )
 }
@@ -199,6 +211,41 @@ export function TodoList({
   const [lastDone, setLastDone] = useState<MyTodo | null>(null)
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Dismissed deal steps hide right away too (with Undo).
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
+  const [lastDismissed, setLastDismissed] = useState<TodoItem | null>(null)
+  const [dismissError, setDismissError] = useState<string | null>(null)
+  function dismiss(i: TodoItem) {
+    setDismissedIds((s) => new Set(s).add(i.id))
+    setLastDismissed(i)
+    setLastDone(null)
+    void dismissStep(i.id, i.text).then((r) => {
+      if (r && 'error' in r && r.error) {
+        setDismissError(r.error)
+        setDismissedIds((s) => {
+          const next = new Set(s)
+          next.delete(i.id)
+          return next
+        })
+      }
+    })
+    if (undoTimer.current) clearTimeout(undoTimer.current)
+    undoTimer.current = setTimeout(() => setLastDismissed(null), 6000)
+  }
+  function undoDismiss() {
+    if (!lastDismissed) return
+    const i = lastDismissed
+    setDismissedIds((s) => {
+      const next = new Set(s)
+      next.delete(i.id)
+      return next
+    })
+    setLastDismissed(null)
+    void dismissStep(i.id, null)
+  }
+  sections = sections.map((sec) => ({ ...sec, items: sec.items.filter((x) => !dismissedIds.has(x.id)) })).filter((sec) => sec.items.length)
+  waiting = waiting.filter((x) => !dismissedIds.has(x.id))
+
   const openTodos = todos.filter((t) => !doneIds.has(t.id))
   const both = who === 'all'
   const allSections = openTodos.length ? [{ rank: 0, title: both ? 'Written to-dos' : `${who}’s list`, items: [] }, ...sections] : sections
@@ -208,6 +255,7 @@ export function TodoList({
   function markDone(t: MyTodo) {
     setDoneIds((s) => new Set(s).add(t.id))
     setLastDone(t)
+    setLastDismissed(null)
     void setTodoDone(t.id, true)
     if (undoTimer.current) clearTimeout(undoTimer.current)
     undoTimer.current = setTimeout(() => setLastDone(null), 6000)
@@ -307,7 +355,7 @@ export function TodoList({
             </h2>
             <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               {s.items.map((i) => (
-                <Row key={i.id} item={i} rank={s.rank} showOwner={both} />
+                <Row key={i.id} item={i} rank={s.rank} showOwner={both} onDismiss={dismiss} />
               ))}
             </ul>
           </section>
@@ -322,12 +370,21 @@ export function TodoList({
           </summary>
           <ul className="mt-1.5 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             {waiting.map((i) => (
-              <Row key={i.id} item={i} rank={9} showOwner={both} />
+              <Row key={i.id} item={i} rank={9} showOwner={both} onDismiss={dismiss} />
             ))}
           </ul>
         </details>
       )}
 
+      {lastDismissed && (
+        <div className="fixed inset-x-4 bottom-20 z-50 mx-auto flex max-w-sm items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white shadow-lg sm:bottom-6">
+          <span className="truncate">Dismissed: {lastDismissed.name}</span>
+          <button type="button" onClick={undoDismiss} className="shrink-0 font-semibold text-emerald-300">
+            Undo
+          </button>
+        </div>
+      )}
+      {dismissError && <p className="text-center text-xs text-red-600">{dismissError}</p>}
       {lastDone && (
         <div className="fixed inset-x-4 bottom-20 z-50 mx-auto flex max-w-sm items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white shadow-lg sm:bottom-6">
           <span className="truncate">Done: {lastDone.text}</span>
