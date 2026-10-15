@@ -346,7 +346,7 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
       </div>
       {prospects.length === 0 ? (
         <p className="rounded-lg border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
-          No prospects yet — import a list above (CSV or Excel, any columns, as long as there's an email).
+          No prospects yet — import a list above (CSV or Excel, any columns, as long as there&apos;s an email).
         </p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
