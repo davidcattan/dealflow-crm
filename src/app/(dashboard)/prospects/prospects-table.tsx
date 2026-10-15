@@ -374,30 +374,29 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
                 <tr
                   key={p.id}
                   onPointerEnter={() => drag.current && setOne(p.id, drag.current.adding)}
-                  className={`align-top ${picked.has(p.id) ? 'bg-sky-50' : ''}`}
-                >
-                  <td
-                    onPointerDown={(e) => {
-                      if (e.button !== 0) return
-                      e.preventDefault()
-                      if (e.shiftKey && lastClicked.current) {
-                        const ids = shown.map((x) => x.id)
-                        const a = ids.indexOf(lastClicked.current)
-                        const b = ids.indexOf(p.id)
-                        if (a >= 0 && b >= 0) {
-                          setPicked((s) => new Set([...s, ...ids.slice(Math.min(a, b), Math.max(a, b) + 1)]))
-                          return
-                        }
+                  // Press anywhere on the row (except links, buttons and the
+                  // status menu) to select it; keep holding and drag to select more.
+                  onPointerDown={(e) => {
+                    if (e.button !== 0 || (e.target as HTMLElement).closest('a, button, select, input, textarea')) return
+                    e.preventDefault()
+                    if (e.shiftKey && lastClicked.current) {
+                      const ids = shown.map((x) => x.id)
+                      const a = ids.indexOf(lastClicked.current)
+                      const b = ids.indexOf(p.id)
+                      if (a >= 0 && b >= 0) {
+                        setPicked((s) => new Set([...s, ...ids.slice(Math.min(a, b), Math.max(a, b) + 1)]))
+                        return
                       }
-                      const adding = !picked.has(p.id)
-                      drag.current = { adding }
-                      lastClicked.current = p.id
-                      document.body.style.userSelect = 'none'
-                      setOne(p.id, adding)
-                    }}
-                    title="Select — press and drag down to select several"
-                    className="cursor-pointer select-none px-3 py-2"
-                  >
+                    }
+                    const adding = !picked.has(p.id)
+                    drag.current = { adding }
+                    lastClicked.current = p.id
+                    document.body.style.userSelect = 'none'
+                    setOne(p.id, adding)
+                  }}
+                  className={`cursor-pointer select-none align-top ${picked.has(p.id) ? 'bg-sky-50' : 'hover:bg-slate-50'}`}
+                >
+                  <td className="px-3 py-2">
                     <input type="checkbox" checked={picked.has(p.id)} readOnly tabIndex={-1} className="pointer-events-none rounded border-slate-300" />
                   </td>
                   <td className="px-3 py-2">
