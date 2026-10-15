@@ -128,7 +128,7 @@ export default async function DealDetailPage({
     supabase.from('lenders').select('id, name').order('name'),
     supabase
       .from('inbox_messages')
-      .select('id, lender_id, subject, summary, received_at, mailbox, classification')
+      .select('id, lender_id, subject, summary, received_at, mailbox, classification, from_email, to_emails')
       .eq('deal_id', id)
       .not('lender_id', 'is', null)
       .order('received_at', { ascending: false }),
@@ -195,9 +195,45 @@ export default async function DealDetailPage({
   const masterNda = new Set((ndaLenders ?? []).map((l) => l.id as string))
   const dealNda = new Set((ndaSubs ?? []).map((r) => r.id as string))
   const ndaLenderIds = [...masterNda, ...(ndaSubs ?? []).map((r) => r.lender_id as string)]
+  // Who you're talking to at each lender: the people on your emails with them
+  // on this deal (newest first), named from the lender's contacts.
+  const subLenderIds = (submissionRows ?? []).map((r) => r.lender_id as string)
+  const [{ data: subContacts }, { data: subLenders }] = await Promise.all([
+    supabase.from('lender_contacts').select('lender_id, name, email').in('lender_id', subLenderIds.concat('00000000-0000-0000-0000-000000000000')),
+    supabase.from('lenders').select('id, contact_name, contact_email').in('id', subLenderIds.concat('00000000-0000-0000-0000-000000000000')),
+  ])
+  const nameByEmail = new Map<string, string>()
+  for (const c of [...(subContacts ?? []), ...(subLenders ?? []).map((l) => ({ name: l.contact_name, email: l.contact_email }))]) {
+    if (c.email && c.name) nameByEmail.set(String(c.email).toLowerCase(), String(c.name))
+  }
+  const ours = new Set((mailboxRows ?? []).map((m) => String(m.account_email).toLowerCase()))
+  const isOurs = (e: string) => ours.has(e) || /@(jed-capitalgroup|jedcapital-group|jedcapitalgrp)\.com$/.test(e)
+  const peopleByLender = new Map<string, { name: string | null; email: string }[]>()
+  for (const m of lenderEmails ?? []) {
+    const lenderId = m.lender_id as string
+    const addrs =
+      m.classification === 'sent'
+        ? String(m.to_emails ?? '').split(/[,;]\s*/)
+        : [String(m.from_email ?? '')]
+    const list = peopleByLender.get(lenderId) ?? []
+    for (const raw of addrs) {
+      const email = raw.trim().toLowerCase()
+      if (!email.includes('@') || isOurs(email) || list.some((x) => x.email === email)) continue
+      list.push({ name: nameByEmail.get(email) ?? null, email })
+    }
+    peopleByLender.set(lenderId, list)
+  }
   const submissions: SubmissionRow[] = (submissionRows ?? []).map((r) => {
     const lender = Array.isArray(r.lenders) ? r.lenders[0] : r.lenders
+    const primary = (subLenders ?? []).find((l) => l.id === r.lender_id)
+    const fromEmails = peopleByLender.get(r.lender_id as string) ?? []
     return {
+      people: fromEmails.length
+        ? fromEmails
+        : primary?.contact_email
+          ? [{ name: (primary.contact_name as string | null) ?? null, email: String(primary.contact_email).toLowerCase() }]
+          : [],
+      peopleFromEmails: fromEmails.length > 0,
       id: r.id,
       lender_id: r.lender_id,
       lender_name: lender?.name ?? 'Unknown lender',

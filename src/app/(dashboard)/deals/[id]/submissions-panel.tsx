@@ -30,6 +30,33 @@ export type SubmissionRow = {
   last_activity_at: string
   // NDA: JED's master NDA on the lender, one for this deal only, or none.
   nda?: 'master' | 'deal' | null
+  // Who at the lender: the people on the emails about this deal (newest
+  // first), else the lender's primary contact.
+  people?: { name: string | null; email: string }[]
+  peopleFromEmails?: boolean
+}
+
+// "mark.rosen@amusa.com" → "Mark Rosen" when no name is saved.
+function personLabel(p: { name: string | null; email: string }) {
+  if (p.name) return p.name
+  const local = p.email.split('@')[0].replace(/[._-]+/g, ' ').trim()
+  return local.replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function WithWhom({ sub }: { sub: SubmissionRow }) {
+  const people = sub.people ?? []
+  if (!people.length) return null
+  const first = people[0]
+  const all = people.map((p) => `${personLabel(p)} <${p.email}>`).join('\n')
+  return (
+    <span className="truncate text-xs text-slate-500" title={`${sub.peopleFromEmails ? 'On your emails about this deal' : 'Lender primary contact'}:\n${all}`}>
+      with{' '}
+      <a href={`mailto:${first.email}`} className="font-medium text-slate-700 hover:underline">
+        {personLabel(first)}
+      </a>
+      {people.length > 1 && <span> +{people.length - 1}</span>}
+    </span>
+  )
 }
 
 export type TimelineItem = {
@@ -255,7 +282,10 @@ function LenderCard({ dealId, sub, items, requiresNda }: { dealId: string; sub: 
     <li className="rounded-lg border border-slate-200 p-4 max-sm:p-0">
       <button type="button" onClick={() => setOpen((v) => !v)} className="block w-full px-3.5 py-3 text-left sm:hidden">
         <span className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate font-medium text-slate-900">{sub.lender_name}</span>
+          <span className="min-w-0 flex-1 truncate font-medium text-slate-900">
+            {sub.lender_name}
+            {sub.people?.[0] && <span className="font-normal text-slate-500"> · {personLabel(sub.people[0])}</span>}
+          </span>
           {requiresNda && !sub.nda && <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">No NDA</span>}
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${SUBMISSION_STYLES[sub.status]}`}>
             {SUBMISSION_LABELS[sub.status]}
@@ -275,6 +305,7 @@ function LenderCard({ dealId, sub, items, requiresNda }: { dealId: string; sub: 
           <Link href={`/lenders/${sub.lender_id}`} className="truncate font-medium text-slate-800 hover:underline">
             {sub.lender_name}
           </Link>
+          <WithWhom sub={sub} />
           <span className="text-xs text-slate-400">updated {ago(sub.last_activity_at)}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
