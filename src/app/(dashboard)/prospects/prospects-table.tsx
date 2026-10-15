@@ -5,15 +5,57 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { PROSPECT_STATUSES, PROSPECT_STATUS_COLORS, PROSPECT_STATUS_LABELS, type Prospect, type ProspectStatus } from '@/lib/prospects/types'
 import { importProspects, setProspectStatus } from './actions'
+import { parseCsv } from '@/lib/prospects/csv'
+import { readXlsx } from '@/lib/prospects/xlsx'
+import { FIELD_LABELS, mapColumns, toPeople, type FieldKey, type ImportPerson } from '@/lib/prospects/columns'
 import { prospectEmail } from '@/lib/prospects/email'
 import { readJsonResponse } from '@/lib/fetch-json'
+
+type Parsed = {
+  fileName: string
+  rows: number
+  map: Partial<Record<FieldKey, string>>
+  people: ImportPerson[]
+  skipped: number
+  companyFromEmail: number
+}
 
 function ImportList() {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [source, setSource] = useState('')
   const [result, setResult] = useState<string | null>(null)
+  const [parsed, setParsed] = useState<Parsed | null>(null)
+  const [readError, setReadError] = useState<string | null>(null)
   const [pending, start] = useTransition()
+
+  // Read the file right away (CSV or Excel) and show what was found.
+  async function readFile(file: File | undefined) {
+    setParsed(null)
+    setReadError(null)
+    if (!file) return
+    try {
+      // An Excel file can have several tabs: use the one with the most
+      // people (that has an email column).
+      const sheets = /\.xlsx$/i.test(file.name) ? readXlsx(await file.arrayBuffer()) : [{ name: '', rows: parseCsv(await file.text()) }]
+      const options = sheets
+        .filter((sh) => sh.rows.length)
+        .map((sh) => {
+          const map = mapColumns(Object.keys(sh.rows[0]))
+          return { sheet: sh.name, map, ...(map.email ? toPeople(sh.rows, map) : { people: [], skipped: sh.rows.length, companyFromEmail: 0 }), cols: Object.keys(sh.rows[0]) }
+        })
+        .sort((a, b) => b.people.length - a.people.length)
+      const best = options[0]
+      if (!best) throw new Error('That file looks empty.')
+      if (!best.map.email || !best.people.length)
+        throw new Error(`Couldn't find an email column. Columns in the file: ${best.cols.join(', ')}. Rename the email column to "Email" and try again.`)
+      const { map, people, skipped, companyFromEmail } = best
+      setParsed({ fileName: best.sheet ? `${file.name} (tab "${best.sheet}")` : file.name, rows: people.length + skipped, map, people, skipped, companyFromEmail })
+      if (!source) setSource(file.name.replace(/\.(csv|xlsx)$/i, ''))
+    } catch (err) {
+      setReadError(err instanceof Error ? err.message : 'Could not read that file.')
+    }
+  }
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3">
@@ -26,14 +68,13 @@ function ImportList() {
       {result && <p className={`mt-1 text-xs ${result.startsWith('Imported') ? 'text-emerald-700' : 'text-red-600'}`}>{result}</p>}
       {open && (
         <form
-          className="mt-2 flex flex-wrap items-end gap-2 text-sm"
+          className="mt-2 space-y-2 text-sm"
           onSubmit={(e) => {
             e.preventDefault()
+            if (!parsed?.people.length) return
             const form = e.currentTarget
-            const file = (form.elements.namedItem('file') as HTMLInputElement).files?.[0]
-            if (!file) return setResult('Pick a CSV file first.')
             start(async () => {
-              const res = await importProspects(await file.text(), source)
+              const res = await importProspects(parsed.people, source)
               if ('error' in res && res.error) setResult(res.error)
               else if ('added' in res) {
                 setResult(
@@ -41,6 +82,7 @@ function ImportList() {
                 )
                 // Done: clear the form and fold it away.
                 form.reset()
+                setParsed(null)
                 setSource('')
                 setOpen(false)
                 router.refresh()
@@ -48,23 +90,63 @@ function ImportList() {
             })
           }}
         >
-          <label className="flex flex-col gap-1 text-xs text-slate-500">
-            File (Outreach list.csv, or an Apollo export)
-            <input name="file" type="file" accept=".csv,text/csv" className="text-sm text-slate-700" />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-slate-500">
-            Which list
-            <input
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-              placeholder="e.g. ABL Advisor 2023"
-              className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-            />
-          </label>
-          <button disabled={pending} className="rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-800 disabled:opacity-50">
-            {pending ? 'Importing…' : 'Import'}
-          </button>
-          <p className="w-full text-xs text-slate-400">
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex flex-col gap-1 text-xs text-slate-500">
+              File: CSV or Excel, any column names
+              <input
+                name="file"
+                type="file"
+                accept=".csv,.xlsx,text/csv"
+                onChange={(e) => readFile(e.target.files?.[0])}
+                className="text-sm text-slate-700"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-slate-500">
+              Which list
+              <input
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+                placeholder="e.g. Eli's list, ABL Advisor 2023"
+                className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <button
+              disabled={pending || !parsed?.people.length}
+              className="rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              {pending ? 'Importing…' : parsed ? `Import ${parsed.people.length} ${parsed.people.length === 1 ? 'person' : 'people'}` : 'Import'}
+            </button>
+          </div>
+          {readError && <p className="text-xs text-red-600">{readError}</p>}
+          {parsed && (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-600">
+              <p className="font-medium text-slate-800">
+                {parsed.fileName}: {parsed.people.length} ready to import
+                {parsed.skipped > 0 && <span className="font-normal text-amber-700"> · {parsed.skipped} rows skipped (no email)</span>}
+              </p>
+              <p className="mt-1">How the columns were read:</p>
+              <ul className="mt-0.5 grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+                {(Object.entries(parsed.map) as [FieldKey, string][]).map(([field, col]) => (
+                  <li key={field}>
+                    <span className="text-slate-400">{FIELD_LABELS[field]} ←</span> &ldquo;{col}&rdquo;
+                  </li>
+                ))}
+              </ul>
+              {!parsed.map.company && (
+                <p className="mt-1 text-amber-700">No company column found — company names are taken from email addresses (e.g. acme.com → Acme).</p>
+              )}
+              {parsed.map.company && parsed.companyFromEmail > 0 && (
+                <p className="mt-1 text-amber-700">{parsed.companyFromEmail} rows had no company, so it was taken from their email address.</p>
+              )}
+              {parsed.people[0] && (
+                <p className="mt-1 text-slate-500">
+                  First row: {[parsed.people[0].first_name, parsed.people[0].last_name].filter(Boolean).join(' ') || '(no name)'} ·{' '}
+                  {parsed.people[0].title ?? 'no title'} · {parsed.people[0].company} · {parsed.people[0].email}
+                </p>
+              )}
+            </div>
+          )}
+          <p className="text-xs text-slate-400">
             Nobody is added twice (matched by email). People already here keep their status, except &quot;Not contacted&quot; ones the file
             marks as emailed.
           </p>
@@ -264,7 +346,7 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
       </div>
       {prospects.length === 0 ? (
         <p className="rounded-lg border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
-          No prospects yet — import your Outreach list above.
+          No prospects yet — import a list above (CSV or Excel, any columns, as long as there's an email).
         </p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">

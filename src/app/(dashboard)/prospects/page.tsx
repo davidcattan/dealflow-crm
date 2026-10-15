@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { Prospect } from '@/lib/prospects/types'
 import { ProspectsTable } from './prospects-table'
 
-// Everyone on the outreach lists, and where each one stands. The inbox sync
+// Everyone on the outreach lists (any source), and where each one stands. The inbox sync
 // marks people Emailed when you write to them and sorts their replies.
 export default async function ProspectsPage() {
   const supabase = await createClient()
@@ -14,8 +14,8 @@ export default async function ProspectsPage() {
       <div>
         <h1 className="text-lg font-semibold text-slate-900">Prospects</h1>
         <p className="text-sm text-slate-500">
-          Companies from the ABL Advisor lists and who you&apos;ve contacted. When someone replies, the inbox sync sorts it: interested replies
-          become deals, &quot;not interested&quot; gets marked, auto-replies are ignored.
+          Everyone you&apos;re reaching out to, from any list (ABL Advisor, Apollo, your own or Eli&apos;s). When someone replies, the inbox
+          sync sorts it: interested replies become deals, &quot;not interested&quot; gets marked, auto-replies are ignored.
         </p>
       </div>
       {missing ? (
