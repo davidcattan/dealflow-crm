@@ -122,7 +122,7 @@ export function FindProspects() {
         <div className="mt-2 space-y-3 text-sm">
           <div className="grid gap-2 sm:grid-cols-[1fr_14rem]">
             <label className="flex flex-col gap-1 text-xs text-slate-500">
-              Companies — websites work best, one per line. Finds the CFO, CEO and owner.
+              Companies — websites work best, one per line. Finds the CFO, CEO, owner and president.
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
