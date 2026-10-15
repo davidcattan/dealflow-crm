@@ -56,6 +56,53 @@ function CheckCircle({ checked, onCheck, label }: { checked: boolean; onCheck: (
   )
 }
 
+// A dismissed row and the section it was in (so Undo can put it back).
+type Placed = { item: TodoItem; rank: number; title: string }
+
+// Bottom bar after marking something done: Undo for 5 seconds, then a short
+// "Restored" confirmation if you used it.
+function Toast({ text, onUndo, ok }: { text: string; onUndo?: () => void; ok?: boolean }) {
+  return (
+    <div
+      role="status"
+      className="fixed inset-x-4 bottom-20 z-[60] mx-auto flex max-w-sm items-center justify-between gap-3 rounded-xl bg-slate-900 py-2 pl-4 pr-2 text-sm text-white shadow-lg sm:bottom-6"
+    >
+      <span className="flex min-w-0 items-center gap-2 py-1.5">
+        {ok && <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs">✓</span>}
+        <span className="truncate">{text}</span>
+      </span>
+      {onUndo && (
+        <button
+          type="button"
+          onClick={onUndo}
+          className="shrink-0 cursor-pointer rounded-lg bg-white/10 px-3.5 py-1.5 font-semibold text-emerald-300 hover:bg-white/20 active:bg-white/30"
+        >
+          Undo
+        </button>
+      )}
+    </div>
+  )
+}
+
+function putBack(sections: TodoSection[], waiting: TodoItem[], restored: Placed[], hidden: Set<string>) {
+  let secs = sections
+  let wait = waiting
+  for (const r of restored) {
+    if (hidden.has(r.item.id)) continue
+    if (r.rank === 9) {
+      if (!wait.some((x) => x.id === r.item.id)) wait = [r.item, ...wait]
+      continue
+    }
+    if (secs.some((sec) => sec.items.some((x) => x.id === r.item.id))) continue
+    const at = secs.findIndex((sec) => sec.rank === r.rank)
+    secs =
+      at >= 0
+        ? secs.map((sec, n) => (n === at ? { ...sec, items: [r.item, ...sec.items] } : sec))
+        : [...secs, { rank: r.rank, title: r.title, items: [r.item] }].sort((x, y) => x.rank - y.rank)
+  }
+  return { sections: secs, waiting: wait }
+}
+
 // How long a checked row stays (filled in) before it goes.
 const CHECK_DELAY = 600
 
@@ -354,12 +401,24 @@ export function TodoList({
 
   // Dismissed deal steps hide right away too (with Undo).
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
-  const [lastDismissed, setLastDismissed] = useState<TodoItem | null>(null)
+  const [lastDismissed, setLastDismissed] = useState<Placed | null>(null)
   const [dismissError, setDismissError] = useState<string | null>(null)
+  // Undone rows: shown straight away, before the server has caught up.
+  const [restored, setRestored] = useState<Placed[]>([])
+  // "Restored ✓" confirmation after Undo.
+  const [notice, setNotice] = useState<string | null>(null)
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  function flash(text: string) {
+    setNotice(text)
+    if (noticeTimer.current) clearTimeout(noticeTimer.current)
+    noticeTimer.current = setTimeout(() => setNotice(null), 2500)
+  }
   function dismiss(i: TodoItem) {
+    const sec = back.sections.find((x) => x.items.some((y) => y.id === i.id))
     setDismissedIds((s) => new Set(s).add(i.id))
-    setLastDismissed(i)
+    setLastDismissed({ item: i, rank: sec?.rank ?? 9, title: sec?.title ?? '' })
     setLastDone(null)
+    setNotice(null)
     void dismissStep(i.id, i.text).then((r) => {
       if (r && 'error' in r && r.error) {
         setDismissError(r.error)
@@ -375,17 +434,21 @@ export function TodoList({
   }
   function undoDismiss() {
     if (!lastDismissed) return
-    const i = lastDismissed
+    const placed = lastDismissed
     setDismissedIds((s) => {
       const next = new Set(s)
-      next.delete(i.id)
+      next.delete(placed.item.id)
       return next
     })
+    setRestored((r) => [...r.filter((x) => x.item.id !== placed.item.id), placed])
     setLastDismissed(null)
-    void dismissStep(i.id, null)
+    flash(`Restored ${placed.item.name}`)
+    void dismissStep(placed.item.id, null)
   }
-  sections = sections.map((sec) => ({ ...sec, items: sec.items.filter((x) => !dismissedIds.has(x.id)) })).filter((sec) => sec.items.length)
-  waiting = waiting.filter((x) => !dismissedIds.has(x.id))
+  // Put undone rows back where they were if the server list doesn't have them yet.
+  const back = putBack(sections, waiting, restored, dismissedIds)
+  sections = back.sections.map((sec) => ({ ...sec, items: sec.items.filter((x) => !dismissedIds.has(x.id)) })).filter((sec) => sec.items.length)
+  waiting = back.waiting.filter((x) => !dismissedIds.has(x.id))
 
   const openTodos = todos.filter((t) => !doneIds.has(t.id))
   const both = who === 'all'
@@ -397,6 +460,7 @@ export function TodoList({
     setDoneIds((s) => new Set(s).add(t.id))
     setLastDone(t)
     setLastDismissed(null)
+    setNotice(null)
     void setTodoDone(t.id, true)
     if (undoTimer.current) clearTimeout(undoTimer.current)
     undoTimer.current = setTimeout(() => setLastDone(null), 5000)
@@ -410,6 +474,7 @@ export function TodoList({
       return next
     })
     setLastDone(null)
+    flash('Restored to-do')
     void setTodoDone(t.id, false)
   }
 
@@ -517,23 +582,10 @@ export function TodoList({
         </details>
       )}
 
-      {lastDismissed && (
-        <div className="fixed inset-x-4 bottom-20 z-50 mx-auto flex max-w-sm items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white shadow-lg sm:bottom-6">
-          <span className="truncate">Dismissed: {lastDismissed.name}</span>
-          <button type="button" onClick={undoDismiss} className="shrink-0 font-semibold text-emerald-300">
-            Undo
-          </button>
-        </div>
-      )}
+      {lastDismissed && <Toast text={`Done: ${lastDismissed.item.name}`} onUndo={undoDismiss} />}
       {dismissError && <p className="text-center text-xs text-red-600">{dismissError}</p>}
-      {lastDone && (
-        <div className="fixed inset-x-4 bottom-20 z-50 mx-auto flex max-w-sm items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white shadow-lg sm:bottom-6">
-          <span className="truncate">Done: {lastDone.text}</span>
-          <button type="button" onClick={undo} className="shrink-0 font-semibold text-emerald-300">
-            Undo
-          </button>
-        </div>
-      )}
+      {lastDone && <Toast text={`Done: ${lastDone.text}`} onUndo={undo} />}
+      {notice && !lastDismissed && !lastDone && <Toast text={notice} ok />}
     </div>
   )
 }
