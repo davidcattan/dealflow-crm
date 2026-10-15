@@ -3,7 +3,6 @@ import { createClient } from '@/lib/supabase/server'
 import type { Deal, DocumentRecord, DealUpdate } from '@/lib/types'
 import {
   deleteDeal,
-  addDealUpdate,
   setDealStatusQuick,
 } from './actions'
 import { ConfirmButton } from '@/components/confirm-button'
@@ -22,27 +21,26 @@ import { DocumentUploader } from './document-uploader'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
+import { AtAGlance } from './at-a-glance'
+import { ActivityTimeline } from './activity'
 import type { DealContact } from './deal-contacts'
 import { ProfilePanel } from './profile-panel'
 import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
-import { UpdateRow } from './update-row'
 import { SubmissionsPanel, type SubmissionRow, type TimelineItem } from './submissions-panel'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
 import { loadDealEmails, emailsToText } from '@/lib/deals/deal-emails'
 import { findPossibleDuplicates } from '@/lib/deals/duplicates'
 import { MergeDealButton, DuplicateBanner } from './merge-deal'
-import { CallsPanel, type CallRow } from './calls-panel'
+import { type CallRow } from './calls-panel'
 import { DocumentGroups } from './document-groups'
-import { MoveToDeal } from './move-to-deal'
 import { guessCategory, guessLender } from '@/lib/documents/categories'
 import { callSuggestions } from '@/lib/calls/process'
 import type { CallNotes } from '@/lib/calls/schema'
 import { LenderSearchPanel } from './lender-search-panel'
-import { CollapsibleSection, CollapseAllControls } from '@/components/collapsible-section'
+import { CollapsibleSection } from '@/components/collapsible-section'
 import { loadNextSteps } from '@/lib/deals/load-next-steps'
 import { NextStepToggle } from '@/components/next-step-toggle'
 import { PhoneTabs } from '@/components/phone-tabs'
-import { PhoneShowMore } from '@/components/phone-show-more'
 import { URGENCY_STYLES } from '@/lib/deals/next-step'
 import { STATUS_COLORS, STATUS_LABELS, displayStatus, type DealStatus } from '@/lib/types'
 import { buildLenderSearchPrompt } from '@/lib/lender-search/prompt'
@@ -132,7 +130,7 @@ export default async function DealDetailPage({
       .eq('deal_id', id)
       .not('lender_id', 'is', null)
       .order('received_at', { ascending: false }),
-    loadDealEmails(supabase, id),
+    loadDealEmails(supabase, id, 60),
     findPossibleDuplicates(supabase, id),
     supabase.from('deals').select('id, company_name, status').order('company_name'),
     supabase.from('outlook_connections').select('id, account_email, connected_by, created_at').order('created_at'),
@@ -339,6 +337,22 @@ export default async function DealDetailPage({
     downloadUrl: `/api/deals/${deal.id}/documents/${doc.id}/download`,
   }))
 
+  // Overview card: the most recent thing that happened, from any source.
+  const activityUpdates = ((updates ?? []) as (DealUpdate & { source?: string | null })[]).filter((u) => u.source !== 'call' && u.source !== 'email')
+  const activityCount = activityUpdates.length + calls.length + dealEmails.length
+  const lastActivity =
+    [
+      ...activityUpdates.map((u) => ({ at: u.entry_date ? `${u.entry_date}T12:00:00` : u.created_at, text: u.note })),
+      ...calls.map((c) => ({ at: c.created_at, text: `Call${c.result?.title ? `: ${c.result.title}` : ''}${c.result?.summary ? ` — ${c.result.summary}` : ''}` })),
+      ...dealEmails.map((e) => ({
+        at: e.received_at ?? '',
+        text: `${e.classification === 'sent' ? 'Sent' : `Email from ${e.from_email}`}: ${e.summary || e.subject || ''}`,
+      })),
+    ]
+      .filter((x) => x.at)
+      .sort((a, b) => (a.at < b.at ? 1 : -1))
+      .map((x) => ({ ...x, text: x.text.length > 220 ? `${x.text.slice(0, 220)}…` : x.text }))[0] ?? null
+
   const isPast = ['dead', 'old', 'closed'].includes(deal.status)
   const dealActions = (
     <>
@@ -414,15 +428,13 @@ export default async function DealDetailPage({
 
       <div className="hidden flex-wrap items-center justify-between gap-3 sm:flex">
         {step && !isPast ? <NextStepToggle step={step} /> : <span />}
-        <CollapseAllControls />
       </div>
 
       <PhoneTabs
         tabs={[
           { key: 'overview', label: 'Overview' },
           { key: 'lenders', label: 'Lenders', count: submissions.length },
-          { key: 'activity', label: 'Activity', count: (updates ?? []).length },
-          { key: 'calls', label: 'Calls', count: calls.length },
+          { key: 'activity', label: 'Activity', count: activityCount },
           { key: 'docs', label: 'Docs', count: (documents ?? []).length },
           { key: 'ai', label: 'AI' },
         ]}
@@ -431,39 +443,38 @@ export default async function DealDetailPage({
 
       <DuplicateBanner dealId={deal.id} dealName={deal.company_name} duplicates={duplicates} />
 
+      <CollapsibleSection tab="overview" title="At a glance">
+        <AtAGlance
+          status={deal.status as DealStatus}
+          owner={(deal as { owner?: string | null }).owner ?? null}
+          ask={deal.deal_type}
+          loanType={deal.loan_type}
+          industry={deal.industry}
+          contact={{ name: deal.contact_name, phone: deal.contact_phone, email: deal.contact_email }}
+          lenders={submissions.map((x) => ({
+            id: x.lender_id,
+            name: x.lender_name,
+            status: x.status,
+            person: x.people?.[0] ? (x.people[0].name ?? x.people[0].email.split('@')[0]) : null,
+          }))}
+          last={lastActivity}
+        />
+      </CollapsibleSection>
+
       <CollapsibleSection tab="overview" title="Deal details">
       <DealDetails deal={deal as Deal} contacts={otherContacts} />
       </CollapsibleSection>
 
-      <CollapsibleSection tab="overview" title="Borrower profile" phoneClosed closed={!(deal as { borrower_profile?: unknown }).borrower_profile}>
-        <ProfilePanel
+      <CollapsibleSection tab="overview" title="Quick read">
+        <QuickReadPanel
           dealId={deal.id}
-          profile={((deal as { borrower_profile?: unknown }).borrower_profile ?? null) as Parameters<typeof ProfilePanel>[0]['profile']}
-          at={(deal as { borrower_profile_at?: string | null }).borrower_profile_at ?? null}
+          quickRead={((deal as { quick_read?: QuickRead | null }).quick_read as QuickRead | null) ?? null}
+          at={(deal as { quick_read_at?: string | null }).quick_read_at ?? null}
+          costLabel={deal.snapshot ? 'about 1¢ (uses the existing underwriting)' : 'usually 5–30¢'}
         />
       </CollapsibleSection>
 
-      <CollapsibleSection tab="calls" title="Calls">
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-          <h2 className="mb-4 text-sm font-semibold text-slate-900">Calls{calls.length ? ` (${calls.length})` : ''}</h2>
-          <CallsPanel
-            calls={calls}
-            target={{
-              uploadUrl: `/api/deals/${deal.id}/calls`,
-              pathPrefix: `calls/${deal.id}/`,
-              label: deal.company_name,
-              href: `/deals/${deal.id}`,
-            }}
-            whoOptions={{
-              borrowerName: deal.contact_name || deal.company_name,
-              dealLenders: submissions.map((x) => ({ id: x.lender_id, name: x.lender_name })),
-              otherLenders: ((lenderRows ?? []) as { id: string; name: string }[]).filter(
-                (l) => !submissions.some((x) => x.lender_id === l.id)
-              ),
-            }}
-          />
-        </section>
-      </CollapsibleSection>
+
 
 
       <CollapsibleSection tab="lenders" title="Lenders sent to">
@@ -476,115 +487,37 @@ export default async function DealDetailPage({
       />
       </CollapsibleSection>
 
-      <CollapsibleSection tab="activity" title="Updates">
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-        <h2 className="mb-4 text-sm font-semibold text-slate-900">Updates</h2>
-
-        <form
-          action={addDealUpdate}
-          className="mb-5 flex flex-wrap items-end gap-3"
-        >
-          <input type="hidden" name="deal_id" value={deal.id} />
-          <div>
-            <label className="block text-xs font-medium text-slate-600">
-              Date
-            </label>
-            <input
-              type="date"
-              name="entry_date"
-              defaultValue={new Date().toISOString().slice(0, 10)}
-              className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div className="flex-1 max-sm:order-first max-sm:basis-full">
-            <label className="block text-xs font-medium text-slate-600">
-              Note
-            </label>
-            <input
-              name="note"
-              required
-              placeholder="e.g. followed up with borrower, waiting on docs"
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <button
-            type="submit"
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
-            Add update
-          </button>
-        </form>
-
-        {updates && updates.length > 0 ? (
-          <PhoneShowMore count={updates.length} className="divide-y divide-slate-100">
-            {(updates as (DealUpdate & { lender_id?: string | null })[]).map((u) => (
-              <UpdateRow
-                key={u.id}
-                dealId={deal.id}
-                update={u}
-                lenderName={u.lender_id ? (lenderNameById.get(u.lender_id) ?? 'Lender') : null}
-              />
-            ))}
-          </PhoneShowMore>
-        ) : (
-          <p className="py-6 text-center text-sm text-slate-400">
-            No updates logged yet.
-          </p>
-        )}
-      </section>
-      </CollapsibleSection>
-
-      {dealEmails.length > 0 && (
-        <CollapsibleSection tab="activity" title="Emails" keepToggle closed>
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-          <h2 className="text-sm font-semibold text-slate-900">Emails ({dealEmails.length})</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Emails the inbox filed on this deal. Their full text is included when the deal is underwritten.
-          </p>
-          <ul className="mt-4 divide-y divide-slate-100">
-            {dealEmails.map((e) => (
-              <li key={e.id} className="py-3 text-sm">
-                <details className="group">
-                  <summary className="cursor-pointer list-none">
-                    <span className="mr-2 text-xs text-slate-400">
-                      {e.received_at ? new Date(e.received_at).toLocaleDateString() : ''}
-                    </span>
-                    <span className="font-medium text-slate-800">{e.subject || '(no subject)'}</span>
-                    <span className="text-slate-500 max-sm:hidden"> — {e.from_email}</span>
-                    {mailboxLabel(e.mailbox, e.classification === 'sent') && (
-                      <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
-                        {mailboxLabel(e.mailbox, e.classification === 'sent')}
-                      </span>
-                    )}
-                    {e.summary && <p className="mt-1 text-slate-600 max-sm:line-clamp-1 max-sm:group-open:line-clamp-none">{e.summary}</p>}
-                    <span className="mt-1 inline-block text-xs text-slate-400 hover:underline">
-                      {e.body_text ? 'Show full email' : 'Full text not stored (read before this was added)'}
-                    </span>
-                  </summary>
-                  {e.body_text && (
-                    <pre className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 font-sans text-xs text-slate-700">
-                      {e.body_text}
-                    </pre>
-                  )}
-                </details>
-                <div className="mt-1.5">
-                  <MoveToDeal kind="email" dealId={deal.id} itemId={e.id} deals={dealChoices} />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-        </CollapsibleSection>
-      )}
-
-      <CollapsibleSection tab="ai" title="Quick read">
-        <QuickReadPanel
+      <CollapsibleSection tab="activity" title="Activity">
+        <ActivityTimeline
           dealId={deal.id}
-          quickRead={((deal as { quick_read?: QuickRead | null }).quick_read as QuickRead | null) ?? null}
-          at={(deal as { quick_read_at?: string | null }).quick_read_at ?? null}
-          costLabel={deal.snapshot ? 'about 1¢ (uses the existing underwriting)' : 'usually 5–30¢'}
+          // A call's notes live on the call and an email's on the email, so
+          // the notes they saved aren't listed a second time.
+          updates={((updates ?? []) as (DealUpdate & { lender_id?: string | null; source?: string | null })[]).filter(
+            (u) => u.source !== 'call' && u.source !== 'email'
+          )}
+          calls={calls}
+          emails={dealEmails}
+          lenderNames={Object.fromEntries(lenderNameById)}
+          target={{
+            uploadUrl: `/api/deals/${deal.id}/calls`,
+            pathPrefix: `calls/${deal.id}/`,
+            label: deal.company_name,
+            href: `/deals/${deal.id}`,
+          }}
+          whoOptions={{
+            borrowerName: deal.contact_name || deal.company_name,
+            dealLenders: submissions.map((x) => ({ id: x.lender_id, name: x.lender_name })),
+            otherLenders: ((lenderRows ?? []) as { id: string; name: string }[]).filter(
+              (l) => !submissions.some((x) => x.lender_id === l.id)
+            ),
+          }}
+          deals={dealChoices}
         />
       </CollapsibleSection>
+
+
+
+
 
       {/* Right above the underwriting, so you can see what documents it has to work with. */}
       <CollapsibleSection tab="docs" title="Documents" phoneClosed>
@@ -635,7 +568,25 @@ export default async function DealDetailPage({
       </section>
       </CollapsibleSection>
 
-      <CollapsibleSection tab="ai" title="AI underwriting" phoneClosed closed={Boolean(deal.snapshot)}>
+      {/* What the underwriting has to work with, without leaving the AI tab. */}
+      <CollapsibleSection tab="ai" title="Documents on file">
+        <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+          {docsWithUrls.length === 0
+            ? 'No documents yet — upload them on the Docs tab.'
+            : `${docsWithUrls.length} document${docsWithUrls.length === 1 ? '' : 's'}: ` +
+              Object.entries(
+                docsWithUrls.reduce<Record<string, number>>((acc, d) => {
+                  const c = d.category || guessCategory(d.file_name, d.triage?.doc_type)
+                  acc[c] = (acc[c] ?? 0) + 1
+                  return acc
+                }, {})
+              )
+                .map(([c, n]) => `${c} ${n}`)
+                .join(' · ')}
+        </p>
+      </CollapsibleSection>
+
+      <CollapsibleSection tab="ai" title="AI underwriting">
       <SnapshotPanel
         dealId={deal.id}
         snapshot={
@@ -659,10 +610,18 @@ export default async function DealDetailPage({
         snapshotPrompt={buildSnapshotPrompt(
           deal,
           ((documents ?? []) as DocumentRecord[]).map((d) => d.file_name),
-          emailsToText(dealEmails)
+          emailsToText(dealEmails.slice(0, 20))
         )}
         hasReportUnderwriting={Boolean(deal.underwriting)}
       />
+      </CollapsibleSection>
+
+      <CollapsibleSection tab="ai" title="Borrower profile" keepToggle phoneClosed closed={!(deal as { borrower_profile?: unknown }).borrower_profile}>
+        <ProfilePanel
+          dealId={deal.id}
+          profile={((deal as { borrower_profile?: unknown }).borrower_profile ?? null) as Parameters<typeof ProfilePanel>[0]['profile']}
+          at={(deal as { borrower_profile_at?: string | null }).borrower_profile_at ?? null}
+        />
       </CollapsibleSection>
 
       <CollapsibleSection tab="ai" title="Full research report" keepToggle phoneClosed closed>

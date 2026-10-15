@@ -58,7 +58,7 @@ export function CollapsibleSection({
   const hint = open === null ? 'sm:hidden' : open ? 'hidden' : ''
 
   return (
-    <div className={inTabs && tab !== activeTab ? 'max-sm:hidden' : ''}>
+    <div className={inTabs && tab !== activeTab ? 'hidden' : ''}>
       <button
         type="button"
         onClick={toggle}

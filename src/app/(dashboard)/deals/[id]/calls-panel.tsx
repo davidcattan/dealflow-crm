@@ -433,7 +433,7 @@ function EditNotes({
   )
 }
 
-function CallCard({ call, whoOptions }: { call: CallRow; whoOptions?: WhoOptions }) {
+export function CallCard({ call, whoOptions }: { call: CallRow; whoOptions?: WhoOptions }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -636,24 +636,14 @@ function CallCard({ call, whoOptions }: { call: CallRow; whoOptions?: WhoOptions
   )
 }
 
-export function CallsPanel({
-  calls,
-  target,
-  whoOptions,
-  hint = 'Put the call (cell, Teams or Zoom) on speaker, then hit record.',
-}: {
-  calls: CallRow[]
-  target: CallTarget
-  whoOptions?: WhoOptions
-  hint?: string
-}) {
+// While a call is processing, nudge it along and refresh when it changes.
+export function useCallPolling(calls: CallRow[]) {
   const router = useRouter()
   const pendingIds = calls
     .filter((c) => PENDING.includes(c.status))
     .map((c) => c.id)
     .join(',')
 
-  // While a call is processing, nudge it along and refresh when it changes.
   useEffect(() => {
     if (!pendingIds) return
     let stopped = false
@@ -681,7 +671,20 @@ export function CallsPanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-run only when the set of pending calls changes
   }, [pendingIds])
+}
 
+export function CallsPanel({
+  calls,
+  target,
+  whoOptions,
+  hint = 'Put the call (cell, Teams or Zoom) on speaker, then hit record.',
+}: {
+  calls: CallRow[]
+  target: CallTarget
+  whoOptions?: WhoOptions
+  hint?: string
+}) {
+  useCallPolling(calls)
   return (
     <div className="space-y-4">
       <CallRecorder target={target} whoOptions={whoOptions} hint={hint} />
