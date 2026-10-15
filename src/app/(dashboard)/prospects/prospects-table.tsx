@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { PROSPECT_STATUSES, PROSPECT_STATUS_COLORS, PROSPECT_STATUS_LABELS, type Prospect, type ProspectStatus } from '@/lib/prospects/types'
 import { importProspects, setProspectStatus } from './actions'
+import { prospectEmail } from '@/lib/prospects/email'
+import { readJsonResponse } from '@/lib/fetch-json'
 
 function ImportList() {
   const router = useRouter()
@@ -80,7 +82,70 @@ function StatusSelect({ p }: { p: Prospect }) {
   )
 }
 
+// Creates the approved cold email for these people in your Outlook Drafts.
+function useDrafts() {
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  async function create(ids: string[]) {
+    setBusy(true)
+    setMessage(null)
+    try {
+      const res = await fetch('/api/prospects/drafts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      const result = await readJsonResponse<{ created: number; skipped: string[]; mailbox: string }>(res)
+      if (!result.ok) throw new Error(result.message)
+      const { created, skipped, mailbox } = result.body
+      setMessage(
+        `${created} draft${created === 1 ? '' : 's'} in ${mailbox}'s Outlook Drafts — review and send from there.${skipped.length ? ` Skipped: ${skipped.join(', ')}.` : ''}`
+      )
+      return true
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Could not create the drafts')
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+  return { busy, message, create }
+}
+
+function Preview({ p, onClose }: { p: Prospect; onClose: () => void }) {
+  const { subject, body } = prospectEmail(p)
+  return (
+    <tr>
+      <td colSpan={6} className="bg-slate-50 px-4 py-3">
+        <div className="max-w-2xl space-y-1 text-sm text-slate-700">
+          <p>
+            <span className="font-medium">To:</span> {p.email}
+          </p>
+          <p>
+            <span className="font-medium">Subject:</span> {subject}
+          </p>
+          <p className="whitespace-pre-wrap">{body}</p>
+          <p className="text-xs text-slate-400">+ your JED signature</p>
+          <button type="button" onClick={onClose} className="text-xs text-slate-500 underline">
+            Close preview
+          </button>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [previewId, setPreviewId] = useState<string | null>(null)
+  const drafts = useDrafts()
+  const togglePick = (id: string) =>
+    setPicked((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   const [filter, setFilter] = useState<ProspectStatus | 'all'>('all')
   const [q, setQ] = useState('')
   const counts = useMemo(() => {
@@ -100,6 +165,29 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
   return (
     <div className="space-y-3">
       <ImportList />
+      {(picked.size > 0 || drafts.message) && (
+        <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 shadow-sm">
+          {picked.size > 0 && (
+            <>
+              <span className="font-medium">{picked.size} selected</span>
+              <button
+                type="button"
+                disabled={drafts.busy}
+                onClick={async () => {
+                  if (await drafts.create([...picked])) setPicked(new Set())
+                }}
+                className="rounded-md bg-slate-900 px-2.5 py-1 font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {drafts.busy ? 'Creating drafts…' : `Create ${picked.size} Outlook draft${picked.size === 1 ? '' : 's'}`}
+              </button>
+              <button type="button" onClick={() => setPicked(new Set())} className="hover:underline">
+                Clear
+              </button>
+            </>
+          )}
+          {drafts.message && <span className="basis-full text-slate-700">{drafts.message}</span>}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <button
           type="button"
@@ -134,6 +222,15 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
               <tr>
+                <th className="w-8 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    aria-label="Select everyone shown"
+                    checked={shown.length > 0 && shown.every((p) => picked.has(p.id))}
+                    onChange={(e) => setPicked(e.target.checked ? new Set(shown.map((p) => p.id)) : new Set())}
+                    className="rounded border-slate-300"
+                  />
+                </th>
                 <th className="px-3 py-2 font-medium">Company</th>
                 <th className="px-3 py-2 font-medium">Contact</th>
                 <th className="px-3 py-2 font-medium">Their facility</th>
@@ -142,8 +239,11 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {shown.map((p) => (
-                <tr key={p.id} className="align-top">
+              {shown.map((p) => [
+                <tr key={p.id} className={`align-top ${picked.has(p.id) ? 'bg-sky-50' : ''}`}>
+                  <td className="px-3 py-2">
+                    <input type="checkbox" checked={picked.has(p.id)} onChange={() => togglePick(p.id)} className="rounded border-slate-300" />
+                  </td>
                   <td className="px-3 py-2">
                     <div className="font-medium text-slate-800">{p.company_display || p.company}</div>
                     {p.source && <div className="text-xs text-slate-400">{p.source}</div>}
@@ -179,9 +279,18 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
                       '—'
                     )}
                     {p.notes && <div className="mt-1 whitespace-pre-wrap text-slate-400">{p.notes}</div>}
+                    <div className="mt-1 flex gap-3">
+                      <button type="button" onClick={() => setPreviewId(previewId === p.id ? null : p.id)} className="text-slate-500 underline">
+                        Preview email
+                      </button>
+                      <button type="button" disabled={drafts.busy} onClick={() => drafts.create([p.id])} className="text-slate-700 underline disabled:opacity-50">
+                        Draft in Outlook
+                      </button>
+                    </div>
                   </td>
-                </tr>
-              ))}
+                </tr>,
+                previewId === p.id ? <Preview key={`${p.id}-preview`} p={p} onClose={() => setPreviewId(null)} /> : null,
+              ])}
             </tbody>
           </table>
         </div>
