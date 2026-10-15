@@ -72,7 +72,20 @@ function Row({
   onKill: (i: TodoItem) => void
 }) {
   const [checked, setChecked] = useState(false)
-  const [menu, setMenu] = useState(false)
+  // 'hover' = mouse resting on the row (computer); 'tap' = tapped (phone).
+  const [menu, setMenuState] = useState<'hover' | 'tap' | null>(null)
+  const setMenu = (open: boolean) => setMenuState(open ? 'tap' : null)
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Short pause first so it doesn't flash on every row the mouse passes.
+  const onEnter = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'mouse') return
+    hoverTimer.current = setTimeout(() => setMenuState((m) => m ?? 'hover'), 250)
+  }
+  const onLeave = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'mouse') return
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    setMenuState(null)
+  }
   // Clicking anywhere else closes it.
   useEffect(() => {
     if (!menu) return
@@ -158,56 +171,67 @@ function Row({
         <span className="shrink-0 py-3 pl-3.5 sm:pl-4">
           <CheckCircle checked={checked} onCheck={check} label="Done — it comes back if something new happens on this deal" />
         </span>
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => setMenu(true)}
-          onKeyDown={(e) => e.key === 'Enter' && setMenu(true)}
-          className={`flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 pl-3 transition-opacity duration-300 ${checked ? 'opacity-40' : ''}`}
-        >
-          <span className="min-w-0 flex-1">
-            <span className="flex items-baseline gap-2">
-              <Link
-                href={`/deals/${item.id}`}
-                onClick={(e) => e.stopPropagation()}
-                className="truncate text-[15px] font-semibold text-slate-900 hover:underline"
-              >
-                {item.name}
-              </Link>
-              {item.days >= 2 && (
-                <span className={`shrink-0 text-[11px] ${item.days >= 5 ? 'text-amber-700' : 'text-slate-400'}`}>{item.days}d</span>
-              )}
+        {/* Hover (computer) or tap (phone): the row turns into "Mark as dead".
+            The circle and the owner stay usable beside it. */}
+        <div className="relative flex min-w-0 flex-1 self-stretch" onPointerEnter={onEnter} onPointerLeave={onLeave}>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setMenu(true)}
+            onKeyDown={(e) => e.key === 'Enter' && setMenu(true)}
+            className={`flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 pl-3 transition-opacity duration-300 ${checked ? 'opacity-40' : ''}`}
+          >
+            <span className="min-w-0 flex-1">
+              <span className="flex items-baseline gap-2">
+                <Link
+                  href={`/deals/${item.id}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="truncate text-[15px] font-semibold text-slate-900 hover:underline"
+                >
+                  {item.name}
+                </Link>
+                {item.days >= 2 && (
+                  <span className={`shrink-0 text-[11px] ${item.days >= 5 ? 'text-amber-700' : 'text-slate-400'}`}>{item.days}d</span>
+                )}
+              </span>
+              <span className="line-clamp-2 text-sm text-slate-600">{item.text}</span>
+              {item.detail && <span className="mt-0.5 line-clamp-1 text-xs text-slate-400">{item.detail}</span>}
             </span>
-            <span className="line-clamp-2 text-sm text-slate-600">{item.text}</span>
-            {item.detail && <span className="mt-0.5 line-clamp-1 text-xs text-slate-400">{item.detail}</span>}
-          </span>
+          </div>
+          {menu && !checked && (
+            <div className="absolute inset-0 z-10 flex items-center gap-2 bg-slate-50/95 pl-3 pr-1 backdrop-blur-[2px]">
+              <span className="min-w-0 flex-1">
+                <Link href={`/deals/${item.id}`} className="block truncate text-[15px] font-semibold text-slate-900 hover:underline">
+                  {item.name} <span className="font-normal text-slate-400">→</span>
+                </Link>
+                <span className="block truncate text-xs text-slate-500">{item.text}</span>
+              </span>
+              {menu === 'tap' && (
+                <button
+                  type="button"
+                  onClick={() => setMenu(false)}
+                  className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setMenu(false)
+                  onKill(item)
+                }}
+                className="shrink-0 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700"
+              >
+                Mark as dead
+              </button>
+            </div>
+          )}
         </div>
         {/* Whose deal — set it here; it moves to that person's list. */}
         <span className={`shrink-0 pl-2 pr-3 ${showOwner || !item.owner ? '' : 'max-sm:hidden'}`}>
           <OwnerSelect dealId={item.id} owner={item.owner} />
         </span>
-        {menu && (
-          <div className="absolute inset-0 z-10 flex items-center justify-end gap-2 bg-white/90 px-3 backdrop-blur-[2px] sm:px-4">
-            <span className="mr-auto truncate text-sm font-medium text-slate-500">{item.name}</span>
-            <button
-              type="button"
-              onClick={() => setMenu(false)}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMenu(false)
-                onKill(item)
-              }}
-              className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700"
-            >
-              Mark as dead
-            </button>
-          </div>
-        )}
       </div>
     </li>
   )
