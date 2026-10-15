@@ -33,7 +33,7 @@ export async function saveKeyFact(dealId: string, oldLabel: string | null, label
   const i = kf.facts.findIndex((f) => f.label.toLowerCase() === key)
   const facts = i >= 0 ? kf.facts.map((f, j) => (j === i ? fact : f)) : [...kf.facts, fact]
   const missing = kf.missing.filter((m) => m.toLowerCase() !== l.toLowerCase())
-  await supabase.from('deals').update({ key_facts: { facts, missing } }).eq('id', dealId)
+  await supabase.from('deals').update({ key_facts: { ...kf, facts, missing } }).eq('id', dealId)
   revalidatePath(`/deals/${dealId}`)
   return { ok: true }
 }

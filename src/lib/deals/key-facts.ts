@@ -13,27 +13,32 @@ import type { DocumentRecord } from '@/lib/types'
 // Cheap model: this is finding and copying facts, not judgment. ~1–3¢.
 const MODEL = 'claude-haiku-5-5'
 
-export type KeyFact = { label: string; value: string; source: string; pinned?: boolean }
-export type KeyFacts = { facts: KeyFact[]; missing: string[] }
+export type KeyFact = { label: string; value: string; source: string; note?: string; pinned?: boolean }
+// v: the format version — older (wordier) key facts are re-read once.
+export type KeyFacts = { facts: KeyFact[]; missing: string[]; v?: number }
+export const KEY_FACTS_VERSION = 2
 
 const Schema = z.object({
   facts: z
     .array(
       z.object({
-        label: z.string().describe('Short label, e.g. "Property address", "Current lender", "AR"'),
-        value: z.string().describe('The fact itself, exactly as stated (addresses in full, amounts with $).'),
-        source: z.string().describe('Where it came from, short: "Mortgage statement p.1", "Call with Doug, Oct 14", "Email from Mark, Oct 13", "Deal notes".'),
+        label: z.string().describe('1–3 words: "Property address", "Revenue FY25", "AR", "Current lender".'),
+        value: z
+          .string()
+          .describe('As short as possible — a number, a name or an address. "$4.6M", "$910K", "Huntington ($235K SBA)". No explanations, no parentheses beyond a few words.'),
+        note: z.string().describe('Optional extra context in one short sentence (conflicting figures, breakdowns); "" if none.'),
+        source: z.string().describe('2–4 words: "Tax returns", "Call 10/14", "Balance sheet 9/30", "Email from Mark".'),
       })
     )
-    .describe('8–14 facts that matter most for THIS kind of deal, most important first. Only facts actually found.'),
-  missing: z.array(z.string()).describe('Up to 6 important facts for this kind of deal that were NOT found anywhere — short labels.'),
+    .describe('The 8 facts that matter MOST for this kind of deal, most important first. Only facts actually found. Never more than 8.'),
+  missing: z.array(z.string()).describe('At most 3 of the most important facts NOT found anywhere — 1–3 words each.'),
 })
 
 const GUIDE = `Pick the facts a commercial loan broker needs at a glance for THIS kind of deal:
 - Real estate / HELOC / bridge / construction: property address (full), property type, occupancy (who lives there / rented), estimated or appraised value (and basis), existing liens with balances, lenders and rates, LTV / combined LTV, who is on title, borrower(s), credit score(s), income, use of funds, the ask, timing.
 - ABL / working capital / factoring: legal entity name, location, what they do, revenue (latest periods), EBITDA, AR, inventory, current lender and facility (size, maturity), total debt, the ask, use of funds, timing.
 - Equipment / term / SBA / M&A: the asset or target, cost, revenue / EBITDA, collateral, current debt, the ask, timing.
-Rules: only facts actually stated in the material below — never guess or calculate new numbers (except LTV when both value and loan are stated; say "calculated"). When sources disagree, give the newest and say so in the source. Keep values short.`
+Rules: only facts actually stated in the material below — never guess or calculate new numbers (except LTV when both value and loan are stated). When sources disagree, use the newest and put the conflict in the note. Pick only the 8 most important; values must be glanceable — round money ($4.6M, $910K), no sentences.`
 
 export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): Promise<KeyFacts> {
   const [{ data: deal }, { data: updates }, { data: calls }, { data: emails }, { data: docs }, { data: contacts }] = await Promise.all([
@@ -102,7 +107,7 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
   const pinnedLabels = new Set(pinned.map((f) => f.label.toLowerCase()))
   const facts = [...pinned, ...res.parsed_output.facts.filter((f) => !pinnedLabels.has(f.label.toLowerCase()))]
   const missing = res.parsed_output.missing.filter((m) => !pinnedLabels.has(m.toLowerCase()))
-  const result = { facts, missing }
+  const result = { facts: facts.slice(0, Math.max(8, pinned.length)), missing: missing.slice(0, 3), v: KEY_FACTS_VERSION }
   await supabase.from('deals').update({ key_facts: result, key_facts_at: new Date().toISOString() }).eq('id', dealId)
   return result
 }

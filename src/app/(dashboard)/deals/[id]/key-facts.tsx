@@ -18,7 +18,7 @@ function FactEditor({
   const [label, setLabel] = useState(initial?.label ?? '')
   const [value, setValue] = useState(initial?.value ?? '')
   return (
-    <div data-enter-save className="flex flex-wrap items-center gap-2 rounded-md bg-slate-50 p-2 sm:col-span-2">
+    <div data-enter-save className="col-span-2 flex flex-wrap items-center gap-2 rounded-md bg-slate-50 p-2 sm:col-span-4">
       <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Property address" className="w-44 rounded border border-slate-300 px-2 py-1 text-sm" />
       <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="Value" autoFocus={Boolean(initial)} className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-sm" />
       <button type="button" data-save disabled={saving} onClick={() => onSave(label, value)} className="rounded bg-slate-900 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50">
@@ -66,7 +66,7 @@ export function KeyFacts({ dealId, keyFacts, at, stale }: { dealId: string; keyF
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-slate-500">
-          {at ? `Read from the docs, emails, calls and notes · updated ${new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'Pulled from the docs, emails, calls and notes'}
+          {at ? `Updated ${new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · hover a fact for its source` : 'From the docs, emails, calls and notes'}
         </p>
         <div className="flex items-center gap-3 text-xs">
           <button type="button" onClick={() => setEditing('__new')} className="text-slate-600 hover:underline">
@@ -86,31 +86,28 @@ export function KeyFacts({ dealId, keyFacts, at, stale }: { dealId: string; keyF
             : 'No key facts found yet — they fill in by themselves as documents, emails and calls come in. You can also + Add fact.'}
         </p>
       ) : (
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
           {facts.map((f) =>
             editing === f.label ? (
               <FactEditor key={f.label} initial={f} saving={pending} onCancel={() => setEditing(null)} onSave={(l, v) => save(f.label, l, v)} />
             ) : (
-              <div key={f.label} className="group min-w-0">
-                <dt className="flex items-center gap-2 text-xs font-medium text-slate-500">
+              <div key={f.label} className="group min-w-0" title={[f.note, `Source: ${f.source}`].filter(Boolean).join('\n')}>
+                <dt className="flex items-center gap-2 text-xs text-slate-500">
                   {f.label}
                   <span className="hidden gap-2 group-hover:flex">
-                    <button type="button" onClick={() => setEditing(f.label)} className="font-normal text-slate-400 hover:text-slate-700">
+                    <button type="button" onClick={() => setEditing(f.label)} className="text-slate-400 hover:text-slate-700">
                       edit
                     </button>
                     <button
                       type="button"
                       onClick={() => start(async () => void (await removeKeyFact(dealId, f.label)))}
-                      className="font-normal text-slate-400 hover:text-red-600"
+                      className="text-slate-400 hover:text-red-600"
                     >
                       remove
                     </button>
                   </span>
                 </dt>
-                <dd className="text-slate-800 [overflow-wrap:anywhere]">
-                  {f.value}
-                  <span className="ml-1.5 text-[11px] text-slate-400">— {f.source}</span>
-                </dd>
+                <dd className="truncate font-medium text-slate-800">{f.value}</dd>
               </div>
             )
           )}
@@ -120,7 +117,7 @@ export function KeyFacts({ dealId, keyFacts, at, stale }: { dealId: string; keyF
 
       {(keyFacts?.missing ?? []).length > 0 && (
         <p className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-          Still missing:
+          Missing:
           {keyFacts!.missing.map((m) => (
             <button
               key={m}
