@@ -429,53 +429,6 @@ export default async function DealDetailPage({
         </section>
       </CollapsibleSection>
 
-      <CollapsibleSection tab="docs" title="Documents" phoneClosed closed={(documents ?? []).length > 0}>
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-        <h2 className="mb-4 text-sm font-semibold text-slate-900">
-          Diligence documents
-        </h2>
-
-        <DocumentUploader
-          dealId={deal.id}
-          untriagedCount={
-            docsWithUrls.filter(
-              (d) => !d.triage && d.file_name.toLowerCase().endsWith('.pdf')
-            ).length
-          }
-        />
-
-        {docsWithUrls.length > 0 ? (
-          <DocumentGroups
-            dealId={deal.id}
-            dealName={deal.company_name}
-            docs={docsWithUrls.map((doc) => {
-              const category = doc.category || guessCategory(doc.file_name, doc.triage?.doc_type)
-              const lenderId =
-                doc.lender_id ??
-                (category === 'Term sheets & offers' ? guessLender(doc.file_name, termSheetLenders)?.id : null) ??
-                null
-              return {
-                id: doc.id,
-                file_name: doc.file_name,
-                storage_path: doc.storage_path,
-                url: doc.url,
-                size: formatBytes(doc.file_size),
-                uploaded_at: doc.uploaded_at,
-                triage: doc.triage,
-                category,
-                lender: lenderId ? { id: lenderId, name: lenderNameById.get(lenderId) ?? 'Lender' } : null,
-              }
-            })}
-            lenders={termSheetLenders}
-            deals={dealChoices}
-          />
-        ) : (
-          <p className="py-6 text-center text-sm text-slate-400">
-            No documents uploaded yet.
-          </p>
-        )}
-      </section>
-      </CollapsibleSection>
 
       <CollapsibleSection tab="lenders" title="Lenders sent to">
       <SubmissionsPanel
@@ -595,6 +548,55 @@ export default async function DealDetailPage({
           at={(deal as { quick_read_at?: string | null }).quick_read_at ?? null}
           costLabel={deal.snapshot ? 'about 1¢ (uses the existing underwriting)' : 'usually 5–30¢'}
         />
+      </CollapsibleSection>
+
+      {/* Right above the underwriting, so you can see what documents it has to work with. */}
+      <CollapsibleSection tab="docs" title="Documents" phoneClosed>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <h2 className="mb-4 text-sm font-semibold text-slate-900">
+          Diligence documents
+        </h2>
+
+        <DocumentUploader
+          dealId={deal.id}
+          untriagedCount={
+            docsWithUrls.filter(
+              (d) => !d.triage && d.file_name.toLowerCase().endsWith('.pdf')
+            ).length
+          }
+        />
+
+        {docsWithUrls.length > 0 ? (
+          <DocumentGroups
+            dealId={deal.id}
+            dealName={deal.company_name}
+            docs={docsWithUrls.map((doc) => {
+              const category = doc.category || guessCategory(doc.file_name, doc.triage?.doc_type)
+              const lenderId =
+                doc.lender_id ??
+                (category === 'Term sheets & offers' ? guessLender(doc.file_name, termSheetLenders)?.id : null) ??
+                null
+              return {
+                id: doc.id,
+                file_name: doc.file_name,
+                storage_path: doc.storage_path,
+                url: doc.url,
+                size: formatBytes(doc.file_size),
+                uploaded_at: doc.uploaded_at,
+                triage: doc.triage,
+                category,
+                lender: lenderId ? { id: lenderId, name: lenderNameById.get(lenderId) ?? 'Lender' } : null,
+              }
+            })}
+            lenders={termSheetLenders}
+            deals={dealChoices}
+          />
+        ) : (
+          <p className="py-6 text-center text-sm text-slate-400">
+            No documents uploaded yet.
+          </p>
+        )}
+      </section>
       </CollapsibleSection>
 
       <CollapsibleSection tab="ai" title="AI underwriting" phoneClosed closed={Boolean(deal.snapshot)}>
