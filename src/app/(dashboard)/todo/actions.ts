@@ -3,7 +3,6 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { isTeamMember } from '@/lib/team'
-import { DEAL_STATUSES, type DealStatus } from '@/lib/types'
 
 export async function addTodo(input: { text: string; assignee: string; dealId: string | null; dueDate: string | null }) {
   const text = input.text.trim()
@@ -59,26 +58,4 @@ export async function dismissStep(dealId: string, text: string | null) {
   if (error) return { error: error.message.includes('step_dismissed') ? 'Run migration 045_step_dismiss.sql in Supabase first.' : error.message }
   revalidatePath('/todo')
   return { ok: true }
-}
-
-// "Mark as dead" from a To do row. Returns the old status so Undo can put
-// it back.
-export async function markDealDead(dealId: string) {
-  const supabase = await createClient()
-  const { data } = await supabase.from('deals').select('status').eq('id', dealId).single()
-  const { error } = await supabase.from('deals').update({ status: 'dead' }).eq('id', dealId)
-  if (error) return { error: error.message }
-  revalidatePath('/todo')
-  revalidatePath('/pipeline')
-  revalidatePath('/deals')
-  return { ok: true, prev: (data?.status as DealStatus | undefined) ?? 'new' }
-}
-
-export async function restoreDealStatus(dealId: string, status: DealStatus) {
-  if (!DEAL_STATUSES.includes(status)) return
-  const supabase = await createClient()
-  await supabase.from('deals').update({ status }).eq('id', dealId)
-  revalidatePath('/todo')
-  revalidatePath('/pipeline')
-  revalidatePath('/deals')
 }
