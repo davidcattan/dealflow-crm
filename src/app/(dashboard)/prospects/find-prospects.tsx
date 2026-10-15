@@ -4,11 +4,12 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { readJsonResponse } from '@/lib/fetch-json'
 import type { FoundCompany } from '@/app/api/prospects/find/route'
+import { ListPicker } from './list-picker'
 
 // Type companies or websites → Apollo finds the CFO / owner at each (free)
 // → you tick who you want → their emails are unlocked (1 credit each) and
 // they're added to Prospects.
-export function FindProspects() {
+export function FindProspects({ lists }: { lists: string[] }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
@@ -132,15 +133,10 @@ export function FindProspects() {
               />
             </label>
             <div className="flex flex-col gap-2">
-              <label className="flex flex-col gap-1 text-xs text-slate-500">
+              <div className="flex flex-col gap-1 text-xs text-slate-500">
                 Add to list
-                <input
-                  value={list}
-                  onChange={(e) => setList(e.target.value)}
-                  placeholder="e.g. Trade show Oct, Eli's list"
-                  className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                />
-              </label>
+                <ListPicker lists={lists} value={list} onChange={setList} />
+              </div>
               <button
                 type="button"
                 onClick={runSearch}

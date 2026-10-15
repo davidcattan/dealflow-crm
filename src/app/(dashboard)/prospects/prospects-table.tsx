@@ -11,6 +11,7 @@ import { FIELD_LABELS, mapColumns, toPeople, type FieldKey, type ImportPerson } 
 import { prospectEmail } from '@/lib/prospects/email'
 import { readJsonResponse } from '@/lib/fetch-json'
 import { FindProspects } from './find-prospects'
+import { ListPicker } from './list-picker'
 
 type Parsed = {
   fileName: string
@@ -21,7 +22,7 @@ type Parsed = {
   companyFromEmail: number
 }
 
-function ImportList() {
+function ImportList({ lists }: { lists: string[] }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [source, setSource] = useState('')
@@ -91,7 +92,7 @@ function ImportList() {
             })
           }}
         >
-          <div className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-wrap items-start gap-2">
             <label className="flex flex-col gap-1 text-xs text-slate-500">
               File: CSV or Excel, any column names
               <input
@@ -102,15 +103,10 @@ function ImportList() {
                 className="text-sm text-slate-700"
               />
             </label>
-            <label className="flex flex-col gap-1 text-xs text-slate-500">
+            <div className="flex flex-col gap-1 text-xs text-slate-500">
               Which list
-              <input
-                value={source}
-                onChange={(e) => setSource(e.target.value)}
-                placeholder="e.g. Eli's list, ABL Advisor 2023"
-                className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-              />
-            </label>
+              <ListPicker lists={lists} value={source} onChange={setSource} startNew />
+            </div>
             <button
               disabled={pending || !parsed?.people.length}
               className="rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-800 disabled:opacity-50"
@@ -326,6 +322,7 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
     for (const p of prospects) c.set(p.source || NO_LIST, (c.get(p.source || NO_LIST) ?? 0) + 1)
     return [...c.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [prospects])
+  const listNames = lists.map(([name]) => name).filter((n) => n !== NO_LIST)
   const inList = list === 'all' ? prospects : prospects.filter((p) => (p.source || NO_LIST) === list)
   const counts = useMemo(() => {
     const c = new Map<string, number>()
@@ -343,8 +340,8 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
 
   return (
     <div className="space-y-3">
-      <FindProspects />
-      <ImportList />
+      <FindProspects lists={listNames} />
+      <ImportList lists={listNames} />
       {(picked.size > 0 || drafts.message) && (
         <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 shadow-sm">
           {picked.size > 0 && (
