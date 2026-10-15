@@ -148,14 +148,23 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
     })
   const [filter, setFilter] = useState<ProspectStatus | 'all'>('all')
   const [q, setQ] = useState('')
+  // Each imported list ("ABL Advisor 2021–2022", "ABL Advisor 2023"…).
+  const [list, setList] = useState<string>('all')
+  const NO_LIST = '(no list name)'
+  const lists = useMemo(() => {
+    const c = new Map<string, number>()
+    for (const p of prospects) c.set(p.source || NO_LIST, (c.get(p.source || NO_LIST) ?? 0) + 1)
+    return [...c.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [prospects])
+  const inList = list === 'all' ? prospects : prospects.filter((p) => (p.source || NO_LIST) === list)
   const counts = useMemo(() => {
     const c = new Map<string, number>()
-    for (const p of prospects) c.set(p.status, (c.get(p.status) ?? 0) + 1)
+    for (const p of inList) c.set(p.status, (c.get(p.status) ?? 0) + 1)
     return c
-  }, [prospects])
-  const companies = new Set(prospects.map((p) => p.company)).size
+  }, [inList])
+  const companies = new Set(inList.map((p) => p.company)).size
 
-  const shown = prospects.filter((p) => {
+  const shown = inList.filter((p) => {
     if (filter !== 'all' && p.status !== filter) return false
     if (!q.trim()) return true
     const hay = [p.company, p.company_display, p.first_name, p.last_name, p.email, p.title, p.lender, p.source].join(' ').toLowerCase()
@@ -188,13 +197,30 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
           {drafts.message && <span className="basis-full text-slate-700">{drafts.message}</span>}
         </div>
       )}
+      {lists.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 text-sm">
+          {[['all', prospects.length] as [string, number], ...lists].map(([name, n]) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => {
+                setList(name)
+                setPicked(new Set())
+              }}
+              className={`-mb-px border-b-2 px-3 py-1.5 ${list === name ? 'border-slate-900 font-medium text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+            >
+              {name === 'all' ? 'All lists' : name} <span className="text-xs text-slate-400">{n}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <button
           type="button"
           onClick={() => setFilter('all')}
           className={`rounded-full px-2.5 py-1 ${filter === 'all' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}
         >
-          All {prospects.length} · {companies} companies
+          All {inList.length} · {companies} companies
         </button>
         {PROSPECT_STATUSES.filter((s) => counts.get(s)).map((s) => (
           <button
