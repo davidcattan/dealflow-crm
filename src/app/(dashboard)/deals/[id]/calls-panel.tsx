@@ -115,7 +115,7 @@ function whoValue(call: CallRow) {
 }
 
 // "with Fairview" / "with Gabby Huguenin" for a call card.
-function whoLabel(call: CallRow, options: WhoOptions) {
+export function whoLabel(call: CallRow, options: WhoOptions) {
   if (call.call_with === 'borrower') return `with ${options.borrowerName}`
   if (call.call_with === 'broker') return 'with the referral partner'
   if (call.call_with === 'lender' && call.lender_id) {

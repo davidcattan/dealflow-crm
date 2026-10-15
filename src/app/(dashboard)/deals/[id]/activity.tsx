@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { addDealUpdate } from './actions'
 import { UpdateRow } from './update-row'
-import { CallCard, CallRecorder, useCallPolling, type CallRow, type CallTarget, type WhoOptions } from './calls-panel'
+import { CallCard, CallRecorder, useCallPolling, whoLabel, type CallRow, type CallTarget, type WhoOptions } from './calls-panel'
 import { MoveToDeal, type DealChoice } from './move-to-deal'
 import { mailboxLabel } from '@/lib/outlook/mailbox-label'
 import type { DealEmail } from '@/lib/deals/deal-emails'
@@ -116,12 +116,10 @@ export function ActivityTimeline({
       {filtered.length === 0 ? (
         <p className="py-6 text-center text-sm text-slate-400">Nothing yet — record a call above or add a note.</p>
       ) : (
-        <ul className="mt-4 space-y-3">
+        <ul className="mt-4 space-y-1.5">
           {shown.map((item) =>
             item.kind === 'call' ? (
-              <li key={`call-${item.call.id}`}>
-                <CallCard key={`${item.call.id}-${item.call.status}-${item.call.applied.length}`} call={item.call} whoOptions={whoOptions} />
-              </li>
+              <CallItem key={`call-${item.call.id}`} call={item.call} whoOptions={whoOptions} />
             ) : item.kind === 'email' ? (
               <EmailItem key={`email-${item.email.id}`} email={item.email} dealId={dealId} deals={deals} />
             ) : (
@@ -151,7 +149,7 @@ function EmailItem({ email: e, dealId, deals }: { email: DealEmail; dealId: stri
   const sent = e.classification === 'sent'
   const where = mailboxLabel(e.mailbox, sent)
   return (
-    <li className="rounded-lg border border-slate-100 px-3 py-2.5 text-sm">
+    <li className="rounded-lg border border-slate-100 px-3 py-2.5 text-sm hover:bg-slate-50">
       <details className="group">
         <summary className="cursor-pointer list-none">
           <span className={`mr-2 rounded px-1.5 py-0.5 text-[10px] font-medium ${sent ? 'bg-sky-100 text-sky-800' : 'bg-violet-100 text-violet-800'}`}>
@@ -161,7 +159,7 @@ function EmailItem({ email: e, dealId, deals }: { email: DealEmail; dealId: stri
           <span className="font-medium text-slate-800">{e.subject || '(no subject)'}</span>
           {!sent && <span className="text-slate-500 max-sm:hidden"> — {e.from_email}</span>}
           {where && <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">{where}</span>}
-          {e.summary && <p className="mt-1 text-slate-600 line-clamp-2 group-open:line-clamp-none">{e.summary}</p>}
+          {e.summary && <p className="mt-0.5 truncate text-xs text-slate-500 group-open:whitespace-normal group-open:text-sm group-open:text-slate-600">{e.summary}</p>}
         </summary>
         {e.body_text && (
           <pre className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 font-sans text-xs text-slate-700">{e.body_text}</pre>
@@ -170,6 +168,38 @@ function EmailItem({ email: e, dealId, deals }: { email: DealEmail; dealId: stri
           <MoveToDeal kind="email" dealId={dealId} itemId={e.id} deals={deals} />
         </div>
       </details>
+    </li>
+  )
+}
+
+// One line per call — "Call with Doug · Oct 14 · 12 min" and the gist; click
+// to open the full notes, transcript and suggested updates.
+function CallItem({ call, whoOptions }: { call: CallRow; whoOptions: WhoOptions }) {
+  const [open, setOpen] = useState(false)
+  const who = whoLabel(call, whoOptions)
+  const processing = call.status !== 'done' && call.status !== 'error'
+  const mins = call.duration_seconds ? Math.max(1, Math.round(call.duration_seconds / 60)) : null
+  const gist = call.result?.summary ?? (processing ? 'Processing the recording…' : call.status === 'error' ? 'Couldn’t process this call — open to retry.' : '')
+  return (
+    <li className="rounded-lg border border-slate-100 text-sm">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full px-3 py-2.5 text-left hover:bg-slate-50">
+        <span className="flex flex-wrap items-center gap-x-2">
+          <span className={`inline-block text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
+          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800">📞 Call</span>
+          <span className="font-medium text-slate-800">{call.result?.title ? call.result.title : `Call${who ? ` ${who}` : ''}`}</span>
+          <span className="text-xs text-slate-400">
+            {[call.result?.title ? who : null, new Date(call.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), mins ? `${mins} min` : null]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+        </span>
+        {!open && gist && <span className="mt-0.5 block truncate pl-4 text-xs text-slate-500">{gist}</span>}
+      </button>
+      {open && (
+        <div className="border-t border-slate-100 p-3">
+          <CallCard key={`${call.id}-${call.status}-${call.applied.length}`} call={call} whoOptions={whoOptions} />
+        </div>
+      )}
     </li>
   )
 }
