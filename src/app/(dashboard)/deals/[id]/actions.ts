@@ -148,6 +148,32 @@ export async function moveDocumentToDeal(fromDealId: string, documentId: string,
 }
 
 // Moves a document to another group (and, for term sheets, sets the lender).
+// Several documents at once (the checkboxes on the Docs list).
+export async function moveDocuments(dealId: string, documentIds: string[], category: string) {
+  if (!documentIds.length) return { ok: true }
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('documents')
+    .update({ category, lender_id: null })
+    .in('id', documentIds)
+    .eq('deal_id', dealId)
+  if (error) return { error: error.message }
+  revalidatePath(`/deals/${dealId}`)
+  return { ok: true }
+}
+
+export async function deleteDocuments(dealId: string, documentIds: string[]) {
+  if (!documentIds.length) return { ok: true }
+  const supabase = await createClient()
+  const { data: rows } = await supabase.from('documents').select('id, storage_path').in('id', documentIds).eq('deal_id', dealId)
+  const paths = (rows ?? []).map((r) => r.storage_path as string).filter(Boolean)
+  if (paths.length) await supabase.storage.from('borrower-documents').remove(paths)
+  const { error } = await supabase.from('documents').delete().in('id', (rows ?? []).map((r) => r.id as string)).eq('deal_id', dealId)
+  if (error) return { error: error.message }
+  revalidatePath(`/deals/${dealId}`)
+  return { ok: true }
+}
+
 export async function setDocumentGroup(dealId: string, documentId: string, category: string, lenderId: string | null) {
   const supabase = await createClient()
   const { error } = await supabase

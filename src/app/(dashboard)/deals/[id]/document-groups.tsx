@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { zipSync } from 'fflate'
 import { readJsonResponse } from '@/lib/fetch-json'
 import { ConfirmButton } from '@/components/confirm-button'
 import { DOC_CATEGORIES } from '@/lib/documents/categories'
 import type { DocTriage } from '@/lib/types'
-import { deleteDocument, setDocumentGroup } from './actions'
+import { deleteDocument, deleteDocuments, moveDocuments, setDocumentGroup } from './actions'
 import { MoveToDeal, type DealChoice } from './move-to-deal'
 
 export type GroupedDoc = {
@@ -25,16 +25,24 @@ export type GroupedDoc = {
 
 const TERM_SHEETS = 'Term sheets & offers'
 
+type SelectHandlers = {
+  selected: boolean
+  onPointerDown: (e: React.PointerEvent) => void
+  onPointerEnter: () => void
+}
+
 function DocRow({
   dealId,
   doc,
   lenders,
   deals,
+  select,
 }: {
   dealId: string
   doc: GroupedDoc
   lenders: { id: string; name: string }[]
   deals: DealChoice[]
+  select: SelectHandlers
 }) {
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -48,7 +56,19 @@ function DocRow({
   }
 
   return (
-    <li className="flex flex-col gap-1.5 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+    <li
+      onPointerEnter={select.onPointerEnter}
+      className={`flex flex-col gap-1.5 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${select.selected ? 'bg-sky-50' : ''}`}
+    >
+      <div className="flex min-w-0 items-start gap-2">
+      {/* Press here and drag over other rows to select several. */}
+      <span
+        onPointerDown={select.onPointerDown}
+        className="-my-1 -ml-1 flex cursor-pointer select-none items-center px-1 py-1.5"
+        title="Select — press and drag to select several"
+      >
+        <input type="checkbox" checked={select.selected} readOnly tabIndex={-1} className="pointer-events-none rounded border-slate-300" />
+      </span>
       <div className="min-w-0">
         {doc.url ? (
           <a href={doc.url} target="_blank" rel="noopener noreferrer" className="block truncate font-medium text-slate-800 hover:underline">
@@ -69,7 +89,8 @@ function DocRow({
         </p>
         {error && <p className="text-xs text-red-600">{error}</p>}
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-2 max-sm:pl-7">
         <select
           value={doc.category}
           disabled={pending}
@@ -206,6 +227,81 @@ export function DocumentGroups({
   if (stray.length) groups.push({ name: 'Other', docs: stray } as (typeof groups)[number])
 
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(docs.length <= 6 ? groups.map((g) => g.name) : []))
+
+  // Selecting several documents: click a checkbox, shift-click for a range,
+  // or press on a checkbox and drag over other rows.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const drag = useRef<{ adding: boolean } | null>(null)
+  const lastClicked = useRef<string | null>(null)
+  const [bulkPending, startBulk] = useTransition()
+  const [bulkError, setBulkError] = useState<string | null>(null)
+  const ordered = groups.flatMap((g) => (openGroups.has(g.name) ? g.docs.map((d) => d.id) : []))
+
+  useEffect(() => {
+    const end = () => {
+      drag.current = null
+      document.body.style.userSelect = ''
+    }
+    window.addEventListener('pointerup', end)
+    return () => window.removeEventListener('pointerup', end)
+  }, [])
+
+  const setOne = (id: string, on: boolean) =>
+    setSelected((s) => {
+      if (s.has(id) === on) return s
+      const next = new Set(s)
+      if (on) next.add(id)
+      else next.delete(id)
+      return next
+    })
+
+  const handlersFor = (id: string): SelectHandlers => ({
+    selected: selected.has(id),
+    onPointerDown: (e) => {
+      if (e.button !== 0) return
+      e.preventDefault()
+      if (e.shiftKey && lastClicked.current) {
+        const a = ordered.indexOf(lastClicked.current)
+        const b = ordered.indexOf(id)
+        if (a >= 0 && b >= 0) {
+          const range = ordered.slice(Math.min(a, b), Math.max(a, b) + 1)
+          setSelected((s) => new Set([...s, ...range]))
+          return
+        }
+      }
+      const adding = !selected.has(id)
+      drag.current = { adding }
+      lastClicked.current = id
+      document.body.style.userSelect = 'none'
+      setOne(id, adding)
+    },
+    onPointerEnter: () => {
+      if (drag.current) setOne(id, drag.current.adding)
+    },
+  })
+
+  // Only documents still on this deal (one may have been moved or deleted).
+  const selectedIds = docs.filter((d) => selected.has(d.id)).map((d) => d.id)
+  function bulkMove(category: string) {
+    setBulkError(null)
+    startBulk(async () => {
+      const res = await moveDocuments(dealId, selectedIds, category)
+      if (res && 'error' in res && res.error) setBulkError(res.error)
+      else {
+        setSelected(new Set())
+        setOpenGroups((s) => new Set([...s, category]))
+      }
+    })
+  }
+  function bulkDelete() {
+    if (!confirm(`Delete ${selectedIds.length} document${selectedIds.length === 1 ? '' : 's'}? This cannot be undone.`)) return
+    setBulkError(null)
+    startBulk(async () => {
+      const res = await deleteDocuments(dealId, selectedIds)
+      if (res && 'error' in res && res.error) setBulkError(res.error)
+      else setSelected(new Set())
+    })
+  }
   const toggle = (name: string) =>
     setOpenGroups((s) => {
       const next = new Set(s)
@@ -216,6 +312,35 @@ export function DocumentGroups({
 
   return (
     <div className="space-y-2">
+      {selectedIds.length > 0 && (
+        <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 shadow-sm">
+          <span className="font-medium">
+            {selectedIds.length} selected
+          </span>
+          <select
+            value=""
+            disabled={bulkPending}
+            onChange={(e) => e.target.value && bulkMove(e.target.value)}
+            className="rounded border border-sky-200 bg-white px-1.5 py-1 text-xs text-slate-700"
+            aria-label="Move selected to group"
+          >
+            <option value="">Move to…</option>
+            {DOC_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <button type="button" onClick={bulkDelete} disabled={bulkPending} className="rounded border border-red-200 bg-white px-2 py-1 text-red-600 hover:bg-red-50 disabled:opacity-50">
+            Delete
+          </button>
+          <button type="button" onClick={() => setSelected(new Set())} className="ml-auto hover:underline">
+            Clear
+          </button>
+          {bulkPending && <span>Working…</span>}
+          {bulkError && <span className="text-red-600">{bulkError}</span>}
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-end gap-3 text-xs text-slate-500">
         {dupCount > 0 && (
           <span className="mr-auto rounded bg-amber-50 px-2 py-0.5 text-amber-800">
@@ -235,20 +360,41 @@ export function DocumentGroups({
         const lendersHere = g.name === TERM_SHEETS ? [...new Set(g.docs.map((d) => d.lender?.name).filter(Boolean))] : []
         return (
           <div key={g.name} className="rounded-lg border border-slate-200">
+            <div className="flex items-center">
+            <label className="flex cursor-pointer items-center py-2.5 pl-3" title="Select everything in this group">
+              <input
+                type="checkbox"
+                checked={g.docs.every((d) => selected.has(d.id))}
+                onChange={(e) => {
+                  const on = e.target.checked
+                  setSelected((s) => {
+                    const next = new Set(s)
+                    for (const d of g.docs) {
+                      if (on) next.add(d.id)
+                      else next.delete(d.id)
+                    }
+                    return next
+                  })
+                  if (on) setOpenGroups((s) => new Set([...s, g.name]))
+                }}
+                className="rounded border-slate-300"
+              />
+            </label>
             <button
               type="button"
               onClick={() => toggle(g.name)}
-              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-slate-50"
+              className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-slate-50"
             >
               <span className={`text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
               <span className="font-medium text-slate-800">{g.name}</span>
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{g.docs.length}</span>
               {lendersHere.length > 0 && <span className="truncate text-xs text-slate-400">{lendersHere.join(', ')}</span>}
             </button>
+            </div>
             {open && (
               <ul className="divide-y divide-slate-100 border-t border-slate-100 px-3">
                 {g.docs.map((d) => (
-                  <DocRow key={d.id} dealId={dealId} doc={d} lenders={lenders} deals={deals} />
+                  <DocRow key={d.id} dealId={dealId} doc={d} lenders={lenders} deals={deals} select={handlersFor(d.id)} />
                 ))}
               </ul>
             )}
