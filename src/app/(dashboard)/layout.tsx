@@ -11,6 +11,7 @@ import { MobileNav } from '@/components/mobile-nav'
 import { CallRecorderProvider } from '@/components/call-recorder-provider'
 import { EnterToSave } from '@/components/enter-to-save'
 import { ScrollToTop } from '@/components/scroll-to-top'
+import { NavMore } from '@/components/nav-more'
 
 export default async function DashboardLayout({
   children,
@@ -31,7 +32,7 @@ export default async function DashboardLayout({
             <Link href="/" className="whitespace-nowrap text-sm font-semibold text-slate-900 hover:text-slate-600">
               Dealflow CRM
             </Link>
-            <nav className="hidden flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600 sm:flex">
+            <nav className="hidden items-center gap-x-5 text-sm text-slate-600 sm:flex">
               <Link href="/" className="whitespace-nowrap hover:text-slate-900">
                 Dashboard
               </Link>
@@ -41,24 +42,13 @@ export default async function DashboardLayout({
               <Link href="/pipeline" className="whitespace-nowrap hover:text-slate-900">
                 Pipeline
               </Link>
-              <Link href="/lenders" className="whitespace-nowrap hover:text-slate-900">
-                Lenders
-              </Link>
-              <Link href="/prospects" className="whitespace-nowrap hover:text-slate-900">
-                Prospects
-              </Link>
               <Link href="/activity" className="whitespace-nowrap hover:text-slate-900">
                 Activity
               </Link>
               <Link href="/inbox" className="whitespace-nowrap hover:text-slate-900">
                 Inbox
               </Link>
-              <Link href="/usage" className="whitespace-nowrap hover:text-slate-900">
-                Usage
-              </Link>
-              <Link href="/settings" className="whitespace-nowrap hover:text-slate-900">
-                Settings
-              </Link>
+              <NavMore email={user.email ?? null} logout={logout} />
             </nav>
           </div>
           <div className="hidden items-center gap-3 text-sm text-slate-500 sm:flex">
@@ -77,17 +67,6 @@ export default async function DashboardLayout({
               )}
             </Link>
             <InboxHealthBadge health={health} />
-            <span className="hidden whitespace-nowrap sm:inline">
-              {user.email}
-            </span>
-            <form action={logout}>
-              <button
-                type="submit"
-                className="whitespace-nowrap rounded-md border border-slate-300 px-3 py-1 text-slate-600 hover:bg-slate-100"
-              >
-                Sign out
-              </button>
-            </form>
           </div>
         </div>
       </header>
