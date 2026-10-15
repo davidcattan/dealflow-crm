@@ -13,10 +13,7 @@ export default async function ProspectsPage() {
     <div className="mx-auto max-w-6xl space-y-4 px-4 py-6 sm:px-6">
       <div>
         <h1 className="text-lg font-semibold text-slate-900">Prospects</h1>
-        <p className="text-sm text-slate-500">
-          Everyone you&apos;re reaching out to, from any list (ABL Advisor, Apollo, your own or Eli&apos;s). When someone replies, the inbox
-          sync sorts it: interested replies become deals, &quot;not interested&quot; gets marked, auto-replies are ignored.
-        </p>
+        <p className="text-sm text-slate-500">Everyone you&apos;re reaching out to. Replies are sorted automatically — interested ones become deals.</p>
       </div>
       {missing ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">

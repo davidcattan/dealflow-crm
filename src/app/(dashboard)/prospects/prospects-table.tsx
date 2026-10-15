@@ -60,11 +60,11 @@ function ImportList({ lists }: { lists: string[] }) {
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3">
+    <div className={open ? 'w-full rounded-lg border border-slate-200 bg-white p-3' : ''}>
       <button type="button" onClick={() => {
           setOpen((v) => !v)
           setResult(null)
-        }} className="text-sm font-medium text-slate-700 hover:underline">
+        }} className={open ? 'text-sm font-medium text-slate-700 hover:underline' : 'rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50'}>
         {open ? 'Close import' : '+ Import a list'}
       </button>
       {result && <p className={`mt-1 text-xs ${result.startsWith('Imported') ? 'text-emerald-700' : 'text-red-600'}`}>{result}</p>}
@@ -171,6 +171,13 @@ function StatusSelect({ p }: { p: Prospect }) {
   )
 }
 
+// "$51 million" + "CIT Real Estate Finance" + 2022 → "$51M · CIT Real Estate Finance '22".
+function facilityText(p: Prospect) {
+  const amount = p.amount?.replace(/\s*million/i, 'M').replace(/\s*billion/i, 'B') ?? null
+  const year = p.deal_year ? `'${p.deal_year.slice(-2)}` : null
+  return [amount, p.lender, year].filter(Boolean).join(' · ') || ''
+}
+
 // Creates the approved cold email for these people in your Outlook Drafts.
 function useDrafts() {
   const [busy, setBusy] = useState(false)
@@ -201,32 +208,23 @@ function useDrafts() {
   return { busy, message, create }
 }
 
-function Preview({ p, onClose }: { p: Prospect; onClose: () => void }) {
+function EmailPreview({ p }: { p: Prospect }) {
   const { subject, body } = prospectEmail(p)
   return (
-    <tr>
-      <td colSpan={6} className="bg-slate-50 px-4 py-3">
-        <div className="max-w-2xl space-y-1 text-sm text-slate-700">
-          <p>
-            <span className="font-medium">To:</span> {p.email}
-          </p>
-          <p>
-            <span className="font-medium">Subject:</span> {subject}
-          </p>
-          <p className="whitespace-pre-wrap">{body}</p>
-          <p className="text-xs text-slate-400">+ your JED signature</p>
-          <button type="button" onClick={onClose} className="text-xs text-slate-500 underline">
-            Close preview
-          </button>
-        </div>
-      </td>
-    </tr>
+    <div className="rounded border border-slate-200 bg-white p-2.5 text-sm text-slate-700">
+      <p>
+        <span className="font-medium">Subject:</span> {subject}
+      </p>
+      <p className="mt-1 whitespace-pre-wrap">{body}</p>
+      <p className="mt-1 text-xs text-slate-400">+ your JED signature</p>
+    </div>
   )
 }
 
 // Opens under a prospect when you click their company: where they stand and
 // every email with them (read live from Outlook).
-function ProspectDetail({ p }: { p: Prospect }) {
+function ProspectDetail({ p, onDraft, drafting }: { p: Prospect; onDraft: () => void; drafting: boolean }) {
+  const [showPreview, setShowPreview] = useState(false)
   const [emails, setEmails] = useState<ProspectEmail[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
@@ -244,7 +242,7 @@ function ProspectDetail({ p }: { p: Prospect }) {
 
   return (
     <tr>
-      <td colSpan={6} className="bg-slate-50 px-4 py-3">
+      <td colSpan={7} className="bg-slate-50 px-4 py-3">
         <div className="max-w-3xl space-y-2 text-sm">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PROSPECT_STATUS_COLORS[p.status]}`}>{PROSPECT_STATUS_LABELS[p.status]}</span>
@@ -260,7 +258,24 @@ function ProspectDetail({ p }: { p: Prospect }) {
               </a>
             )}
           </div>
+          <p className="text-xs text-slate-600">
+            {[p.first_name, p.last_name].filter(Boolean).join(' ')}
+            {p.title ? `, ${p.title}` : ''} ·{' '}
+            <a href={`mailto:${p.email}`} className="underline">
+              {p.email}
+            </a>
+          </p>
           {p.reply_summary && <p className="text-xs text-slate-600">Their reply: {p.reply_summary}</p>}
+          {p.notes && <p className="whitespace-pre-wrap text-xs text-slate-500">{p.notes}</p>}
+          <div className="flex gap-3 text-xs">
+            <button type="button" onClick={() => setShowPreview((v) => !v)} className="text-slate-600 underline">
+              {showPreview ? 'Hide email' : 'Preview email'}
+            </button>
+            <button type="button" onClick={onDraft} disabled={drafting} className="text-slate-700 underline disabled:opacity-50">
+              Draft in Outlook
+            </button>
+          </div>
+          {showPreview && <EmailPreview p={p} />}
           {emails === null ? (
             <p className="text-xs text-slate-500">Looking up emails with {p.email}…</p>
           ) : emails.length === 0 ? (
@@ -289,7 +304,6 @@ function ProspectDetail({ p }: { p: Prospect }) {
 
 export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
   const [picked, setPicked] = useState<Set<string>>(new Set())
-  const [previewId, setPreviewId] = useState<string | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
   const drafts = useDrafts()
   // Click a checkbox to select; press and drag down the checkboxes to select
@@ -323,6 +337,8 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
     return [...c.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [prospects])
   const listNames = lists.map(([name]) => name).filter((n) => n !== NO_LIST)
+  // Only worth showing which list someone is on when looking at all of them.
+  const showSource = list === 'all' && lists.length > 1
   const inList = list === 'all' ? prospects : prospects.filter((p) => (p.source || NO_LIST) === list)
   const counts = useMemo(() => {
     const c = new Map<string, number>()
@@ -331,6 +347,9 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
   }, [inList])
   const companies = new Set(inList.map((p) => p.company)).size
 
+  // A second contact at the same company (right below the first) doesn't
+  // repeat the company and facility.
+  const sameCompany = (i: number) => i > 0 && shown[i - 1].company === shown[i].company
   const shown = inList.filter((p) => {
     if (filter !== 'all' && p.status !== filter) return false
     if (!q.trim()) return true
@@ -340,8 +359,10 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
 
   return (
     <div className="space-y-3">
-      <FindProspects lists={listNames} />
-      <ImportList lists={listNames} />
+      <div className="flex flex-wrap items-start gap-2">
+        <FindProspects lists={listNames} />
+        <ImportList lists={listNames} />
+      </div>
       {(picked.size > 0 || drafts.message) && (
         <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 shadow-sm">
           {picked.size > 0 && (
@@ -413,10 +434,10 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
         </p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-left text-sm">
+          <table className="w-full table-fixed text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
               <tr>
-                <th className="w-8 px-3 py-2">
+                <th className="w-9 px-3 py-2">
                   <input
                     type="checkbox"
                     aria-label="Select everyone shown"
@@ -425,15 +446,16 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
                     className="rounded border-slate-300"
                   />
                 </th>
-                <th className="px-3 py-2 font-medium">Company</th>
-                <th className="px-3 py-2 font-medium">Contact</th>
-                <th className="px-3 py-2 font-medium">Their facility (if known)</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 font-medium">Latest</th>
+                <th className="w-[22%] px-2 py-2 text-left font-medium">Company</th>
+                <th className="w-[28%] px-2 py-2 text-left font-medium">Contact</th>
+                <th className="w-[22%] px-2 py-2 text-left font-medium">Their facility</th>
+                <th className="w-32 px-2 py-2 text-left font-medium">Status</th>
+                <th className="px-2 py-2 text-left font-medium">Last activity</th>
+                <th className="w-16 px-2 py-2" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {shown.map((p) => [
+              {shown.map((p, i) => [
                 <tr
                   key={p.id}
                   onPointerEnter={() => drag.current && setOne(p.id, drag.current.adding)}
@@ -462,61 +484,60 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
                   <td className="px-3 py-2">
                     <input type="checkbox" checked={picked.has(p.id)} readOnly tabIndex={-1} className="pointer-events-none rounded border-slate-300" />
                   </td>
-                  <td className="px-3 py-2">
-                    <button
-                      type="button"
-                      onClick={() => setDetailId(detailId === p.id ? null : p.id)}
-                      title="Show status and emails"
-                      className="text-left font-medium text-slate-800 hover:underline"
-                    >
-                      <span className={`mr-1 inline-block text-slate-400 transition-transform ${detailId === p.id ? 'rotate-90' : ''}`}>›</span>
-                      {p.company_display || p.company}
+                  <td className="truncate px-2 py-2">
+                    {sameCompany(i) ? (
+                      <span className="pl-4 text-xs text-slate-300">same company</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setDetailId(detailId === p.id ? null : p.id)}
+                        title={`${p.company_display || p.company} — show status and emails`}
+                        className="max-w-full truncate text-left font-medium text-slate-800 hover:underline"
+                      >
+                        <span className={`mr-1 inline-block text-slate-400 transition-transform ${detailId === p.id ? 'rotate-90' : ''}`}>›</span>
+                        {p.company_display || p.company}
+                      </button>
+                    )}
+                    {showSource && !sameCompany(i) && p.source && <div className="truncate pl-3 text-xs text-slate-400">{p.source}</div>}
+                  </td>
+                  <td className="truncate px-2 py-2" title={[[p.first_name, p.last_name].filter(Boolean).join(' '), p.title, p.email].filter(Boolean).join(' · ')}>
+                    <button type="button" onClick={() => setDetailId(detailId === p.id ? null : p.id)} className="max-w-full truncate text-left">
+                      <span className="text-slate-800">{[p.first_name, p.last_name].filter(Boolean).join(' ') || p.email}</span>
+                      {p.title && <span className="text-xs text-slate-500"> · {p.title}</span>}
                     </button>
-                    {p.source && <div className="text-xs text-slate-400">{p.source}</div>}
                   </td>
-                  <td className="px-3 py-2">
-                    <div className="text-slate-800">{[p.first_name, p.last_name].filter(Boolean).join(' ') || '—'}</div>
-                    <div className="text-xs text-slate-500">{p.title}</div>
-                    <a href={`mailto:${p.email}`} className="text-xs text-slate-500 underline [overflow-wrap:anywhere]">
-                      {p.email}
-                    </a>
+                  <td className="truncate px-2 py-2 text-xs text-slate-600" title={[p.amount, p.lender, p.deal_year].filter(Boolean).join(' · ')}>
+                    {sameCompany(i) ? '' : facilityText(p)}
                   </td>
-                  <td className="px-3 py-2 text-xs text-slate-600">
-                    {[p.amount, p.lender].filter(Boolean).join(' · ')}
-                    {p.deal_year && <span className="text-slate-400"> ({p.deal_year})</span>}
-                  </td>
-                  <td className="px-3 py-2">
+                  <td className="px-2 py-2">
                     <StatusSelect p={p} />
-                    {p.deal_id && (
-                      <Link href={`/deals/${p.deal_id}`} className="mt-1 block text-xs text-emerald-700 underline">
+                  </td>
+                  <td className="truncate px-2 py-2 text-xs text-slate-500" title={p.reply_summary ?? undefined}>
+                    {p.deal_id ? (
+                      <Link href={`/deals/${p.deal_id}`} className="text-emerald-700 underline">
                         Open deal
                       </Link>
+                    ) : p.reply_summary ? (
+                      p.reply_summary
+                    ) : p.last_emailed_at ? (
+                      `Emailed ${new Date(p.last_emailed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+                    ) : (
+                      <span className="text-slate-300">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-xs text-slate-500">
-                    {p.reply_summary ? (
-                      <span>
-                        <span className="text-slate-400">{p.replied_at ? new Date(p.replied_at).toLocaleDateString() : ''} </span>
-                        {p.reply_summary}
-                      </span>
-                    ) : p.last_emailed_at ? (
-                      `Emailed ${new Date(p.last_emailed_at).toLocaleDateString()}`
-                    ) : (
-                      '—'
-                    )}
-                    {p.notes && <div className="mt-1 whitespace-pre-wrap text-slate-400">{p.notes}</div>}
-                    <div className="mt-1 flex gap-3">
-                      <button type="button" onClick={() => setPreviewId(previewId === p.id ? null : p.id)} className="text-slate-500 underline">
-                        Preview email
-                      </button>
-                      <button type="button" disabled={drafts.busy} onClick={() => drafts.create([p.id])} className="text-slate-700 underline disabled:opacity-50">
-                        Draft in Outlook
-                      </button>
-                    </div>
+                  <td className="px-2 py-2 text-right">
+                    <button
+                      type="button"
+                      disabled={drafts.busy}
+                      onClick={() => drafts.create([p.id])}
+                      title="Put the email in your Outlook Drafts"
+                      className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                    >
+                      Draft
+                    </button>
                   </td>
                 </tr>,
-                detailId === p.id ? <ProspectDetail key={`${p.id}-detail`} p={p} /> : null,
-                previewId === p.id ? <Preview key={`${p.id}-preview`} p={p} onClose={() => setPreviewId(null)} /> : null,
+                detailId === p.id ? <ProspectDetail key={`${p.id}-detail`} p={p} onDraft={() => drafts.create([p.id])} drafting={drafts.busy} /> : null,
               ])}
             </tbody>
           </table>

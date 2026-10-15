@@ -107,14 +107,14 @@ export function FindProspects({ lists }: { lists: string[] }) {
   const pickedCount = picked.size
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3">
+    <div className={open ? 'w-full rounded-lg border border-slate-200 bg-white p-3' : ''}>
       <button
         type="button"
         onClick={() => {
           setOpen((v) => !v)
           setMessage(null)
         }}
-        className="text-sm font-medium text-slate-700 hover:underline"
+        className={open ? 'text-sm font-medium text-slate-700 hover:underline' : 'rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800'}
       >
         {open ? 'Close' : '+ Find prospects with Apollo'}
       </button>
