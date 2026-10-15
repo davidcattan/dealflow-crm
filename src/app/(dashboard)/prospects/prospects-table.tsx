@@ -501,10 +501,13 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
                     {showSource && !sameCompany(i) && p.source && <div className="truncate pl-3 text-xs text-slate-400">{p.source}</div>}
                   </td>
                   <td className="truncate px-2 py-2" title={[[p.first_name, p.last_name].filter(Boolean).join(' '), p.title, p.email].filter(Boolean).join(' · ')}>
-                    <button type="button" onClick={() => setDetailId(detailId === p.id ? null : p.id)} className="max-w-full truncate text-left">
+                    <button type="button" onClick={() => setDetailId(detailId === p.id ? null : p.id)} className="block max-w-full truncate text-left">
                       <span className="text-slate-800">{[p.first_name, p.last_name].filter(Boolean).join(' ') || p.email}</span>
                       {p.title && <span className="text-xs text-slate-500"> · {p.title}</span>}
                     </button>
+                    <a href={`mailto:${p.email}`} className="block truncate text-xs text-slate-500 hover:underline">
+                      {p.email}
+                    </a>
                   </td>
                   <td className="truncate px-2 py-2 text-xs text-slate-600" title={[p.amount, p.lender, p.deal_year].filter(Boolean).join(' · ')}>
                     {sameCompany(i) ? '' : facilityText(p)}
