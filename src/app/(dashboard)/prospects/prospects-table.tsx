@@ -52,7 +52,10 @@ function ImportList() {
             {pending ? 'Importing…' : 'Import'}
           </button>
           {result && <p className="w-full text-xs text-slate-600">{result}</p>}
-          <p className="w-full text-xs text-slate-400">People already here (same email) keep their status — nobody is added twice.</p>
+          <p className="w-full text-xs text-slate-400">
+            Nobody is added twice (matched by email). People already here keep their status, except &quot;Not contacted&quot; ones the file
+            marks as emailed.
+          </p>
         </form>
       )}
     </div>

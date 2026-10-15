@@ -67,10 +67,11 @@ export async function importProspects(csvText: string, source: string) {
     if (seen.has(p.email)) continue
     seen.add(p.email)
     if (have.has(p.email)) {
-      // Keep what's already known (status, source); fill in details.
+      // Keep what's already known (status, source); fill in details. A file
+      // that says they were emailed moves a "Not contacted" person forward.
       const { source: _source, ...details } = p
       void _source
-      refresh.push(details)
+      refresh.push(have.get(p.email) === 'new' && sheetStatus ? { ...details, status: sheetStatus } : details)
     } else fresh.push({ ...p, status: sheetStatus ?? 'new' })
   }
 
