@@ -48,7 +48,7 @@ function CheckCircle({ checked, onCheck, label }: { checked: boolean; onCheck: (
       aria-label={label}
       title={label}
       className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold transition-all duration-200 ${
-        checked ? 'scale-110 border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 text-transparent hover:border-emerald-500 hover:text-emerald-500'
+        checked ? 'scale-110 border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 text-transparent hover:border-emerald-500 hover:text-emerald-500 [@media(hover:hover)]:group-hover/row:border-emerald-500 [@media(hover:hover)]:group-hover/row:text-emerald-500'
       }`}
     >
       ✓
@@ -62,14 +62,15 @@ const CHECK_DELAY = 600
 // How far (px) a phone swipe has to go before letting go dismisses the row.
 const SWIPE_DONE = 100
 
-// Computer: hover a row and it shows a big "Done". Phone: swipe it right —
-// the green fills in as you drag — or tap the circle. Tapping the row opens
-// the deal.
+// Computer: hovering a row tints it green and shows "Mark done"; clicking
+// anywhere on it marks it done, except the deal name, which opens the deal.
+// Phone: swipe right (the green fills in as you drag) or tap the circle;
+// tapping the row opens the deal.
 function Row({ item, showOwner, onDismiss }: { item: TodoItem; showOwner: boolean; onDismiss: (i: TodoItem) => void }) {
   const router = useRouter()
   const [checked, setChecked] = useState(false)
-  const [hover, setHover] = useState(false)
-  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Mouse click = mark done; finger tap = open the deal.
+  const byMouse = useRef(false)
   const [dx, setDx] = useState(0)
   const [dragging, setDragging] = useState(false)
   const rowRef = useRef<HTMLLIElement>(null)
@@ -138,16 +139,6 @@ function Row({ item, showOwner, onDismiss }: { item: TodoItem; showOwner: boolea
     }
   }, [])
 
-  // Short pause first so it doesn't flash on every row the mouse passes.
-  const onEnter = (e: React.PointerEvent) => {
-    if (e.pointerType !== 'mouse') return
-    hoverTimer.current = setTimeout(() => setHover(true), 250)
-  }
-  const onLeave = () => {
-    if (hoverTimer.current) clearTimeout(hoverTimer.current)
-    setHover(false)
-  }
-
   const progress = Math.min(1, dx / SWIPE_DONE)
   const ready = dx >= SWIPE_DONE
 
@@ -176,59 +167,44 @@ function Row({ item, showOwner, onDismiss }: { item: TodoItem; showOwner: boolea
         >
           ✓
         </span>
-        <span style={{ opacity: progress }}>{ready ? 'Let go — done' : 'Done'}</span>
+        <span style={{ opacity: progress }}>Done</span>
       </div>
       <div
-        className="relative flex items-center bg-white hover:bg-slate-50"
-        style={{ transform: dx ? `translateX(${dx}px)` : undefined, transition: dragging ? 'none' : 'transform 200ms ease-out' }}
+        role="button"
+        tabIndex={0}
+        onPointerDown={(e) => (byMouse.current = e.pointerType === 'mouse')}
+        onClick={() => (byMouse.current ? !checked && check() : router.push(`/deals/${item.id}`))}
+        onKeyDown={(e) => e.key === 'Enter' && router.push(`/deals/${item.id}`)}
+        title={checked ? undefined : 'Click to mark done — it comes back if something new happens on this deal'}
+        className="group/row relative flex cursor-pointer items-center bg-white transition-colors active:bg-slate-100 [@media(hover:hover)]:hover:bg-emerald-50/70"
+        style={{ transform: dx ? `translateX(${dx}px)` : undefined, transition: dragging ? 'background-color 150ms' : 'transform 200ms ease-out, background-color 150ms' }}
       >
-        <span className="shrink-0 py-3 pl-3.5 sm:pl-4">
+        <span className="shrink-0 py-3 pl-3.5 sm:pl-4" onClick={(e) => e.stopPropagation()}>
           <CheckCircle checked={checked} onCheck={check} label="Done — it comes back if something new happens on this deal" />
         </span>
-        <div className="relative flex min-w-0 flex-1 self-stretch" onPointerEnter={onEnter} onPointerLeave={onLeave}>
-          <div
-            role="link"
-            tabIndex={0}
-            onClick={() => router.push(`/deals/${item.id}`)}
-            onKeyDown={(e) => e.key === 'Enter' && router.push(`/deals/${item.id}`)}
-            className={`flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 pl-3 transition-opacity duration-300 active:bg-slate-100 ${checked ? 'opacity-40' : ''}`}
-          >
-            <span className="min-w-0 flex-1">
-              <span className="flex items-baseline gap-2">
-                <span className="truncate text-[15px] font-semibold text-slate-900">{item.name}</span>
-                {item.days >= 2 && (
-                  <span className={`shrink-0 text-[11px] ${item.days >= 5 ? 'text-amber-700' : 'text-slate-400'}`}>{item.days}d</span>
-                )}
-              </span>
-              <span className="line-clamp-2 text-sm text-slate-600">{item.text}</span>
-              {item.detail && <span className="mt-0.5 line-clamp-1 text-xs text-slate-400">{item.detail}</span>}
-            </span>
-          </div>
-          {/* Computer hover: the row turns into "open deal" + a big Done. */}
-          {hover && !checked && (
-            <div className="absolute inset-0 z-10 flex items-center gap-2 bg-slate-50/95 pl-3 pr-1 backdrop-blur-[2px]">
-              <span className="min-w-0 flex-1">
-                <Link href={`/deals/${item.id}`} className="block truncate text-[15px] font-semibold text-slate-900 hover:underline">
-                  {item.name} <span className="font-normal text-slate-400">→</span>
-                </Link>
-                <span className="block truncate text-xs text-slate-500">{item.text}</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setHover(false)
-                  check()
-                }}
-                title="It comes back if something new happens on this deal"
-                className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700"
-              >
-                ✓ Done
-              </button>
-            </div>
-          )}
-        </div>
+        <span className={`min-w-0 flex-1 py-3 pl-3 transition-opacity duration-300 ${checked ? 'opacity-40' : ''}`}>
+          <span className="flex items-baseline gap-2">
+            <Link
+              href={`/deals/${item.id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="truncate text-[15px] font-semibold text-slate-900 decoration-slate-400 underline-offset-2 hover:underline"
+            >
+              {item.name}
+            </Link>
+            {item.days >= 2 && <span className={`shrink-0 text-[11px] ${item.days >= 5 ? 'text-amber-700' : 'text-slate-400'}`}>{item.days}d</span>}
+          </span>
+          <span className="line-clamp-2 text-sm text-slate-600">{item.text}</span>
+          {item.detail && <span className="mt-0.5 line-clamp-1 text-xs text-slate-400">{item.detail}</span>}
+        </span>
+        {/* Computer only: appears on hover. */}
+        <span
+          aria-hidden="true"
+          className={`hidden shrink-0 items-center gap-1 pl-3 text-xs font-semibold text-emerald-700 opacity-0 transition-opacity [@media(hover:hover)]:sm:flex ${checked ? '' : 'group-hover/row:opacity-100'}`}
+        >
+          ✓ Mark done
+        </span>
         {/* Whose deal — set it here; it moves to that person's list. */}
-        <span className={`shrink-0 pl-2 pr-3 ${showOwner || !item.owner ? '' : 'max-sm:hidden'}`}>
+        <span className={`shrink-0 pl-3 pr-3 ${showOwner || !item.owner ? '' : 'max-sm:hidden'}`} onClick={(e) => e.stopPropagation()}>
           <OwnerSelect dealId={item.id} owner={item.owner} />
         </span>
       </div>
