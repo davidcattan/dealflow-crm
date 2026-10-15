@@ -48,7 +48,6 @@ export default async function DashboardLayout({
               <Link href="/inbox" className="whitespace-nowrap hover:text-slate-900">
                 Inbox
               </Link>
-              <NavMore email={user.email ?? null} logout={logout} />
             </nav>
           </div>
           <div className="hidden items-center gap-3 text-sm text-slate-500 sm:flex">
@@ -67,6 +66,7 @@ export default async function DashboardLayout({
               )}
             </Link>
             <InboxHealthBadge health={health} />
+            <NavMore email={user.email ?? null} logout={logout} />
           </div>
         </div>
       </header>

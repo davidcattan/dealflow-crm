@@ -37,16 +37,19 @@ export function NavMore({ email, logout }: { email: string | null; logout: () =>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-1 whitespace-nowrap hover:text-slate-900 ${activeHere ? 'text-slate-900' : ''}`}
+        title="More: Lenders, Prospects, Usage, Settings, Sign out"
+        aria-label="More"
         aria-expanded={open}
+        className={`rounded-md p-1 hover:bg-slate-100 hover:text-slate-800 ${open || activeHere ? 'bg-slate-100 text-slate-800' : 'text-slate-500'}`}
       >
-        More
-        <svg viewBox="0 0 20 20" fill="currentColor" className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true">
-          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clipRule="evenodd" />
+        <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5" aria-hidden="true">
+          <circle cx="5" cy="12" r="1.8" />
+          <circle cx="12" cy="12" r="1.8" />
+          <circle cx="19" cy="12" r="1.8" />
         </svg>
       </button>
       {open && (
-        <div className="absolute left-0 z-30 mt-2 w-56 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+        <div className="absolute right-0 z-30 mt-2 w-56 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
           {LINKS.map((l) => (
             <Link
               key={l.href}
