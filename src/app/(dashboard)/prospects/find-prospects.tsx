@@ -78,14 +78,15 @@ export function FindProspects() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ people, list }),
       })
-      const r = await readJsonResponse<{ added: string[]; noEmail: string[]; duplicates: string[]; credits: number }>(res)
+      const r = await readJsonResponse<{ added: string[]; noEmail: string[]; duplicates: string[]; unverified: string[]; credits: number }>(res)
       if (!r.ok) throw new Error(r.message)
-      const { added, noEmail, duplicates, credits } = r.body
+      const { added, noEmail, duplicates, unverified, credits } = r.body
       setMessage(
         [
           `Added ${added.length} to Prospects${list.trim() ? ` ("${list.trim()}")` : ''}.`,
           noEmail.length ? `No email found for ${noEmail.join(', ')}.` : null,
           duplicates.length ? `Already in Prospects: ${duplicates.join(', ')}.` : null,
+          unverified.length ? `Left out (email not verified by Apollo, could bounce): ${unverified.join(', ')}.` : null,
           `${credits} Apollo credit${credits === 1 ? '' : 's'} used.`,
         ]
           .filter(Boolean)
@@ -121,7 +122,7 @@ export function FindProspects() {
         <div className="mt-2 space-y-3 text-sm">
           <div className="grid gap-2 sm:grid-cols-[1fr_14rem]">
             <label className="flex flex-col gap-1 text-xs text-slate-500">
-              Companies — websites work best, one per line
+              Companies — websites work best, one per line. Finds the CFO, CEO and owner.
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}

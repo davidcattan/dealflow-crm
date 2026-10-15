@@ -1,49 +1,31 @@
-// Who to email at a company about its credit facility: the top finance
-// person first, then the CEO / owner. Same rules as the Apollo lists.
+// Who to email at a company about its credit facility: just the CFO, the
+// CEO and the owner (David's call, Oct 2026). CFO first.
 
-// 1 = CFO, 2 = VP Finance / Treasurer, 3 = Controller; null = not finance.
+const NOT_THEM = /\b(assistant|deputy|former|ex-|regional|division|vp|vice|office of|product owner|business owner)\b/
+
+// 1 = CFO; null otherwise.
 export function financeRank(title: string | null | undefined): number | null {
   const t = (title ?? '').toLowerCase()
-  if (!t || /\b(assistant|warehouse|inventory|project|production|plant|regional|division|former)\b/.test(t)) return null
-  if (/\bcfo\b|chief financial/.test(t)) return 1
-  if (/treasurer|(vp|vice president|svp|evp|head|director)\W.*financ|financ\w*\W.*(vp|vice president)/.test(t)) return 2
-  if (/\bcontroller\b/.test(t)) return 3
-  return null
+  if (!t || NOT_THEM.test(t)) return null
+  return /\bcfo\b|chief financial officer/.test(t) ? 1 : null
 }
 
-// 1 = CEO, 2 = President / Owner / Founder; null otherwise.
+// 1 = CEO, 2 = Owner / Co-owner; null otherwise.
 export function bossRank(title: string | null | undefined): number | null {
   const t = (title ?? '').toLowerCase()
-  if (!t || /\b(vice|vp|assistant|regional|division|product|office of|lead|manager|former)\b/.test(t)) return null
-  if (/\bceo\b|chief executive/.test(t)) return 1
-  if (/^(president|owner|founder|co-founder)\b|\b(president|owner|founder)$|president (&|and)/.test(t)) return 2
+  if (!t || NOT_THEM.test(t)) return null
+  if (/\bceo\b|chief executive officer/.test(t)) return 1
+  if (/\b(co-?)?owner\b/.test(t)) return 2
   return null
 }
 
-export function isRelevant(title: string | null | undefined) {
-  return financeRank(title) !== null || bossRank(title) !== null
-}
-
-// Sort best first: finance people, then the boss, then everyone else.
+// Sort best first: CFO, then CEO, then owner.
 export function titleScore(title: string | null | undefined) {
   const f = financeRank(title)
   if (f !== null) return f
   const b = bossRank(title)
-  if (b !== null) return 10 + b
-  return 100
+  return b !== null ? 10 + b : 100
 }
 
 // Titles to ask Apollo for.
-export const PROSPECT_TITLES = [
-  'cfo',
-  'chief financial officer',
-  'vp finance',
-  'vice president finance',
-  'treasurer',
-  'controller',
-  'ceo',
-  'chief executive officer',
-  'president',
-  'owner',
-  'founder',
-]
+export const PROSPECT_TITLES = ['cfo', 'chief financial officer', 'ceo', 'chief executive officer', 'owner', 'co-owner']

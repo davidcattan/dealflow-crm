@@ -33,6 +33,7 @@ export async function POST(request: Request) {
   const added: string[] = []
   const noEmail: string[] = []
   const duplicates: string[] = []
+  const unverified: string[] = []
   let credits = 0
   for (const person of people) {
     try {
@@ -41,6 +42,12 @@ export async function POST(request: Request) {
       const email = r.email?.toLowerCase() ?? null
       if (!email) {
         noEmail.push(`${person.name} (${person.company})`)
+        continue
+      }
+      // Only verified emails: unverified ones bounce, and bounces hurt your
+      // sending reputation.
+      if (r.emailStatus && r.emailStatus !== 'verified') {
+        unverified.push(`${r.name || person.name} (${person.company})`)
         continue
       }
       if (haveEmails.has(email)) {
@@ -76,5 +83,5 @@ export async function POST(request: Request) {
     }
   }
   revalidatePath('/prospects')
-  return NextResponse.json({ ok: true, added, noEmail, duplicates, credits })
+  return NextResponse.json({ ok: true, added, noEmail, duplicates, unverified, credits })
 }

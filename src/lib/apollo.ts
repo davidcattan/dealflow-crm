@@ -64,7 +64,7 @@ export async function searchPeople(domain: string): Promise<ApolloPerson[]> {
   }))
 }
 
-export type RevealedPerson = { name: string; title: string | null; email: string | null; linkedin: string | null; phone: string | null }
+export type RevealedPerson = { name: string; title: string | null; email: string | null; emailStatus: string | null; linkedin: string | null; phone: string | null }
 
 // 1 credit: the person's full name and work email.
 export async function revealPerson(id: string): Promise<RevealedPerson> {
@@ -75,6 +75,8 @@ export async function revealPerson(id: string): Promise<RevealedPerson> {
     name: String(p.name ?? [p.first_name, p.last_name].filter(Boolean).join(' ')),
     title: (p.title as string | null) ?? null,
     email: (p.email as string | null) && !String(p.email).includes('email_not_unlocked') ? String(p.email) : null,
+    // "verified" = Apollo checked the mailbox exists; anything else may bounce.
+    emailStatus: (p.email_status as string | null) ?? null,
     linkedin: (p.linkedin_url as string | null) ?? null,
     phone: phones[0]?.sanitized_number ?? phones[0]?.raw_number ?? null,
   }
@@ -136,6 +138,8 @@ export async function searchPeopleWithTitles(domain: string, titles: string[]): 
   const params = new URLSearchParams()
   params.append('q_organization_domains_list[]', domain)
   for (const t of titles) params.append('person_titles[]', t)
+  // Only these titles — not "similar" ones like VP of Sales.
+  params.set('include_similar_titles', 'false')
   params.set('per_page', '25')
   const body = await apollo(`/mixed_people/api_search?${params.toString()}`, { method: 'POST' })
   const people = (body.people as Record<string, unknown>[] | undefined) ?? []
