@@ -35,10 +35,35 @@ function fmtDay(iso: string) {
   return new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-// Swipe a row right (phone) or hover it and click "Done" (computer) to
-// dismiss it. It comes back if something new happens on the deal.
-function Row({ item, rank, showOwner, onDismiss }: { item: TodoItem; rank: number; showOwner: boolean; onDismiss: (i: TodoItem) => void }) {
-  const look = LOOK[rank] ?? LOOK[9]
+// Tap the circle (or swipe right on a phone) to dismiss a row. It comes back if something new happens on the deal.
+// Empty circle; tap it and it fills green with a check, then the row goes
+// (like Reminders on iPhone).
+function CheckCircle({ checked, onCheck, label }: { checked: boolean; onCheck: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onCheck}
+      disabled={checked}
+      aria-label={label}
+      title={label}
+      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold transition-all duration-200 ${
+        checked ? 'scale-110 border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 text-transparent hover:border-emerald-500 hover:text-emerald-500'
+      }`}
+    >
+      ✓
+    </button>
+  )
+}
+
+// How long a checked row stays (filled in) before it goes.
+const CHECK_DELAY = 600
+
+function Row({ item, showOwner, onDismiss }: { item: TodoItem; showOwner: boolean; onDismiss: (i: TodoItem) => void }) {
+  const [checked, setChecked] = useState(false)
+  const check = () => {
+    setChecked(true)
+    setTimeout(() => onDismiss(item), CHECK_DELAY)
+  }
   const [dx, setDx] = useState(0)
   const [dragging, setDragging] = useState(false)
   const touch = useRef<{ x: number; y: number; id: number; swiping: boolean } | null>(null)
@@ -105,13 +130,16 @@ function Row({ item, rank, showOwner, onDismiss }: { item: TodoItem; rank: numbe
         ✓ Done
       </div>
       <div
-        className="group/row relative flex items-center bg-white hover:bg-slate-50"
+        className="relative flex items-center bg-white hover:bg-slate-50"
         style={{ transform: dx ? `translateX(${dx}px)` : undefined, transition: dragging ? 'none' : 'transform 180ms ease-out' }}
       >
-        <Link href={`/deals/${item.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-3.5 active:bg-slate-100 sm:pl-4">
-          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm ${look.tint}`} aria-hidden="true">
-            {look.icon}
-          </span>
+        <span className="shrink-0 py-3 pl-3.5 sm:pl-4">
+          <CheckCircle checked={checked} onCheck={check} label="Done — it comes back if something new happens on this deal" />
+        </span>
+        <Link
+          href={`/deals/${item.id}`}
+          className={`flex min-w-0 flex-1 items-center gap-3 py-3 pl-3 transition-opacity duration-300 active:bg-slate-100 ${checked ? 'opacity-40' : ''}`}
+        >
           <span className="min-w-0 flex-1">
             <span className="flex items-baseline gap-2">
               <span className="truncate text-[15px] font-semibold text-slate-900">{item.name}</span>
@@ -124,28 +152,9 @@ function Row({ item, rank, showOwner, onDismiss }: { item: TodoItem; rank: numbe
           </span>
         </Link>
         {/* Whose deal — set it here; it moves to that person's list. */}
-        <span className={`shrink-0 pl-2 [@media(hover:hover)]:pr-3 ${showOwner || !item.owner ? '' : 'max-sm:hidden'}`}>
+        <span className={`shrink-0 pl-2 pr-3 ${showOwner || !item.owner ? '' : 'max-sm:hidden'}`}>
           <OwnerSelect dealId={item.id} owner={item.owner} />
         </span>
-        {/* Done / not now. Computers: a full-height green "Done" slides in
-            from the right edge on hover. Phones: swipe right (or tap ✓). */}
-        <button
-          type="button"
-          onClick={() => onDismiss(item)}
-          title="Done — it comes back if something new happens on this deal"
-          aria-label="Done"
-          className="ml-2 hidden w-0 shrink-0 items-center justify-center self-stretch overflow-hidden whitespace-nowrap bg-emerald-500 text-sm font-semibold text-white transition-[width] duration-150 ease-out hover:bg-emerald-600 focus:w-24 group-hover/row:w-24 [@media(hover:hover)]:flex"
-        >
-          ✓ Done
-        </button>
-        <button
-          type="button"
-          onClick={() => onDismiss(item)}
-          aria-label="Done"
-          className="mx-2 shrink-0 rounded-full p-1.5 text-base leading-none text-emerald-600 [@media(hover:hover)]:hidden"
-        >
-          ✓
-        </button>
       </div>
     </li>
   )
@@ -154,17 +163,20 @@ function Row({ item, rank, showOwner, onDismiss }: { item: TodoItem; rank: numbe
 function MyTodoRow({ todo, showWho, onDone }: { todo: MyTodo; showWho: boolean; onDone: (t: MyTodo) => void }) {
   const [pending, startTransition] = useTransition()
   const due = todo.dueDate ? dueLabel(todo.dueDate) : null
+  const [checked, setChecked] = useState(false)
   return (
     <li className="flex items-start gap-3 px-3.5 py-3 sm:px-4">
-      <button
-        type="button"
-        onClick={() => onDone(todo)}
-        className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-slate-300 text-transparent hover:border-emerald-500 hover:text-emerald-500"
-        aria-label="Mark done"
-      >
-        ✓
-      </button>
-      <div className="min-w-0 flex-1">
+      <span className="mt-0.5">
+        <CheckCircle
+          checked={checked}
+          label="Mark done"
+          onCheck={() => {
+            setChecked(true)
+            setTimeout(() => onDone(todo), CHECK_DELAY)
+          }}
+        />
+      </span>
+      <div className={`min-w-0 flex-1 transition-opacity duration-300 ${checked ? 'opacity-40' : ''}`}>
         <p className="text-[15px] text-slate-900 [overflow-wrap:anywhere]">{todo.text}</p>
         {(todo.deal || due || showWho) && (
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
@@ -432,7 +444,7 @@ export function TodoList({
             </h2>
             <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               {s.items.map((i) => (
-                <Row key={i.id} item={i} rank={s.rank} showOwner={both} onDismiss={dismiss} />
+                <Row key={i.id} item={i} showOwner={both} onDismiss={dismiss} />
               ))}
             </ul>
           </section>
@@ -447,7 +459,7 @@ export function TodoList({
           </summary>
           <ul className="mt-1.5 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             {waiting.map((i) => (
-              <Row key={i.id} item={i} rank={9} showOwner={both} onDismiss={dismiss} />
+              <Row key={i.id} item={i} showOwner={both} onDismiss={dismiss} />
             ))}
           </ul>
         </details>
