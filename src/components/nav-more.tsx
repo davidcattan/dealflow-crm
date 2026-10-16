@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const LINKS = [
-  { href: '/lenders', label: 'Lenders' },
   { href: '/prospects', label: 'Prospects' },
   { href: '/usage', label: 'Usage' },
   { href: '/settings', label: 'Settings' },
@@ -37,7 +36,7 @@ export function NavMore({ email, logout }: { email: string | null; logout: () =>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title="More: Lenders, Prospects, Usage, Settings, Sign out"
+        title="More: Prospects, Usage, Settings, Sign out"
         aria-label="More"
         aria-expanded={open}
         className={`rounded-md p-1 hover:bg-slate-100 hover:text-slate-800 ${open || activeHere ? 'bg-slate-100 text-slate-800' : 'text-slate-500'}`}
