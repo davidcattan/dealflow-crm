@@ -26,7 +26,7 @@ export async function POST(
     instructions?: string
   }
   const fix = typeof instructions === 'string' ? instructions.trim().slice(0, 2000) : ''
-  const draftStyle: DraftStyle = DRAFT_STYLES.includes(style as DraftStyle) ? (style as DraftStyle) : 'skeleton'
+  const draftStyle: DraftStyle = DRAFT_STYLES.includes(style as DraftStyle) ? (style as DraftStyle) : 'auto'
 
   const { data: match } = await supabase
     .from('deal_matches')

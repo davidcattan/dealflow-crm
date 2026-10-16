@@ -19,6 +19,7 @@ import { recordSubmission } from '@/lib/deals/submissions'
 import { detectSentDrafts } from '@/lib/outlook/sent-tracking'
 import { notify } from '@/lib/notifications'
 import { addresses } from '@/lib/deals/duplicates'
+import { loadFirstPitch, refreshDraftsFromFirstPitch } from '@/lib/matching/copy-sent'
 import { ownText } from '@/lib/outlook/own-text'
 import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
 import { isNotBorrowerEmail, isTeamName, referralOnlyPartnerFor, referralPartnerFor } from './partners'
@@ -741,6 +742,13 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
         })
       }
       actions.push(`Logged on deal; ${lenderIds.length} lender${lenderIds.length === 1 ? '' : 's'} on "Lenders sent to"`)
+      // The deal's first submission just went out: every other lender's
+      // draft now copies it word for word.
+      const first = await loadFirstPitch(supabase, dealId)
+      if (first?.id === recorded.id) {
+        const n = await refreshDraftsFromFirstPitch(supabase, dealId).catch(() => 0)
+        if (n) actions.push(`${n} other lender draft${n === 1 ? '' : 's'} now match this email`)
+      }
     } else {
       await supabase.from('deal_updates').insert({
         deal_id: dealId,

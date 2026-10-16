@@ -22,6 +22,8 @@ export type MatchWithLender = {
   draftStatus: 'none' | 'drafted' | 'sent'
   outlookDraftCreatedAt: string | null
   draftGeneratedAt?: string | null
+  // Set when the draft is the deal's first sent email, re-addressed.
+  copiedFrom?: string | null
   // Emails you actually sent this lender about the deal (newest first).
   sent?: SentEmail[]
 }
@@ -126,6 +128,8 @@ function DraftEmail({
   includeIntro,
   onToggleIntro,
   staleNote,
+  staleFix = 'skeleton',
+  copiedFrom = null,
 }: {
   dealId: string
   matchId: string
@@ -146,6 +150,8 @@ function DraftEmail({
   includeIntro: boolean
   onToggleIntro: (v: boolean) => void
   staleNote: string | null
+  staleFix?: DraftStyle
+  copiedFrom?: string | null
 }) {
   const [showAttachments, setShowAttachments] = useState(false)
   const [open, setOpen] = useState(false)
@@ -324,11 +330,12 @@ function DraftEmail({
           )}
         </div>
       )}
+      {copiedFrom && <p className="mt-1 text-xs text-emerald-700">✓ Same wording as {copiedFrom}</p>}
       {staleNote && (
         <p className="mt-1 text-xs font-medium text-amber-800">
           {staleNote}{' '}
-          <button type="button" onClick={() => onRedraft('skeleton')} disabled={redrafting} className="underline disabled:opacity-50">
-            {redrafting ? 'Refilling…' : 'Refill'}
+          <button type="button" onClick={() => onRedraft(staleFix)} disabled={redrafting} className="underline disabled:opacity-50">
+            {redrafting ? 'Updating…' : staleFix === 'skeleton' ? 'Refill' : 'Match it'}
           </button>
         </p>
       )}
@@ -445,6 +452,7 @@ export function MatchingPanel({
   mailboxes,
   defaultMailboxId,
   latestPitch,
+  firstPitch = null,
   requiresNda = false,
   ndaLenderIds = [],
 }: {
@@ -459,6 +467,8 @@ export function MatchingPanel({
   mailboxes: Mailbox[]
   defaultMailboxId: string | null
   latestPitch: { at: string; lenderId: string; lenderName: string } | null
+  // The deal's first sent submission — other drafts copy it.
+  firstPitch?: { label: string; lenderId: string } | null
   // Deal needs lenders to sign an NDA: label each match (never blocks).
   requiresNda?: boolean
   ndaLenderIds?: string[]
@@ -577,7 +587,7 @@ export function MatchingPanel({
     }
   }
 
-  async function draftFor(matchId: string, style: DraftStyle = 'skeleton', instructions?: string) {
+  async function draftFor(matchId: string, style: DraftStyle = 'auto', instructions?: string) {
     setDraftingId(matchId)
     setDraftError(null)
     try {
@@ -809,8 +819,14 @@ export function MatchingPanel({
                   attachmentAdvice={attachmentAdvice}
                   includeIntro={includeIntro}
                   onToggleIntro={toggleIntro}
+                  copiedFrom={m.copiedFrom ?? null}
+                  staleFix={firstPitch ? 'copy' : 'skeleton'}
                   staleNote={
-                    latestPitch &&
+                    firstPitch
+                      ? firstPitch.lenderId !== m.lender_id && !m.copiedFrom
+                        ? `Doesn't match ${firstPitch.label}.`
+                        : null
+                      : latestPitch &&
                     latestPitch.lenderId !== m.lender_id &&
                     (!m.draftGeneratedAt || m.draftGeneratedAt < latestPitch.at)
                       ? `You emailed ${latestPitch.lenderName} about this deal on ${new Date(latestPitch.at).toLocaleDateString()} — this draft is older.`

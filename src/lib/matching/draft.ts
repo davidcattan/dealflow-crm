@@ -8,6 +8,7 @@ import { ownText } from '@/lib/outlook/own-text'
 import { buildDealProfile } from './deal-profile'
 import type { Deal, DealUpdate } from '@/lib/types'
 import { skeletonEmail, type SkeletonSnapshot } from './skeleton'
+import { copyPitch, lenderGreeting, loadFirstPitch } from './copy-sent'
 
 // Matches at or above this score get an auto-drafted submission email.
 // Below this, it's more likely to be a marginal/speculative fit that a
@@ -146,20 +147,43 @@ function applyIntroAndSignature(body: string, sender: Sender, includeIntro: bool
   return out
 }
 
-// The lender email. Default ('skeleton'): the team's fixed skeleton (Eli's
-// format) filled with this deal's numbers — no AI, free and instant.
+// The lender email. Default ('auto'): once a submission on this deal has
+// been sent, the same email word for word, re-addressed to this lender;
+// before that ('skeleton'), the team's fixed skeleton (Eli's format) filled
+// with this deal's numbers — no AI, free and instant either way.
 // 'ai': written by the AI in the same house format, for deals the skeleton
 // doesn't fit (personal loans like a HELOC, real estate) — a few cents.
 export async function draftSubmissionEmail(
   dealId: string,
   lenderId: string,
   reasoning = '',
-  style: DraftStyle = 'skeleton',
+  style: DraftStyle = 'auto',
   includeIntro = true,
   revise?: Revision
 ) {
   if (style === 'ai' || revise) return draftWithAi(dealId, lenderId, reasoning, includeIntro, revise)
   const supabase = await createClient()
+
+  if (style === 'auto' || style === 'copy') {
+    const pitch = await loadFirstPitch(supabase, dealId)
+    if (pitch && pitch.lenderId !== lenderId) {
+      const [to, { data: deal }, { data: documents }] = await Promise.all([
+        lenderGreeting(supabase, lenderId),
+        supabase.from('deals').select('rep_name').eq('id', dealId).single(),
+        supabase.from('documents').select('file_name').eq('deal_id', dealId),
+      ])
+      const sender = await loadSender(supabase, (deal?.rep_name as string | null) ?? null)
+      const { subject, body } = copyPitch(pitch, { ...to, senderName: sender.name })
+      return {
+        subject,
+        // The first email already has its own intro; only the signature is re-applied.
+        body: applyIntroAndSignature(body, sender, false),
+        recipientEmail: to.contactEmail,
+        recipientName: to.contactName,
+        attachmentCount: (documents ?? []).length,
+      }
+    }
+  }
 
   const [{ data: deal, error: dealError }, { data: lender, error: lenderError }, { data: contacts }, { data: documents }] = await Promise.all([
     supabase.from('deals').select('*').eq('id', dealId).single(),

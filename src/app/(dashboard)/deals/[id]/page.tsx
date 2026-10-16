@@ -15,6 +15,7 @@ import type { Snapshot } from '@/lib/snapshot/schema'
 import { docTextsOf, withCollateralRequests } from '@/lib/snapshot/collateral'
 import { estimateUnderwriting } from '@/lib/underwriting/estimate'
 import { buildManualPrompt } from '@/lib/underwriting/prompt'
+import { copiedSubject, loadFirstPitch } from '@/lib/matching/copy-sent'
 import { MatchingPanel, type MatchWithLender, type LoanTypeRecommendation, type SentEmail } from './matching-panel'
 import { ownText } from '@/lib/outlook/own-text'
 import { DocumentUploader } from './document-uploader'
@@ -298,9 +299,19 @@ export default async function DealDetailPage({
     sentByLender.set(r.lender_id as string, list)
   }
 
+  // The deal's first submission email: every other draft copies it.
+  const firstPitch = await loadFirstPitch(supabase, id)
+  const firstPitchLabel = firstPitch
+    ? `${firstPitch.senderName ? `${firstPitch.senderName}'s` : 'Your'} email to ${firstPitch.lenderName ?? 'the first lender'} (${new Date(firstPitch.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`
+    : null
+
   const matchesWithLender: MatchWithLender[] = (matches ?? []).map((m) => {
     const lender = Array.isArray(m.lenders) ? m.lenders[0] : m.lenders
     return {
+      copiedFrom:
+        firstPitch && m.lender_id !== firstPitch.lenderId && m.draft_subject === copiedSubject(firstPitch, lender?.name ?? '')
+          ? firstPitchLabel
+          : null,
       sent: sentByLender.get(m.lender_id as string) ?? [],
       id: m.id,
       lender_id: m.lender_id,
@@ -676,6 +687,7 @@ export default async function DealDetailPage({
         mailboxes={mailboxes}
         defaultMailboxId={defaultMailboxId}
         latestPitch={latestPitch}
+        firstPitch={firstPitch && firstPitchLabel ? { label: firstPitchLabel, lenderId: firstPitch.lenderId } : null}
         loanTypeRecommendation={
           (deal as { loan_type_recommendation?: LoanTypeRecommendation | null }).loan_type_recommendation ?? null
         }
