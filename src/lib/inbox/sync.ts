@@ -830,6 +830,8 @@ async function saveAttachments(
   const newIds: string[] = []
   for (const a of attachments) {
     if (!KEEP_EXT.test(a.name) || a.size > MAX_ATTACHMENT_BYTES) continue
+    // Logos and signature images, not documents.
+    if (/\.(png|jpe?g)$/i.test(a.name) && a.size < 30 * 1024) continue
     const bytes = Buffer.from(a.contentBytes, 'base64')
     const key = `${a.name}|${bytes.byteLength}`
     if (have.has(key)) continue
@@ -1008,6 +1010,7 @@ async function act({
     const ref = classification.lender_reply?.deal_ref
     const dealId = ref ? (ctx.dealByRef.get(ref)?.id ?? null) : null
     const summaryText = classification.lender_reply?.summary ?? classification.reason
+    let saved = 0
     if (dealId) {
       await supabase.from('deal_updates').insert({
         deal_id: dealId,
@@ -1015,6 +1018,8 @@ async function act({
         note: `Internal email from ${sender}: ${summaryText}`,
         source: 'email',
       })
+      if (message.hasAttachments)
+        saved = await saveAttachments(supabase, dealId, await getMessageAttachments(ctx.accessToken, message.id)).catch(() => 0)
     }
     return {
       counter: 'other',
@@ -1023,7 +1028,9 @@ async function act({
         deal_id: dealId,
         body_text: dealId ? message.bodyText : null,
         summary: summaryText,
-        action_taken: dealId ? 'Internal email — logged on deal' : 'Internal email — no action',
+        action_taken: dealId
+          ? `Internal email — logged on deal${saved ? `, saved ${saved} attachment${saved === 1 ? '' : 's'}` : ''}`
+          : 'Internal email — no action',
       },
     }
   }
@@ -1084,6 +1091,13 @@ async function act({
       await supabase.from('deals').update({ status: 'submitted' }).eq('id', dealId)
       actions.push(deal.status === 'old' ? 'moved from Old back to Submitted' : 'moved to Submitted')
       deal.status = 'submitted'
+    }
+
+    // Files on a lender thread (term sheets, or the borrower's staff
+    // replying-all with the docs a lender asked for) belong on the deal too.
+    if (message.hasAttachments) {
+      const saved = await saveAttachments(supabase, dealId, await getMessageAttachments(ctx.accessToken, message.id)).catch(() => 0)
+      if (saved) actions.push(`saved ${saved} attachment${saved === 1 ? '' : 's'}`)
     }
 
     if (reply?.mandate_notes && lender) {
