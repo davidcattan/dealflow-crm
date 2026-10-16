@@ -135,7 +135,7 @@ function DocRow({
 }
 
 // A deal's documents in groups (bank statements, tax returns, term sheets…),
-// each a folder you open. Small sets start open.
+// each a folder you open. All start closed.
 // Every document on the deal as one zip: "<Deal name>/<Group>/<file>".
 function DownloadAll({ dealId, dealName }: { dealId: string; dealName: string }) {
   const [busy, setBusy] = useState<string | null>(null)
@@ -226,7 +226,7 @@ export function DocumentGroups({
   const stray = docs.filter((d) => !known.has(d.category))
   if (stray.length) groups.push({ name: 'Other', docs: stray } as (typeof groups)[number])
 
-  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(docs.length <= 6 ? groups.map((g) => g.name) : []))
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set())
 
   // Selecting several documents: click a checkbox, shift-click for a range,
   // or press on a checkbox and drag over other rows.
