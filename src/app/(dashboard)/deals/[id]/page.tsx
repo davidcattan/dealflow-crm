@@ -1,10 +1,7 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import type { Deal, DocumentRecord, DealUpdate } from '@/lib/types'
-import {
-  deleteDeal,
-  setDealStatusQuick,
-} from './actions'
+import { deleteDeal } from './actions'
 import { ConfirmButton } from '@/components/confirm-button'
 import { UnderwritingPanel } from './underwriting-panel'
 import { SnapshotPanel } from './snapshot-panel'
@@ -16,6 +13,7 @@ import { docTextsOf, withCollateralRequests } from '@/lib/snapshot/collateral'
 import { estimateUnderwriting } from '@/lib/underwriting/estimate'
 import { buildManualPrompt } from '@/lib/underwriting/prompt'
 import { copiedSubject, loadFirstPitch } from '@/lib/matching/copy-sent'
+import { StatusToggle } from './status-toggle'
 import { MatchingPanel, type MatchWithLender, type LoanTypeRecommendation, type SentEmail } from './matching-panel'
 import { ownText } from '@/lib/outlook/own-text'
 import { DocumentUploader } from './document-uploader'
@@ -384,20 +382,7 @@ export default async function DealDetailPage({
   const isPast = ['dead', 'old', 'closed'].includes(deal.status)
   const dealActions = (
     <>
-          <form action={setDealStatusQuick}>
-            <input type="hidden" name="deal_id" value={deal.id} />
-            <input
-              type="hidden"
-              name="status"
-              value={['dead', 'old', 'closed'].includes(deal.status) ? 'in_review' : 'dead'}
-            />
-            <button
-              type="submit"
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-            >
-              {['dead', 'old', 'closed'].includes(deal.status) ? 'Mark as active' : 'Mark as dead'}
-            </button>
-          </form>
+          <StatusToggle dealId={deal.id} isPast={isPast} />
           <MergeDealButton
             dealId={deal.id}
             dealName={deal.company_name}
