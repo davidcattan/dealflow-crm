@@ -330,11 +330,16 @@ function DraftEmail({
           )}
         </div>
       )}
-      {copiedFrom && <p className="mt-1 text-xs text-emerald-700">✓ Same wording as {copiedFrom}</p>}
+      {copiedFrom && <p className="mt-2 text-sm font-medium text-emerald-700">✓ Same wording as {copiedFrom}</p>}
       {staleNote && (
-        <p className="mt-1 text-xs font-medium text-amber-800">
+        <p className="mt-2 flex flex-wrap items-center gap-2 text-sm font-medium text-amber-900">
           {staleNote}{' '}
-          <button type="button" onClick={() => onRedraft(staleFix)} disabled={redrafting} className="underline disabled:opacity-50">
+          <button
+            type="button"
+            onClick={() => onRedraft(staleFix)}
+            disabled={redrafting}
+            className="rounded-md bg-amber-600 px-3 py-1 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+          >
             {redrafting ? 'Updating…' : staleFix === 'skeleton' ? 'Refill' : 'Match it'}
           </button>
         </p>
@@ -606,6 +611,32 @@ export function MatchingPanel({
     }
   }
 
+  // Drafts that don't use the deal's first sent email yet.
+  const unmatched = firstPitch
+    ? matches.filter((m) => m.draftStatus === 'drafted' && !m.sent?.length && !m.copiedFrom && m.lender_id !== firstPitch.lenderId)
+    : []
+  const [matchingAll, setMatchingAll] = useState<{ done: number; total: number } | null>(null)
+  async function matchAll() {
+    const todo = unmatched
+    setMatchingAll({ done: 0, total: todo.length })
+    setDraftError(null)
+    for (const [n, m] of todo.entries()) {
+      const res = await fetch(`/api/deals/${dealId}/matches/${m.id}/draft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ style: 'copy', includeIntro }),
+      })
+      const result = await readJsonResponse(res)
+      if (!result.ok) {
+        setDraftError({ id: m.id, message: result.message })
+        break
+      }
+      setMatchingAll({ done: n + 1, total: todo.length })
+    }
+    router.refresh()
+    setMatchingAll(null)
+  }
+
   async function run() {
     setLoading(true)
     setError(null)
@@ -667,6 +698,25 @@ export function MatchingPanel({
           </button>
         )}
       </div>
+
+      {firstPitch && (unmatched.length > 0 || matchingAll) && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border-2 border-amber-300 bg-amber-50 px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-amber-900">
+              {unmatched.length} draft{unmatched.length === 1 ? '' : 's'} {unmatched.length === 1 ? "doesn't" : "don't"} match {firstPitch.label}
+            </p>
+            <p className="text-xs text-amber-800">Copies it word for word: only the greeting and lender name change. Free.</p>
+          </div>
+          <button
+            type="button"
+            onClick={matchAll}
+            disabled={Boolean(matchingAll)}
+            className="shrink-0 rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+          >
+            {matchingAll ? `Matching ${matchingAll.done}/${matchingAll.total}…` : `Match all ${unmatched.length} drafts`}
+          </button>
+        </div>
+      )}
 
       {!hasUnderwriting && (
         <p className="mt-3 text-sm text-amber-700">
