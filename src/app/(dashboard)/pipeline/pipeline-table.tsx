@@ -228,6 +228,7 @@ export function PipelineTable({
                     <td className="hidden truncate px-4 py-2 text-slate-500 sm:table-cell">{r.updatedLabel}</td>
                     <td className="px-2 py-2 text-right">
                       <span className="inline-flex items-center justify-end gap-0.5">
+                        {!PAST_STATUSES.includes(r.status) && (
                         <button
                           type="button"
                           onClick={() => markDead(r)}
@@ -239,6 +240,7 @@ export function PipelineTable({
                             <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
                           </svg>
                         </button>
+                        )}
                         {r.step && (
                           <button
                             type="button"
@@ -286,14 +288,18 @@ export function PipelineTable({
 
 // Phones: one tappable card per deal instead of a squeezed table.
 const SWIPE_OPEN = 104
+// Shown when searching; they can't be marked dead again.
+const PAST_STATUSES = ['dead', 'old', 'closed']
 
 // A phone card you can swipe left to reveal "Mark dead".
-function SwipeCard({ onDead, children }: { onDead: () => void; children: React.ReactNode }) {
+function SwipeCard({ onDead, off = false, children }: { onDead: () => void; off?: boolean; children: React.ReactNode }) {
   const [x, setX] = useState(0)
   const [dragging, setDragging] = useState(false)
   const start = useRef<{ x: number; y: number; base: number; horizontal: boolean | null } | null>(null)
   const moved = useRef(false)
 
+  // Already dead / old / closed: nothing to swipe.
+  if (off) return <>{children}</>
   return (
     <div className="relative overflow-hidden rounded-xl">
       <button
@@ -359,7 +365,7 @@ function PhoneCards({ rows, emptyText, onDead }: { rows: PipelineRow[]; emptyTex
         const yours = r.step && (r.step.urgency === 'you' || r.step.urgency === 'follow_up')
         return (
           <li key={r.id}>
-            <SwipeCard onDead={() => onDead(r)}>
+            <SwipeCard onDead={() => onDead(r)} off={PAST_STATUSES.includes(r.status)}>
               <Link
                 href={`/deals/${r.id}`}
                 className="block rounded-xl border border-slate-200 bg-white p-4 shadow-sm active:bg-slate-50"

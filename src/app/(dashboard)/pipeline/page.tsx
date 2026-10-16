@@ -149,21 +149,32 @@ export default async function PipelinePage({
 
   const supabase = await createClient()
 
-  const [{ data: rawDeals }, { count: resolvedCount }] = await Promise.all([
-    supabase
-      .from('deals')
-      .select(
-        'id, company_name, industry, loan_type, status, updated_at, created_at, contact_name, rep_name, notes, activity_score, source_message_id, deal_matches(score), deal_submissions(status)'
-      )
-      .in('status', PIPELINE_QUERY_STATUSES)
-      .order('updated_at', { ascending: false }),
+  const DEAL_FIELDS =
+    'id, company_name, industry, loan_type, status, updated_at, created_at, contact_name, rep_name, notes, activity_score, source_message_id, deal_matches(score), deal_submissions(status)'
+  const PAST = ['closed', 'dead', 'old']
+  const [{ data: rawDeals }, { count: resolvedCount }, { data: pastLite }, { data: pastFull }] = await Promise.all([
+    supabase.from('deals').select(DEAL_FIELDS).in('status', PIPELINE_QUERY_STATUSES).order('updated_at', { ascending: false }),
     supabase
       .from('deals')
       .select('*', { count: 'exact', head: true })
-      .in('status', ['closed', 'dead', 'old']),
+      .in('status', PAST),
+    // Dead / old / closed deals show up in search too.
+    supabase.from('deals').select('id, company_name, contact_name, rep_name, status').in('status', PAST),
+    q ? supabase.from('deals').select(DEAL_FIELDS).in('status', PAST).order('updated_at', { ascending: false }) : Promise.resolve({ data: [] }),
   ])
+  const searchFields = (d: PipelineDeal) => [
+    d.company_name,
+    d.contact_name,
+    d.rep_name,
+    d.notes,
+    new Date(d.created_at).toLocaleDateString(),
+    new Date(d.updated_at).toLocaleDateString(),
+    d.created_at,
+    d.updated_at,
+  ]
+  const pastMatches = q ? ((pastFull ?? []) as PipelineDeal[]).filter((d) => matchesSearch(q, searchFields(d))) : []
 
-  const ids = (rawDeals ?? []).map((d) => d.id as string)
+  const ids = [...(rawDeals ?? []), ...pastMatches].map((d) => d.id as string)
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -202,36 +213,40 @@ export default async function PipelinePage({
   const industries = [...INDUSTRY_CATEGORIES].sort((a, b) => a.localeCompare(b))
   const loanTypes = [...LOAN_TYPE_CATEGORIES].sort((a, b) => a.localeCompare(b))
 
-  const suggestions = deals.map((d) => ({
-    id: d.id,
-    label: d.company_name,
-    sublabel: d.contact_name,
-    searchText: d.rep_name,
-    href: `/deals/${d.id}`,
-  }))
+  const suggestions = [
+    ...deals.map((d) => ({
+      id: d.id,
+      label: d.company_name,
+      sublabel: d.contact_name,
+      searchText: d.rep_name,
+      href: `/deals/${d.id}`,
+    })),
+    ...(pastLite ?? []).map((d) => ({
+      id: d.id as string,
+      label: d.company_name as string,
+      sublabel: [STATUS_LABELS[d.status as DealStatus] ?? d.status, d.contact_name].filter(Boolean).join(' · '),
+      searchText: d.rep_name as string | null,
+      href: `/deals/${d.id}`,
+    })),
+  ]
 
   const filtered = defaultOrdered
     .filter((d) => !activeStage || displayStatus(d.status as DealStatus) === activeStage)
     .filter((d) => !industryParam || d.industry === industryParam)
     .filter((d) => !loanTypeParam || d.loan_type === loanTypeParam)
-    .filter(
-      (d) =>
-        !q ||
-        matchesSearch(q, [
-          d.company_name,
-          d.contact_name,
-          d.rep_name,
-          d.notes,
-          new Date(d.created_at).toLocaleDateString(),
-          new Date(d.updated_at).toLocaleDateString(),
-          d.created_at,
-          d.updated_at,
-        ])
-    )
+    .filter((d) => !q || matchesSearch(q, searchFields(d)))
+
+  // Searching also finds dead / old / closed deals, listed after the active ones.
+  const pastFiltered = activeStage
+    ? []
+    : pastMatches
+        .map((d) => ({ ...d, updated_at: lastActivity.get(d.id) ?? d.updated_at }))
+        .filter((d) => !industryParam || d.industry === industryParam)
+        .filter((d) => !loanTypeParam || d.loan_type === loanTypeParam)
 
   // Most recently updated first unless a column arrow picks another order.
   const sort = sortParam || 'updated_desc'
-  const visibleDeals = applySort(filtered, sort)
+  const visibleDeals = [...applySort(filtered, sort), ...applySort(pastFiltered, sort)]
 
   return (
     <div className="space-y-5">
