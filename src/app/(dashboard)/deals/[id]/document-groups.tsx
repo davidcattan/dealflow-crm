@@ -31,18 +31,27 @@ type SelectHandlers = {
   onPointerEnter: () => void
 }
 
+// "New folder…" in a Move menu: ask for a name.
+const NEW_FOLDER = '__new__'
+function askFolderName() {
+  const name = window.prompt('New folder name')?.trim().replace(/\s+/g, ' ').slice(0, 60)
+  return name || null
+}
+
 function DocRow({
   dealId,
   doc,
   lenders,
   deals,
   select,
+  folders,
 }: {
   dealId: string
   doc: GroupedDoc
   lenders: { id: string; name: string }[]
   deals: DealChoice[]
   select: SelectHandlers
+  folders: string[]
 }) {
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -94,15 +103,19 @@ function DocRow({
         <select
           value={doc.category}
           disabled={pending}
-          onChange={(e) => move(e.target.value, e.target.value === TERM_SHEETS ? (doc.lender?.id ?? null) : null)}
+          onChange={(e) => {
+            const to = e.target.value === NEW_FOLDER ? askFolderName() : e.target.value
+            if (to) move(to, to === TERM_SHEETS ? (doc.lender?.id ?? null) : null)
+          }}
           className="max-w-[11rem] rounded border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-600"
-          aria-label="Move to group"
+          aria-label="Move to folder"
         >
-          {DOC_CATEGORIES.map((c) => (
+          {(folders.includes(doc.category) ? folders : [doc.category, ...folders]).map((c) => (
             <option key={c} value={c}>
               {c === doc.category ? c : `Move to ${c}`}
             </option>
           ))}
+          <option value={NEW_FOLDER}>+ New folder…</option>
         </select>
         {doc.category === TERM_SHEETS && (
           <select
@@ -211,20 +224,33 @@ export function DocumentGroups({
   const docs = rawDocs.map((d) => (dupIds.has(d.id) ? { ...d, duplicate: true } : d))
   const dupCount = dupIds.size
 
-  const groups = DOC_CATEGORIES.map((c) => ({
-    name: c,
-    docs: docs
-      .filter((d) => d.category === c)
-      .sort((a, b) =>
-        c === TERM_SHEETS
-          ? (a.lender?.name ?? '~').localeCompare(b.lender?.name ?? '~') || b.uploaded_at.localeCompare(a.uploaded_at)
-          : b.uploaded_at.localeCompare(a.uploaded_at)
-      ),
-  })).filter((g) => g.docs.length)
-  // Anything with a group name from before this list existed.
-  const known = new Set<string>(DOC_CATEGORIES)
-  const stray = docs.filter((d) => !known.has(d.category))
-  if (stray.length) groups.push({ name: 'Other', docs: stray } as (typeof groups)[number])
+  // Folders: the standard ones, then any you made (a folder is just the name
+  // its documents are filed under). Ones made this visit stay until used.
+  const [madeFolders, setMadeFolders] = useState<string[]>([])
+  const standard = DOC_CATEGORIES.filter((c) => c !== 'Other') as string[]
+  const custom = [...new Set([...docs.map((d) => d.category), ...madeFolders])]
+    .filter((c) => c && !(DOC_CATEGORIES as readonly string[]).includes(c))
+    .sort((a, b) => a.localeCompare(b))
+  const folders = [...standard, ...custom, 'Other']
+  const groups = folders
+    .map((c) => ({
+      name: c,
+      custom: custom.includes(c),
+      docs: docs
+        .filter((d) => d.category === c)
+        .sort((a, b) =>
+          c === TERM_SHEETS
+            ? (a.lender?.name ?? '~').localeCompare(b.lender?.name ?? '~') || b.uploaded_at.localeCompare(a.uploaded_at)
+            : b.uploaded_at.localeCompare(a.uploaded_at)
+        ),
+    }))
+    .filter((g) => g.docs.length || madeFolders.includes(g.name))
+  function newFolder() {
+    const name = askFolderName()
+    if (!name) return
+    if (!folders.includes(name)) setMadeFolders((f) => [...f, name])
+    setOpenGroups((s) => new Set([...s, name]))
+  }
 
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set())
 
@@ -320,16 +346,20 @@ export function DocumentGroups({
           <select
             value=""
             disabled={bulkPending}
-            onChange={(e) => e.target.value && bulkMove(e.target.value)}
+            onChange={(e) => {
+              const to = e.target.value === NEW_FOLDER ? askFolderName() : e.target.value
+              if (to) bulkMove(to)
+            }}
             className="rounded border border-sky-200 bg-white px-1.5 py-1 text-xs text-slate-700"
-            aria-label="Move selected to group"
+            aria-label="Move selected to folder"
           >
             <option value="">Move to…</option>
-            {DOC_CATEGORIES.map((c) => (
+            {folders.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
             ))}
+            <option value={NEW_FOLDER}>+ New folder…</option>
           </select>
           <button type="button" onClick={bulkDelete} disabled={bulkPending} className="rounded border border-red-200 bg-white px-2 py-1 text-red-600 hover:bg-red-50 disabled:opacity-50">
             Delete
@@ -347,6 +377,9 @@ export function DocumentGroups({
             {dupCount} duplicate upload{dupCount === 1 ? '' : 's'} — marked below, safe to delete
           </span>
         )}
+        <button type="button" onClick={newFolder} className="font-medium text-slate-700 hover:underline">
+          + New folder
+        </button>
         <DownloadAll dealId={dealId} dealName={dealName} />
         <button type="button" onClick={() => setOpenGroups(new Set(groups.map((g) => g.name)))} className="hover:underline">
           Open all
@@ -386,7 +419,7 @@ export function DocumentGroups({
               className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-slate-50"
             >
               <span className={`text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
-              <span className="font-medium text-slate-800">{g.name}</span>
+              <span className="font-medium text-slate-800">{g.custom ? `📁 ${g.name}` : g.name}</span>
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{g.docs.length}</span>
               {lendersHere.length > 0 && <span className="truncate text-xs text-slate-400">{lendersHere.join(', ')}</span>}
             </button>
@@ -394,8 +427,11 @@ export function DocumentGroups({
             {open && (
               <ul className="divide-y divide-slate-100 border-t border-slate-100 px-3">
                 {g.docs.map((d) => (
-                  <DocRow key={d.id} dealId={dealId} doc={d} lenders={lenders} deals={deals} select={handlersFor(d.id)} />
+                  <DocRow key={d.id} dealId={dealId} doc={d} lenders={lenders} deals={deals} select={handlersFor(d.id)} folders={folders} />
                 ))}
+                {g.docs.length === 0 && (
+                  <li className="py-3 text-xs text-slate-500">Empty. Tick documents in other folders, then &ldquo;Move to… {g.name}&rdquo;.</li>
+                )}
               </ul>
             )}
           </div>
