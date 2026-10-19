@@ -10,6 +10,10 @@ export type DocText = { pageCount: number; pages: string[]; scanned: number[] }
 
 const SCAN_CHARS = 80
 const MAX_PAGE_CHARS = 12_000
+// Data-room spreadsheets past this (row-level AR/unbilled detail) take more
+// memory and time to open than a server request has, and crashed the email
+// sync; they're skipped here (the file itself stays on the deal).
+const MAX_SHEET_BYTES = 6 * 1024 * 1024
 
 async function download(supabase: SupabaseClient, doc: DocumentRecord) {
   const { data } = await supabase.storage.from('borrower-documents').download(doc.storage_path)
@@ -43,6 +47,7 @@ async function extract(buffer: Buffer, doc: DocumentRecord): Promise<DocText> {
     wb.eachSheet((ws) => {
       let text = `# ${ws.name}\n`
       ws.eachRow((row) => {
+        if (text.length > MAX_PAGE_CHARS * 3) return
         text += (row.values as unknown[]).slice(1).map((v) => (v && typeof v === 'object' && 'result' in v ? (v as { result: unknown }).result : v) ?? '').join(' | ') + '\n'
       })
       pages.push(text.slice(0, MAX_PAGE_CHARS * 3))
@@ -56,6 +61,7 @@ async function extract(buffer: Buffer, doc: DocumentRecord): Promise<DocText> {
 export async function getDocText(supabase: SupabaseClient, doc: DocumentRecord): Promise<DocText | null> {
   const { data: cached } = await supabase.from('document_texts').select('page_count, pages, scanned_pages').eq('document_id', doc.id).maybeSingle()
   if (cached) return { pageCount: cached.page_count, pages: cached.pages, scanned: cached.scanned_pages ?? [] }
+  if (/\.(xlsx|xls)$/i.test(doc.file_name) && (doc.file_size ?? 0) > MAX_SHEET_BYTES) return null
   const buffer = await download(supabase, doc)
   if (!buffer) return null
   const text = await extract(buffer, doc).catch(() => null)
