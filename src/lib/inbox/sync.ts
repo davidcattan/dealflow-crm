@@ -206,6 +206,13 @@ function firmDomain(sender: string, accountEmail: string): string | null {
   return sender.endsWith(`@${domain}`) ? domain : null
 }
 
+// A colleague's email that went only to people at the firm (e.g. Eli to
+// David) — nothing for the CRM to file.
+function isTeamOnly(message: InboxMessage, accountEmail: string) {
+  const firm = firmDomain(message.from, accountEmail)
+  return Boolean(firm) && message.to.every((r) => r.email.endsWith(`@${firm}`))
+}
+
 function today() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -312,6 +319,9 @@ async function processMessage(
   // The mailbox's own messages and obvious robots never cost an AI call.
   if (message.from === ctx.accountEmail || isAutomatedSender(message.from)) {
     return { counter: 'other', record: { classification: 'other', action_taken: 'Skipped (automated or own message)' } }
+  }
+  if (isTeamOnly(message, ctx.accountEmail)) {
+    return { counter: 'other', record: { classification: 'other', action_taken: 'Skipped (team-only email)' } }
   }
 
   try {
