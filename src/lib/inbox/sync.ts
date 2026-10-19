@@ -206,11 +206,17 @@ function firmDomain(sender: string, accountEmail: string): string | null {
   return sender.endsWith(`@${domain}`) ? domain : null
 }
 
+// A forwarded email (FW:/Fwd: subject, or Gmail's forwarded-message marker).
+function isForward(message: InboxMessage) {
+  return /^\s*(fw|fwd)\s*:/i.test(message.subject) || message.bodyText.includes('---------- Forwarded message')
+}
+
 // A colleague's email that went only to people at the firm (e.g. Eli to
-// David) — nothing for the CRM to file.
+// David) — nothing for the CRM to file, unless it forwards someone else's
+// email (a borrower's docs, a new deal).
 function isTeamOnly(message: InboxMessage, accountEmail: string) {
   const firm = firmDomain(message.from, accountEmail)
-  return Boolean(firm) && message.to.every((r) => r.email.endsWith(`@${firm}`))
+  return Boolean(firm) && message.to.every((r) => r.email.endsWith(`@${firm}`)) && !isForward(message)
 }
 
 function today() {
@@ -360,6 +366,7 @@ async function processMessage(
         })),
         senderLenderName: senderLenderId ? (ctx.lenderById.get(senderLenderId)?.name ?? null) : null,
         internalFirmDomain: internalDomain,
+        forwardedByColleague: Boolean(internalDomain) && isForward(message),
         referralPartner: referralPartnerFor(message.from)?.name ?? null,
         referralPartnerAlsoLends: Boolean(referralPartnerFor(message.from)?.alsoLender),
         threadDealCompany: thread ? (ctx.dealById.get(thread.dealId)?.company_name ?? null) : null,

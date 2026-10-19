@@ -61,6 +61,8 @@ export type ClassifyContext = {
   // Set when the sender is a colleague (same email domain as the connected
   // mailbox) — their emails are never lender replies.
   internalFirmDomain?: string | null
+  // The colleague forwarded someone else's email (judge the forwarded part).
+  forwardedByColleague?: boolean
   // The sender is a referral partner that sends many different deals.
   referralPartner?: string | null
   // The partner also lends on small deals (e.g. Simply Capital).
@@ -81,7 +83,9 @@ export async function classifyEmail(
       ? `This email is in the thread where deal "${context.threadDealCompany}" was submitted to lender "${context.threadLenderName ?? 'unknown'}".`
       : null,
     context.senderLenderName ? `The sender is a known lender in the CRM: ${context.senderLenderName}.` : null,
-    context.internalFirmDomain
+    context.internalFirmDomain && context.forwardedByColleague
+      ? `A colleague at the user's own brokerage firm (@${context.internalFirmDomain}) FORWARDED this email. Judge it by the forwarded email, as if its original sender had sent it to the user: a business, borrower or broker presenting a financing request or sending documents/info is new_deal (set existing_deal_ref if that company is already in the list). The contact is the original sender or the business owner, never the colleague. Never classify it as lender_reply — a forwarded lender response about a deal in the list is new_deal with existing_deal_ref set. Anything else is other.`
+      : context.internalFirmDomain
       ? `The sender is a colleague at the user's own brokerage firm (@${context.internalFirmDomain}) — NOT a lender. Never classify their email as lender_reply. If it is about a deal in the list (e.g. asking a borrower for documents), classify it as new_deal with existing_deal_ref set and describe what was asked or done; otherwise other.`
       : null,
     context.referralPartner && context.referralPartnerAlsoLends
