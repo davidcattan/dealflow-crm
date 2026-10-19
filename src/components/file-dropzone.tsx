@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState, type ChangeEvent, type DragEvent } from 'react'
+import { expandZips } from '@/lib/unzip-files'
 
 export function FileDropzone({
   files,
@@ -13,10 +14,23 @@ export function FileDropzone({
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragActive, setDragActive] = useState(false)
+  const [unpacking, setUnpacking] = useState(false)
+  const [zipError, setZipError] = useState<string | null>(null)
 
-  function addFiles(list: FileList | null) {
+  // A .zip turns into the files inside it.
+  async function addFiles(list: FileList | null) {
     if (!list || list.length === 0) return
-    onFilesChange([...files, ...Array.from(list)])
+    const picked = Array.from(list)
+    setZipError(null)
+    if (!picked.some((f) => /\.zip$/i.test(f.name))) return onFilesChange([...files, ...picked])
+    setUnpacking(true)
+    try {
+      onFilesChange([...files, ...(await expandZips(picked))])
+    } catch (err) {
+      setZipError(err instanceof Error ? err.message : "Couldn't open the zip")
+    } finally {
+      setUnpacking(false)
+    }
   }
 
   function removeFile(index: number) {
@@ -49,7 +63,7 @@ export function FileDropzone({
               : ''
         }`}
       >
-        Drag files here, or click to browse — select or drop several at once
+        {unpacking ? 'Unpacking the zip…' : 'Drag files here, or click to browse — several at once, or a whole .zip'}
         <input
           ref={inputRef}
           type="file"
@@ -63,6 +77,7 @@ export function FileDropzone({
         />
       </div>
 
+      {zipError && <p className="mt-2 text-sm text-red-600">{zipError}</p>}
       {files.length > 0 && (
         <ul className="mt-2 space-y-1">
           {files.map((f, i) => (
