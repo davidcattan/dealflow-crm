@@ -101,6 +101,10 @@ export default async function SettingsPage({
           Adds <span className="font-medium">Send to JED CRM</span> to your iPhone&apos;s Share menu, so a Voice Memo (or a
           WhatsApp voice note) goes straight onto a deal as a call. Each person makes their own key.
         </p>
+        <p className="mb-4 -mt-2 text-sm text-slate-600">
+          The Mac Desktop sync (files saved in <span className="font-medium">Desktop/JED/Deals/&lt;Deal&gt;</span> go to
+          that deal) uses a key from here too — name it e.g. &quot;David&apos;s Mac&quot;.
+        </p>
         <ShortcutKeys
           keys={(keys ?? []) as { id: string; label: string; created_at: string; last_used_at: string | null }[]}
           installUrl="/shortcut/Send-to-JED-CRM.shortcut"
