@@ -216,3 +216,13 @@ export async function setMatchExcluded(lenderId: string, excluded: boolean) {
   revalidatePath(`/lenders/${lenderId}`)
   return { ok: true }
 }
+
+// "Not a lender" (e.g. an advisor): not matched, and its emails aren't
+// logged as lender replies. Usually set from a note on a deal; undone here.
+export async function setIsLender(lenderId: string, isLender: boolean) {
+  const supabase = await createClient()
+  const { error } = await supabase.from('lenders').update({ is_lender: isLender }).eq('id', lenderId)
+  if (error) return { error: error.message.includes('is_lender') ? 'Run migration 047_not_a_lender.sql in Supabase first.' : error.message }
+  revalidatePath(`/lenders/${lenderId}`)
+  return { ok: true }
+}

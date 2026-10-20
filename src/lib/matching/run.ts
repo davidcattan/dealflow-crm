@@ -47,7 +47,7 @@ export async function runMatching(dealId: string) {
       supabase.from('deals').select('id, company_name, loan_type'),
       supabase.from('inbox_messages').select('lender_id').not('lender_id', 'is', null).limit(20000),
     ])
-  const lenders = (allLenders ?? []).filter((l) => !l.match_excluded)
+  const lenders = (allLenders ?? []).filter((l) => !l.match_excluded && l.is_lender !== false)
 
   if (dealError || !deal) {
     throw new Error('Deal not found')

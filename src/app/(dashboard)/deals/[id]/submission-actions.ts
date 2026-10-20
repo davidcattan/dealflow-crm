@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { recordSubmission } from '@/lib/deals/submissions'
+import { applyLenderNote } from '@/lib/deals/lender-note'
 import { SUBMISSION_LABELS, SUBMISSION_STATUSES, type SubmissionStatus } from '@/lib/deals/submission-status'
 
 function today() {
@@ -107,9 +108,11 @@ export async function removeSubmission(dealId: string, submissionId: string) {
   refresh(dealId)
 }
 
-export async function addLenderNote(dealId: string, lenderId: string, note: string) {
+// Saves the note, then makes any change it describes (new status, off this
+// deal, not a lender at all). Returns those changes to show.
+export async function addLenderNote(dealId: string, lenderId: string, note: string): Promise<string[]> {
   const text = note.trim()
-  if (!dealId || !lenderId || !text) return
+  if (!dealId || !lenderId || !text) return []
   const supabase = await createClient()
   await logLenderNote(supabase, dealId, lenderId, text)
   await supabase
@@ -117,7 +120,13 @@ export async function addLenderNote(dealId: string, lenderId: string, note: stri
     .update({ last_activity_at: new Date().toISOString() })
     .eq('deal_id', dealId)
     .eq('lender_id', lenderId)
+  const changes = await applyLenderNote(supabase, dealId, lenderId, text).catch((err) => {
+    console.error('Lender note actions failed', err)
+    return []
+  })
   refresh(dealId)
+  if (changes.length) revalidatePath(`/lenders/${lenderId}`)
+  return changes
 }
 
 const NDA_MIGRATION = 'Run migration 041_ndas.sql in Supabase first.'

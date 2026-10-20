@@ -108,7 +108,9 @@ export function LenderDetail({
                 }
               />
               <LenderNda lenderId={lender.id} signedOn={(lender as { nda_signed_on?: string | null }).nda_signed_on ?? null} />
-              <MatchSwitch lenderId={lender.id} excluded={Boolean((lender as { match_excluded?: boolean }).match_excluded)} />
+              <MatchSwitch lenderId={lender.id} excluded={Boolean((lender as { match_excluded?: boolean }).match_excluded)}
+                isLender={(lender as { is_lender?: boolean }).is_lender !== false}
+              />
             </div>
           </section>
 

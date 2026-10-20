@@ -269,7 +269,21 @@ function NdaChip({ dealId, sub }: { dealId: string; sub: SubmissionRow }) {
   )
 }
 
-function LenderCard({ dealId, sub, items, requiresNda }: { dealId: string; sub: SubmissionRow; items: TimelineItem[]; requiresNda: boolean }) {
+function LenderCard({
+  dealId,
+  sub,
+  items,
+  requiresNda,
+  onChanges,
+}: {
+  dealId: string
+  sub: SubmissionRow
+  items: TimelineItem[]
+  requiresNda: boolean
+  // What the CRM changed because of a note (shown above the list, since a
+  // note can take this lender off it).
+  onChanges: (changes: string[]) => void
+}) {
   const [showAll, setShowAll] = useState(false)
   const [note, setNote] = useState('')
   const [pending, startTransition] = useTransition()
@@ -390,7 +404,10 @@ function LenderCard({ dealId, sub, items, requiresNda }: { dealId: string; sub: 
           e.preventDefault()
           const text = note
           setNote('')
-          startTransition(() => addLenderNote(dealId, sub.lender_id, text))
+          startTransition(async () => {
+            const changes = await addLenderNote(dealId, sub.lender_id, text)
+            if (changes.length) onChanges(changes)
+          })
         }}
       >
         <input
@@ -459,6 +476,7 @@ export function SubmissionsPanel({
 }) {
   const router = useRouter()
   const [adding, setAdding] = useState(false)
+  const [changes, setChanges] = useState<string[]>([])
 
   // On open, check Outlook Sent Items for drafts from this deal that have
   // gone out (free) — so a lender you just emailed shows up here.
@@ -515,6 +533,19 @@ export function SubmissionsPanel({
         </div>
       )}
 
+      {changes.length > 0 && (
+        <div className="mt-3 flex items-start justify-between gap-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <ul>
+            {changes.map((c) => (
+              <li key={c}>✓ {c}</li>
+            ))}
+          </ul>
+          <button type="button" onClick={() => setChanges([])} className="text-emerald-700 hover:text-emerald-900" aria-label="Dismiss">
+            ×
+          </button>
+        </div>
+      )}
+
       {adding && (
         <AddLenders dealId={dealId} lenders={lenders} alreadySent={alreadySent} onDone={() => setAdding(false)} />
       )}
@@ -528,6 +559,7 @@ export function SubmissionsPanel({
               requiresNda={requiresNda}
               sub={sub}
               items={timeline.filter((t) => t.lender_id === sub.lender_id)}
+              onChanges={setChanges}
             />
           ))}
         </ul>

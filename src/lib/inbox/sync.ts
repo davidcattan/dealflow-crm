@@ -228,13 +228,13 @@ function today() {
 // deals marked Old still land on the right deal.
 async function loadContext(supabase: SupabaseClient, connectionId?: string | null): Promise<Context> {
   const { accessToken, accountEmail } = await getValidAccessToken(supabase, connectionId)
-  const [{ data: deals }, { data: lenders }, { data: contacts }, { data: matchThreads }, { data: submissionThreads }] =
+  const [{ data: deals }, { data: lenderRows }, { data: contactRows }, { data: matchThreads }, { data: submissionThreads }] =
     await Promise.all([
       supabase
         .from('deals')
         .select('id, company_name, contact_name, contact_email, status, description, notes, deal_type, snapshot')
         .order('created_at', { ascending: false }),
-      supabase.from('lenders').select('id, name, contact_email, mandate_notes, website'),
+      supabase.from('lenders').select('*'),
       supabase.from('lender_contacts').select('lender_id, email'),
       supabase
         .from('deal_matches')
@@ -245,6 +245,8 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
         .select('deal_id, lender_id, outlook_conversation_id')
         .not('outlook_conversation_id', 'is', null),
     ])
+  // Firms marked "not a lender" (migration 047) aren't recognized as lenders.
+  const { lenders, contacts } = realLenders(lenderRows, contactRows)
   const threads = [...(matchThreads ?? []), ...(submissionThreads ?? [])]
   const { data: prospectRows } = await supabase.from('prospects').select('*')
   const prospectByEmail = new Map<string, Prospect>()
@@ -308,6 +310,16 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
         .map((d) => [String(d.contact_email).toLowerCase(), d.id as string] as [string, string]),
     ]),
   }
+}
+
+// The lender list minus firms marked "not a lender", with their contacts.
+function realLenders(
+  lenderRows: Record<string, unknown>[] | null,
+  contactRows: { lender_id: string; email: string | null }[] | null
+) {
+  const lenders = (lenderRows ?? []).filter((l) => l.is_lender !== false) as Lender[]
+  const ids = new Set(lenders.map((l) => l.id))
+  return { lenders, contacts: (contactRows ?? []).filter((c) => ids.has(c.lender_id)) }
 }
 
 // A borrower contact email, or null if it's really a partner's or the team's.
@@ -1244,10 +1256,11 @@ export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMe
   let lenderId = row.lender_id as string | null
   const lookupEmails = isSent ? String(row.to_emails ?? '').split(',').map((e) => e.trim()).filter(Boolean) : [row.from_email]
   if (!lenderId && (isLenderReply || isSent) && lookupEmails.length) {
-    const [{ data: lenders }, { data: contacts }] = await Promise.all([
-      supabase.from('lenders').select('id, name, contact_email, mandate_notes, website'),
+    const [{ data: lenderRows }, { data: contactRows }] = await Promise.all([
+      supabase.from('lenders').select('*'),
       supabase.from('lender_contacts').select('lender_id, email'),
     ])
+    const { lenders, contacts } = realLenders(lenderRows, contactRows)
     for (const email of lookupEmails) {
       lenderId = findLenderBySender((lenders ?? []) as Lender[], contacts ?? [], email)
       if (lenderId) {
