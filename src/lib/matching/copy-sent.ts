@@ -2,11 +2,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { ownText } from '@/lib/outlook/own-text'
 import { mailboxOwner } from '@/lib/outlook/mailbox-label'
 
-// Once the first submission email on a deal has gone out, every other
-// lender's draft copies it word for word: only the greeting name and the
+// Once a submission email on a deal has gone out, every other lender's
+// draft copies the latest one word for word (so a reworded version sent to
+// the second lender replaces the first): only the greeting name and the
 // lender's name change. Free — no AI.
 
-export type FirstPitch = {
+export type LatestPitch = {
   id: string
   subject: string
   body: string
@@ -19,16 +20,16 @@ export type FirstPitch = {
 const GREETING = /^(hi|hello|hey|dear|good morning|good afternoon)\b[^,\n]*,?/i
 const SIGN_OFF = /^(best|regards|best regards|kind regards|warm regards|thanks|thank you|many thanks|cheers|sincerely)[,!.]?\s*$/i
 
-// The first email the team sent a lender about this deal (not a reply).
-export async function loadFirstPitch(supabase: SupabaseClient, dealId: string): Promise<FirstPitch | null> {
+// The latest fresh email (not a reply) the team sent a lender about this deal.
+export async function loadLatestPitch(supabase: SupabaseClient, dealId: string): Promise<LatestPitch | null> {
   const { data } = await supabase
     .from('inbox_messages')
     .select('id, subject, body_text, received_at, mailbox, lender_id, lenders(name)')
     .eq('deal_id', dealId)
     .eq('classification', 'sent')
     .not('lender_id', 'is', null)
-    .order('received_at', { ascending: true })
-    .limit(10)
+    .order('received_at', { ascending: false })
+    .limit(20)
   for (const r of data ?? []) {
     const subject = (r.subject as string | null) ?? ''
     const body = r.body_text ? ownText(r.body_text as string) : ''
@@ -55,12 +56,12 @@ function swapLender(text: string, from: string | null, to: string) {
 }
 
 // The subject a copied draft gets (to tell a copied draft apart on the page).
-export function copiedSubject(pitch: Pick<FirstPitch, 'subject' | 'lenderName'>, lenderName: string) {
+export function copiedSubject(pitch: Pick<LatestPitch, 'subject' | 'lenderName'>, lenderName: string) {
   return swapLender(pitch.subject.trim(), pitch.lenderName, lenderName)
 }
 
-// The first email, re-addressed to another lender.
-export function copyPitch(pitch: FirstPitch, to: { lenderName: string; contactFirstName: string | null; senderName?: string | null }) {
+// The pitch, re-addressed to another lender.
+export function copyPitch(pitch: LatestPitch, to: { lenderName: string; contactFirstName: string | null; senderName?: string | null }) {
   const lines = swapLender(pitch.body, pitch.lenderName, to.lenderName).split('\n')
 
   // "Hi John," → "Hi Sarah," (or just "Hi," when we don't know their name).
@@ -103,10 +104,10 @@ export async function lenderGreeting(supabase: SupabaseClient, lenderId: string)
   }
 }
 
-// Right after the first submission goes out: re-write every other lender's
-// unsent draft on the deal to match it. Returns how many drafts changed.
-export async function refreshDraftsFromFirstPitch(supabase: SupabaseClient, dealId: string) {
-  const pitch = await loadFirstPitch(supabase, dealId)
+// Right after a submission goes out: re-write every other lender's unsent
+// draft on the deal to match it. Returns how many drafts changed.
+export async function refreshDraftsFromLatestPitch(supabase: SupabaseClient, dealId: string) {
+  const pitch = await loadLatestPitch(supabase, dealId)
   if (!pitch) return 0
   const [{ data: matches }, { data: subs }] = await Promise.all([
     supabase.from('deal_matches').select('id, lender_id').eq('deal_id', dealId).eq('draft_status', 'drafted'),

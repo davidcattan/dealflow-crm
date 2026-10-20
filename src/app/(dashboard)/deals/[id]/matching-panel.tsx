@@ -22,7 +22,7 @@ export type MatchWithLender = {
   draftStatus: 'none' | 'drafted' | 'sent'
   outlookDraftCreatedAt: string | null
   draftGeneratedAt?: string | null
-  // Set when the draft is the deal's first sent email, re-addressed.
+  // Set when the draft is the deal's latest sent email, re-addressed.
   copiedFrom?: string | null
   // Emails you actually sent this lender about the deal (newest first).
   sent?: SentEmail[]
@@ -472,7 +472,7 @@ export function MatchingPanel({
   mailboxes: Mailbox[]
   defaultMailboxId: string | null
   latestPitch: { at: string; lenderId: string; lenderName: string } | null
-  // The deal's first sent submission — other drafts copy it.
+  // The deal's latest sent submission — other drafts copy it.
   firstPitch?: { label: string; lenderId: string } | null
   // Deal needs lenders to sign an NDA: label each match (never blocks).
   requiresNda?: boolean

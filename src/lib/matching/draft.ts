@@ -8,7 +8,7 @@ import { ownText } from '@/lib/outlook/own-text'
 import { buildDealProfile } from './deal-profile'
 import type { Deal, DealUpdate } from '@/lib/types'
 import { skeletonEmail, type SkeletonSnapshot } from './skeleton'
-import { copyPitch, lenderGreeting, loadFirstPitch } from './copy-sent'
+import { copyPitch, lenderGreeting, loadLatestPitch } from './copy-sent'
 
 // Matches at or above this score get an auto-drafted submission email.
 // Below this, it's more likely to be a marginal/speculative fit that a
@@ -165,7 +165,7 @@ export async function draftSubmissionEmail(
   const supabase = await createClient()
 
   if (style === 'auto' || style === 'copy') {
-    const pitch = await loadFirstPitch(supabase, dealId)
+    const pitch = await loadLatestPitch(supabase, dealId)
     if (pitch && pitch.lenderId !== lenderId) {
       const [to, { data: deal }, { data: documents }] = await Promise.all([
         lenderGreeting(supabase, lenderId),

@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
-// 'auto' = copy the deal's first sent submission if there is one, else the
+// 'auto' = copy the deal's latest sent submission if there is one, else the
 // skeleton; 'skeleton' = the fixed template filled with numbers; 'copy' =
-// the first sent submission re-addressed; 'ai' = written by the AI.
+// the latest sent submission re-addressed; 'ai' = written by the AI.
 export const DRAFT_STYLES = ['auto', 'skeleton', 'copy', 'ai'] as const
 export type DraftStyle = (typeof DRAFT_STYLES)[number]
 

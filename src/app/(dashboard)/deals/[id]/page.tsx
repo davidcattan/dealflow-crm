@@ -12,7 +12,7 @@ import type { Snapshot } from '@/lib/snapshot/schema'
 import { docTextsOf, withCollateralRequests } from '@/lib/snapshot/collateral'
 import { estimateUnderwriting } from '@/lib/underwriting/estimate'
 import { buildManualPrompt } from '@/lib/underwriting/prompt'
-import { copiedSubject, loadFirstPitch } from '@/lib/matching/copy-sent'
+import { copiedSubject, loadLatestPitch } from '@/lib/matching/copy-sent'
 import { StatusToggle } from './status-toggle'
 import { MatchingPanel, type MatchWithLender, type LoanTypeRecommendation, type SentEmail } from './matching-panel'
 import { ownText } from '@/lib/outlook/own-text'
@@ -297,18 +297,22 @@ export default async function DealDetailPage({
     sentByLender.set(r.lender_id as string, list)
   }
 
-  // The deal's first submission email: every other draft copies it.
-  const firstPitch = await loadFirstPitch(supabase, id)
-  const firstPitchLabel = firstPitch
-    ? `${firstPitch.senderName ? `${firstPitch.senderName}'s` : 'Your'} email to ${firstPitch.lenderName ?? 'the first lender'} (${new Date(firstPitch.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`
+  // The deal's latest submission email: every other draft copies it.
+  const pitch = await loadLatestPitch(supabase, id)
+  const pitchLabel = pitch
+    ? `${pitch.senderName ? `${pitch.senderName}'s` : 'Your'} email to ${pitch.lenderName ?? 'a lender'} (${new Date(pitch.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`
     : null
 
   const matchesWithLender: MatchWithLender[] = (matches ?? []).map((m) => {
     const lender = Array.isArray(m.lenders) ? m.lenders[0] : m.lenders
     return {
       copiedFrom:
-        firstPitch && m.lender_id !== firstPitch.lenderId && m.draft_subject === copiedSubject(firstPitch, lender?.name ?? '')
-          ? firstPitchLabel
+        pitch &&
+        m.lender_id !== pitch.lenderId &&
+        m.draft_subject === copiedSubject(pitch, lender?.name ?? '') &&
+        // Copied from this version, not an earlier one with the same subject.
+        new Date(String(m.draft_generated_at ?? 0)).getTime() >= new Date(pitch.at).getTime()
+          ? pitchLabel
           : null,
       sent: sentByLender.get(m.lender_id as string) ?? [],
       id: m.id,
@@ -672,7 +676,7 @@ export default async function DealDetailPage({
         mailboxes={mailboxes}
         defaultMailboxId={defaultMailboxId}
         latestPitch={latestPitch}
-        firstPitch={firstPitch && firstPitchLabel ? { label: firstPitchLabel, lenderId: firstPitch.lenderId } : null}
+        firstPitch={pitch && pitchLabel ? { label: pitchLabel, lenderId: pitch.lenderId } : null}
         loanTypeRecommendation={
           (deal as { loan_type_recommendation?: LoanTypeRecommendation | null }).loan_type_recommendation ?? null
         }
