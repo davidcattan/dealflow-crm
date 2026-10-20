@@ -15,6 +15,7 @@ import {
 import type { Lender, LenderContact } from '@/lib/types'
 import { LenderContacts } from './lender-contacts'
 import { LenderNda } from './lender-nda'
+import { MatchSwitch } from './match-switch'
 
 function moneyInputDefault(value: number | null): string {
   return value === null ? '' : formatCompactCurrency(value)
@@ -107,6 +108,7 @@ export function LenderDetail({
                 }
               />
               <LenderNda lenderId={lender.id} signedOn={(lender as { nda_signed_on?: string | null }).nda_signed_on ?? null} />
+              <MatchSwitch lenderId={lender.id} excluded={Boolean((lender as { match_excluded?: boolean }).match_excluded)} />
             </div>
           </section>
 

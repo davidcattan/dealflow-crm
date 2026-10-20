@@ -206,3 +206,13 @@ export async function getContactEmails(email: string): Promise<ContactEmail[]> {
     }
   })
 }
+
+// "Don't match": keeps a lender out of deal matching (e.g. one that never
+// closes the team's deals), without deleting it.
+export async function setMatchExcluded(lenderId: string, excluded: boolean) {
+  const supabase = await createClient()
+  const { error } = await supabase.from('lenders').update({ match_excluded: excluded }).eq('id', lenderId)
+  if (error) return { error: error.message.includes('match_excluded') ? 'Run migration 046_lender_matching.sql in Supabase first.' : error.message }
+  revalidatePath(`/lenders/${lenderId}`)
+  return { ok: true }
+}

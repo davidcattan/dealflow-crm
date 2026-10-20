@@ -15,6 +15,9 @@ Consider, in rough priority order:
 3. Revenue/EBITDA minimums, if the lender specifies them and the deal's financials are known.
 4. Industry fit or exclusions mentioned in the lender's notes.
 5. Anything else in the lender's notes that clearly rules a deal in or out (e.g. "won't do cannabis", "SBA lender", "needs PE sponsor").
+6. The team's track record with the lender — as important as fit on paper. Lenders that were interested in, issued term sheets on or funded similar deals for the team rank high; lenders that keep declining similar deals rank lower. A lender this deal was already sent to that is interested belongs near the top. A good-looking mandate with no history is weaker than a proven relationship.
+
+Lenders under "New lenders" have no relationship with the team yet (no deals sent, no emails). Include at most 2 of them, only when clearly strong fits, and score them below comparable lenders the team works with.
 
 Most real deals here are small private companies with thin or incomplete documentation — that is normal. If the deal has no underwriting or financials yet, match on industry/asset-type/loan-size signals from its notes and flag in your overall notes that financials would sharpen the match. Do not invent numbers that were not given to you.
 
@@ -28,22 +31,23 @@ function truncate(text: string | null | undefined, max: number): string {
 export async function runMatching(dealId: string) {
   const supabase = await createClient()
 
-  const [{ data: deal, error: dealError }, { data: lenders }, { data: updates }] =
+  const [{ data: deal, error: dealError }, { data: allLenders }, { data: updates }, { data: submissions }, { data: dealNames }, { data: emailed }] =
     await Promise.all([
       supabase.from('deals').select('*').eq('id', dealId).single(),
-      supabase
-        .from('lenders')
-        .select(
-          'id, name, lending_type, min_loan_amount, max_loan_amount, min_revenue, min_ebitda, cares_about_profit, asset_types, industries, geographies, mandate_notes'
-        )
-        .eq('status', 'active'),
+      // Everything, so match_excluded / research_lead are read when present
+      // (migration 046) and ignored before it.
+      supabase.from('lenders').select('*').eq('status', 'active'),
       supabase
         .from('deal_updates')
         .select('entry_date, note')
         .eq('deal_id', dealId)
         .order('entry_date', { ascending: false, nullsFirst: false })
         .limit(8),
+      supabase.from('deal_submissions').select('lender_id, deal_id, status, sent_on').order('sent_on', { ascending: false }).limit(5000),
+      supabase.from('deals').select('id, company_name, loan_type'),
+      supabase.from('inbox_messages').select('lender_id').not('lender_id', 'is', null).limit(20000),
     ])
+  const lenders = (allLenders ?? []).filter((l) => !l.match_excluded)
 
   if (dealError || !deal) {
     throw new Error('Deal not found')
@@ -52,10 +56,39 @@ export async function runMatching(dealId: string) {
     throw new Error('No active lenders to match against')
   }
 
+  // The team's history with each lender, from every deal sent to them.
+  const dealById = new Map((dealNames ?? []).map((d) => [d.id as string, d]))
+  const subsByLender = new Map<string, { deal_id: string; status: string }[]>()
+  for (const s of submissions ?? []) subsByLender.set(s.lender_id, [...(subsByLender.get(s.lender_id) ?? []), s])
+  const emailCount = new Map<string, number>()
+  for (const e of emailed ?? []) emailCount.set(e.lender_id, (emailCount.get(e.lender_id) ?? 0) + 1)
+  // Researched lenders count as known once a deal goes to them or they email.
+  const isNew = (l: { id: string; research_lead?: boolean }) =>
+    Boolean(l.research_lead) && !subsByLender.has(l.id) && !emailCount.has(l.id)
+
+  function trackRecord(lenderId: string) {
+    const subs = (subsByLender.get(lenderId) ?? []).filter((s) => s.deal_id !== dealId)
+    const emails = emailCount.get(lenderId) ?? 0
+    if (!subs.length) return emails ? `track record: no other deals sent yet; ${emails} emails with the team` : 'track record: no deals sent yet'
+    const tally = (st: string[]) => subs.filter((s) => st.includes(s.status)).length
+    const recent = subs
+      .slice(0, 5)
+      .map((s) => {
+        const d = dealById.get(s.deal_id)
+        return `${d?.company_name ?? 'a deal'}${d?.loan_type ? ` (${d.loan_type})` : ''}: ${s.status.replace(/_/g, ' ')}`
+      })
+      .join('; ')
+    return `track record: ${subs.length} deals sent — ${tally(['interested', 'needs_more_info'])} engaged, ${tally(['term_sheet', 'funded'])} term sheet/funded, ${tally(['declined'])} declined, ${tally(['sent'])} no answer yet. Recent: ${recent}`
+  }
+
   const lenderRefs = new Map<string, string>() // L# -> lender uuid
-  const lenderLines = lenders.map((l, i) => {
+  const newLenderIds = new Set<string>()
+  const ordered = [...lenders.filter((l) => !isNew(l)), ...lenders.filter((l) => isNew(l))]
+  const knownCount = lenders.length - lenders.filter((l) => isNew(l)).length
+  const lenderLines = ordered.map((l, i) => {
     const ref = `L${i + 1}`
     lenderRefs.set(ref, l.id)
+    if (isNew(l)) newLenderIds.add(l.id)
 
     const parts = [
       `${ref}: ${l.name}`,
@@ -69,13 +102,18 @@ export async function runMatching(dealId: string) {
       l.asset_types.length > 0 ? `asset types: ${l.asset_types.join(', ')}` : null,
       l.industries.length > 0 ? `industries: ${l.industries.join(', ')}` : null,
       l.geographies.length > 0 ? `geographies: ${l.geographies.join(', ')}` : null,
-      l.mandate_notes ? `notes: ${truncate(l.mandate_notes, 500)}` : null,
+      isNew(l) ? null : trackRecord(l.id),
+      l.mandate_notes ? `notes: ${truncate(l.mandate_notes, 3000)}` : null,
     ].filter(Boolean)
 
     return parts.join(' | ')
   })
 
   const dealProfile = buildDealProfile(deal as Deal, updates as Pick<DealUpdate, 'entry_date' | 'note'>[] | null)
+  const lenderName = new Map(lenders.map((l) => [l.id as string, l.name as string]))
+  const alreadySent = (submissions ?? [])
+    .filter((s) => s.deal_id === dealId && lenderName.has(s.lender_id))
+    .map((s) => `${lenderName.get(s.lender_id)}: ${s.status.replace(/_/g, ' ')}`)
 
   const client = new Anthropic()
 
@@ -86,13 +124,29 @@ export async function runMatching(dealId: string) {
       {
         role: 'user',
         content: [
-          dealProfile,
-          '',
-          '--- Lender list ---',
-          lenderLines.join('\n'),
-          '',
-          MATCH_INSTRUCTIONS,
-        ].join('\n'),
+          // Same for every deal until the lender list or history changes, so
+          // it's cached across back-to-back match runs.
+          {
+            type: 'text',
+            text: [
+              '--- Lenders the team works with ---',
+              lenderLines.slice(0, knownCount).join('\n'),
+              '',
+              '--- New lenders (no relationship yet) ---',
+              lenderLines.slice(knownCount).join('\n') || '(none)',
+            ].join('\n'),
+            cache_control: { type: 'ephemeral' },
+          },
+          {
+            type: 'text',
+            text: [
+              dealProfile,
+              alreadySent.length ? `\nThis deal was already sent to: ${alreadySent.join('; ')}` : '',
+              '',
+              MATCH_INSTRUCTIONS,
+            ].join('\n'),
+          },
+        ],
       },
     ],
     output_config: { format: zodOutputFormat(MatchSchema) },
@@ -104,6 +158,7 @@ export async function runMatching(dealId: string) {
     throw new Error('Could not produce lender matches')
   }
 
+  let newKept = 0
   const resolvedMatches = structured.parsed_output.matches
     .map((m) => ({
       lenderId: lenderRefs.get(m.lender_ref) ?? null,
@@ -111,6 +166,9 @@ export async function runMatching(dealId: string) {
       reasoning: m.reasoning,
     }))
     .filter((m): m is { lenderId: string; score: number; reasoning: string } => m.lenderId !== null)
+    // At most 2 lenders the team has never worked with, labeled as such.
+    .filter((m) => !newLenderIds.has(m.lenderId) || ++newKept <= 2)
+    .map((m) => (newLenderIds.has(m.lenderId) ? { ...m, reasoning: `New lender — no relationship yet. ${m.reasoning}` } : m))
 
   return { matches: resolvedMatches, notes: structured.parsed_output.notes }
 }
