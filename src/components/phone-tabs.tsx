@@ -1,10 +1,13 @@
 'use client'
 
 import { createContext, useContext, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 // A long page (like a deal) is split into tabs instead of one endless
 // scroll — on phones and computers; each CollapsibleSection says which tab
-// it belongs to. Always opens on the first tab (a deal's Overview).
+// it belongs to. Opens on the first tab (a deal's Overview) unless the
+// address says otherwise (?tab=lenders), which picking a tab writes — so
+// Back from a lender lands on the tab you left.
 
 type Tab = { key: string; label: string; count?: number }
 
@@ -21,11 +24,16 @@ export function useSetTab() {
 }
 
 export function PhoneTabs({ tabs, children }: { tabs: Tab[]; children: ReactNode }) {
-  const [active, setActive] = useState(tabs[0]?.key ?? '')
+  const fromUrl = useSearchParams().get('tab')
+  const [active, setActive] = useState(tabs.some((t) => t.key === fromUrl) ? fromUrl! : (tabs[0]?.key ?? ''))
 
   function pick(key: string) {
     setActive(key)
     window.scrollTo({ top: 0 })
+    const url = new URL(window.location.href)
+    if (key === tabs[0]?.key) url.searchParams.delete('tab')
+    else url.searchParams.set('tab', key)
+    window.history.replaceState(window.history.state, '', url)
   }
 
   return (
