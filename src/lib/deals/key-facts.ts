@@ -139,7 +139,9 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
   const client = new Anthropic()
   const res = await client.messages.parse({
     model: MODEL,
-    max_tokens: 2500,
+    // Includes the model's thinking: at 2500 a third of runs hit the cap,
+    // cutting the JSON off ("Unterminated string") or the reasoning short.
+    max_tokens: 8000,
     messages: [{ role: 'user', content: `${GUIDE}\n\n${parts.filter(Boolean).join('\n')}` }],
     output_config: { effort: 'low', format: zodOutputFormat(Schema) },
   })
