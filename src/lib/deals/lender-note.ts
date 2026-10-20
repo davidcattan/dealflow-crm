@@ -19,16 +19,25 @@ const NoteActions = z.object({
   not_a_lender: z
     .boolean()
     .describe('True only if the note says this firm is not a lender at all (e.g. an advisor, consultant or referral partner, "not lenders in general").'),
+  lender_fact: z
+    .string()
+    .nullable()
+    .describe(
+      'Anything the note says about the lender in general, beyond this deal: what it will or won’t finance (size, assets, industries, regions, structure) or how it is to work with (e.g. "slow", "never closes our deals"). One short standalone sentence about the lender, keeping any numbers exact. Null if the note is only about this deal.'
+    ),
 })
 
 // Reads a note someone added on a lender in a deal's "Lenders sent to" and
 // makes the change it describes: the lender's status on the deal, taking it
-// off the deal, or marking the firm as not a lender at all. Returns what
-// changed, in plain words (empty when the note is just a note).
+// off the deal, or marking the firm as not a lender at all — and adds
+// anything it says about the lender in general to the lender's notes (which
+// matching reads). Returns what changed, in plain words (empty when the note
+// is just a note).
 export async function applyLenderNote(supabase: SupabaseClient, dealId: string, lenderId: string, note: string): Promise<string[]> {
-  const [{ data: lender }, { data: sub }] = await Promise.all([
-    supabase.from('lenders').select('name').eq('id', lenderId).single(),
+  const [{ data: lender }, { data: sub }, { data: deal }] = await Promise.all([
+    supabase.from('lenders').select('name, mandate_notes').eq('id', lenderId).single(),
     supabase.from('deal_submissions').select('id, status').eq('deal_id', dealId).eq('lender_id', lenderId).maybeSingle(),
+    supabase.from('deals').select('company_name').eq('id', dealId).single(),
   ])
   if (!lender) return []
 
@@ -64,6 +73,15 @@ export async function applyLenderNote(supabase: SupabaseClient, dealId: string, 
       .update({ status: act.status, last_activity_at: new Date().toISOString() })
       .eq('id', sub.id)
     done.push(`Moved ${lender.name} to “${SUBMISSION_LABELS[act.status as SubmissionStatus]}”`)
+  }
+  // Added to the lender's notes (never overwriting its loan-size fields), so
+  // one offhand comment can't wipe what was entered.
+  const fact = act.lender_fact?.trim()
+  if (fact && !marked) {
+    const stamped = `[${new Date().toISOString().slice(0, 10)} from note on ${deal?.company_name ?? 'a deal'}] ${fact}`
+    const notes = lender.mandate_notes ? `${lender.mandate_notes}\n${stamped}` : stamped
+    const { error } = await supabase.from('lenders').update({ mandate_notes: notes }).eq('id', lenderId)
+    if (!error) done.push(`Added to ${lender.name}’s notes: “${fact}”`)
   }
   return done
 }
