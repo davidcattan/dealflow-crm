@@ -137,13 +137,23 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
   }
 
   const client = new Anthropic()
-  const res = await client.messages.parse({
-    model: MODEL,
-    // Includes the model's thinking: at 2500 a third of runs hit the cap,
-    // cutting the JSON off ("Unterminated string") or the reasoning short.
-    max_tokens: 8000,
-    messages: [{ role: 'user', content: `${GUIDE}\n\n${parts.filter(Boolean).join('\n')}` }],
-    output_config: { effort: 'low', format: zodOutputFormat(Schema) },
+  const ask = (maxTokens: number) =>
+    client.messages.parse({
+      model: MODEL,
+      // Includes the model's thinking: at 2500 a third of runs hit the cap,
+      // cutting the JSON off ("Unterminated string") or the reasoning short.
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: `${GUIDE}\n\n${parts.filter(Boolean).join('\n')}` }],
+      output_config: { effort: 'low', format: zodOutputFormat(Schema) },
+    })
+  // An answer cut off mid-JSON gets one retry with more room.
+  const res = await ask(8000).catch((err) => {
+    if (!/parse structured output/i.test(String(err))) throw err
+    console.error('Key facts cut off; retrying', dealId, err)
+    return ask(20000)
+  }).catch((err) => {
+    if (/parse structured output/i.test(String(err))) throw new Error('The AI’s answer got cut off — click Refresh to try again.')
+    throw err
   })
   await logUsage({ feature: 'key-facts', model: MODEL, dealId, usage: res.usage, supabase })
   if (!res.parsed_output) throw new Error('Could not read the key facts')
