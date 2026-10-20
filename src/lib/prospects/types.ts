@@ -56,3 +56,23 @@ export function companyDomain(email: string | null | undefined) {
   const d = (email ?? '').toLowerCase().split('@')[1]
   return d && !GENERIC.has(d) ? d : null
 }
+
+// Follow up with someone who hasn't answered this many days after our last email.
+export const FOLLOW_UP_DAYS = 5
+const NOTHING_OWED: ProspectStatus[] = ['new', 'not_interested', 'wrong_person', 'deal', 'do_not_contact']
+
+// The last time either side wrote: our last email or their last reply.
+export function lastContacted(p: Pick<Prospect, 'last_emailed_at' | 'replied_at'>): string | null {
+  const times = [p.last_emailed_at, p.replied_at].filter((t): t is string => Boolean(t))
+  return times.length ? times.reduce((a, b) => (a > b ? a : b)) : null
+}
+
+// When to write next: right away if they wrote last (we owe a reply), else
+// FOLLOW_UP_DAYS after our last email. Null when nothing's owed — not
+// contacted yet, or closed out (deal, not interested, wrong person, do not contact).
+export function followUp(p: Pick<Prospect, 'status' | 'last_emailed_at' | 'replied_at'>): { at: Date; kind: 'reply' | 'follow_up' } | null {
+  if (NOTHING_OWED.includes(p.status)) return null
+  if (p.replied_at && (!p.last_emailed_at || p.replied_at > p.last_emailed_at)) return { at: new Date(p.replied_at), kind: 'reply' }
+  if (!p.last_emailed_at) return null
+  return { at: new Date(new Date(p.last_emailed_at).getTime() + FOLLOW_UP_DAYS * 86_400_000), kind: 'follow_up' }
+}

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { PROSPECT_STATUSES, PROSPECT_STATUS_COLORS, PROSPECT_STATUS_LABELS, type Prospect, type ProspectStatus } from '@/lib/prospects/types'
+import { FOLLOW_UP_DAYS, PROSPECT_STATUSES, PROSPECT_STATUS_COLORS, PROSPECT_STATUS_LABELS, followUp, lastContacted, type Prospect, type ProspectStatus } from '@/lib/prospects/types'
 import { getProspectEmails, importProspects, setProspectStatus, type ProspectEmail } from './actions'
 import { parseCsv } from '@/lib/prospects/csv'
 import { readXlsx } from '@/lib/prospects/xlsx'
@@ -173,6 +173,23 @@ function StatusSelect({ p }: { p: Prospect }) {
 }
 
 // "$51 million" + "CIT Real Estate Finance" + 2022 → "$51M · CIT Real Estate Finance '22".
+const shortDate = (d: string | Date) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+
+// "Oct 25", or "Due today" / "3 days overdue" once it's time; "Reply" when
+// they wrote last and we owe them an answer.
+function FollowUpCell({ p, now }: { p: Prospect; now: number }) {
+  const next = followUp(p)
+  if (!next) return <span className="text-slate-300">—</span>
+  if (next.kind === 'reply') return <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">Reply — they wrote</span>
+  const days = Math.floor((now - next.at.getTime()) / 86_400_000)
+  if (days < 0) return <span className="text-slate-600">{shortDate(next.at)}</span>
+  return (
+    <span className={`rounded px-1.5 py-0.5 font-medium ${days === 0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'}`}>
+      {days === 0 ? 'Due today' : `${days} day${days === 1 ? '' : 's'} overdue`}
+    </span>
+  )
+}
+
 function facilityText(p: Prospect) {
   const amount = p.amount?.replace(/\s*million/i, 'M').replace(/\s*billion/i, 'B') ?? null
   const year = p.deal_year ? `'${p.deal_year.slice(-2)}` : null
@@ -253,7 +270,7 @@ function ProspectDetail({
 
   return (
     <tr>
-      <td colSpan={7} className="bg-slate-50 px-4 py-3">
+      <td colSpan={9} className="bg-slate-50 px-4 py-3">
         <div className="max-w-3xl space-y-2 text-sm">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PROSPECT_STATUS_COLORS[p.status]}`}>{PROSPECT_STATUS_LABELS[p.status]}</span>
@@ -339,7 +356,7 @@ export function ProspectsTable({ prospects, template }: { prospects: Prospect[];
       else next.delete(id)
       return next
     })
-  const [filter, setFilter] = useState<ProspectStatus | 'all'>('all')
+  const [filter, setFilter] = useState<ProspectStatus | 'all' | 'due'>('all')
   const [q, setQ] = useState('')
   // Each imported list ("ABL Advisor 2021–2022", "ABL Advisor 2023"…).
   const [list, setList] = useState<string>('all')
@@ -363,12 +380,23 @@ export function ProspectsTable({ prospects, template }: { prospects: Prospect[];
   // A second contact at the same company (right below the first) doesn't
   // repeat the company and facility.
   const sameCompany = (i: number) => i > 0 && shown[i - 1].company === shown[i].company
-  const shown = inList.filter((p) => {
-    if (filter !== 'all' && p.status !== filter) return false
+  // "Now" as of when the page opened (renders must not read the clock).
+  const [now] = useState(() => Date.now())
+  const isDue = (p: Prospect) => {
+    const next = followUp(p)
+    return Boolean(next && next.at.getTime() <= now)
+  }
+  const dueCount = inList.filter(isDue).length
+  const filtered = inList.filter((p) => {
+    if (filter === 'due') {
+      if (!isDue(p)) return false
+    } else if (filter !== 'all' && p.status !== filter) return false
     if (!q.trim()) return true
     const hay = [p.company, p.company_display, p.first_name, p.last_name, p.email, p.title, p.lender, p.source].join(' ').toLowerCase()
     return hay.includes(q.trim().toLowerCase())
   })
+  // Who's due: longest-waiting first (replies owed come before follow-ups).
+  const shown = filter === 'due' ? [...filtered].sort((a, b) => followUp(a)!.at.getTime() - followUp(b)!.at.getTime()) : filtered
 
   return (
     <div className="space-y-3">
@@ -425,6 +453,16 @@ export function ProspectsTable({ prospects, template }: { prospects: Prospect[];
         >
           All {inList.length} · {companies} companies
         </button>
+        {dueCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setFilter('due')}
+            title={`Emailed ${FOLLOW_UP_DAYS}+ days ago with no answer, or they replied and we owe them one`}
+            className={`rounded-full px-2.5 py-1 font-medium ${filter === 'due' ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700 ring-1 ring-red-200'}`}
+          >
+            Follow up due {dueCount}
+          </button>
+        )}
         {PROSPECT_STATUSES.filter((s) => counts.get(s)).map((s) => (
           <button
             key={s}
@@ -460,10 +498,14 @@ export function ProspectsTable({ prospects, template }: { prospects: Prospect[];
                     className="rounded border-slate-300"
                   />
                 </th>
-                <th className="w-[22%] px-2 py-2 text-left font-medium">Company</th>
-                <th className="w-[28%] px-2 py-2 text-left font-medium">Contact</th>
-                <th className="w-[22%] px-2 py-2 text-left font-medium">Their facility</th>
+                <th className="w-[18%] px-2 py-2 text-left font-medium">Company</th>
+                <th className="w-[24%] px-2 py-2 text-left font-medium">Contact</th>
+                <th className="w-[15%] px-2 py-2 text-left font-medium">Their facility</th>
                 <th className="w-32 px-2 py-2 text-left font-medium">Status</th>
+                <th className="w-24 px-2 py-2 text-left font-medium">Last contacted</th>
+                <th className="w-32 px-2 py-2 text-left font-medium" title={`${FOLLOW_UP_DAYS} days after your last email if they haven't answered`}>
+                  Follow up
+                </th>
                 <th className="px-2 py-2 text-left font-medium">Last activity</th>
                 <th className="w-16 px-2 py-2" />
               </tr>
@@ -529,6 +571,12 @@ export function ProspectsTable({ prospects, template }: { prospects: Prospect[];
                   <td className="px-2 py-2">
                     <StatusSelect p={p} />
                   </td>
+                  <td className="px-2 py-2 text-xs text-slate-600">
+                    {lastContacted(p) ? shortDate(lastContacted(p)!) : <span className="text-slate-300">—</span>}
+                  </td>
+                  <td className="px-2 py-2 text-xs">
+                    <FollowUpCell p={p} now={now} />
+                  </td>
                   <td className="truncate px-2 py-2 text-xs text-slate-500" title={p.reply_summary ?? undefined}>
                     {p.deal_id ? (
                       <Link href={`/deals/${p.deal_id}`} className="text-emerald-700 underline">
@@ -537,7 +585,7 @@ export function ProspectsTable({ prospects, template }: { prospects: Prospect[];
                     ) : p.reply_summary ? (
                       p.reply_summary
                     ) : p.last_emailed_at ? (
-                      `Emailed ${new Date(p.last_emailed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+                      'No reply yet'
                     ) : (
                       <span className="text-slate-300">—</span>
                     )}
