@@ -8,7 +8,7 @@ export function prospectEmail(p: Prospect) {
   const first = p.first_name?.trim() || 'there'
 
   return {
-    subject: `${company} <> JED Capital Group`,
+    subject: `${company} — introduction`,
     body: [
       `Hi ${first},`,
       '',
