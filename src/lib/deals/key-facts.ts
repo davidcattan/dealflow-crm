@@ -43,7 +43,9 @@ const Schema = z.object({
           'answer_lender = a lender asked us something or is interested and we owe them a reply/call; call_todo = something we promised on a call; borrower = we need to ask/chase the borrower for docs or info; send_out = ready to underwrite, match or send to lenders; everyone_passed = all lenders declined, need new ones; follow_up_lender = we sent it and a lender has gone quiet 5+ days; waiting_on_borrower / waiting_on_lender = the ball is in their court and nothing is overdue; done = funded/closed/dead.'
         ),
     })
-    .describe('Read the latest emails, calls and notes: what was promised, asked or agreed most recently decides it. Newer beats older.'),
+    .describe(
+      'Read the latest emails, calls and notes: what was promised, asked or agreed most recently decides it. Newer beats older (emails show date and time). Before suggesting anything, check the team’s later emails ("we sent") and notes: if the team already did it — sent the signed NDA, the documents, the reply — it is done, so never suggest it again; pick the next open item instead.'
+    ),
   recommendation: z
     .object({
       loan_type: z.enum(LOAN_TYPE_CATEGORIES).describe('The loan product that best fits what this borrower has and needs.'),
@@ -107,7 +109,9 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
   for (const [i, e] of (emails ?? []).entries()) {
     refs.set(`E${i + 1}`, { kind: 'email', id: e.id as string })
     const text = e.body_text ? ownText(String(e.body_text)).slice(0, 2500) : (e.summary ?? '')
-    parts.push(`\n--- [E${i + 1}] Email ${e.classification === 'sent' ? 'we sent' : `from ${e.from_email}`} (${String(e.received_at).slice(0, 10)}): ${e.subject ?? ''} ---\n${text}`)
+    // Date and time (ET), so a reply sent later the same day reads as later.
+    const when = new Date(String(e.received_at)).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+    parts.push(`\n--- [E${i + 1}] Email ${e.classification === 'sent' ? 'we sent' : `from ${e.from_email}`} (${when}): ${e.subject ?? ''} ---\n${text}`)
   }
   if (deal.snapshot) parts.push(`\n--- [SNAPSHOT] Underwriting snapshot ---\n${snapshotToText(deal.snapshot as Snapshot).slice(0, 12000)}`)
   if (deal.borrower_profile) parts.push(`\n--- Borrower profile (from tax returns) ---\n${JSON.stringify(deal.borrower_profile).slice(0, 6000)}`)
