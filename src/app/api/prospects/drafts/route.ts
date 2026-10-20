@@ -27,7 +27,8 @@ export async function POST(request: Request) {
   // Their own mailbox if they connected one, else the newest.
   const { data: mine } = await supabase
     .from('outlook_connections')
-    .select('id')
+    // Everything, so the prospect email (migration 048) is read when present.
+    .select('*')
     .eq('connected_by', user.id)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
         skipped.push(`${p.company_display || p.company} (${p.status.replace(/_/g, ' ')})`)
         continue
       }
-      const { subject, body } = prospectEmail(p)
+      const { subject, body } = prospectEmail(p, { subject: mine?.prospect_subject, body: mine?.prospect_body })
       await createOutlookDraft({
         accessToken,
         to: { name: [p.first_name, p.last_name].filter(Boolean).join(' ') || null, email: p.email },

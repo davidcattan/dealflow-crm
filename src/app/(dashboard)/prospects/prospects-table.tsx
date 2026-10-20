@@ -8,7 +8,8 @@ import { getProspectEmails, importProspects, setProspectStatus, type ProspectEma
 import { parseCsv } from '@/lib/prospects/csv'
 import { readXlsx } from '@/lib/prospects/xlsx'
 import { FIELD_LABELS, mapColumns, toPeople, type FieldKey, type ImportPerson } from '@/lib/prospects/columns'
-import { prospectEmail } from '@/lib/prospects/email'
+import { prospectEmail, type ProspectTemplate } from '@/lib/prospects/email'
+import { EmailTemplate } from './email-template'
 import { readJsonResponse } from '@/lib/fetch-json'
 import { FindProspects } from './find-prospects'
 import { ListPicker } from './list-picker'
@@ -208,8 +209,8 @@ function useDrafts() {
   return { busy, message, create }
 }
 
-function EmailPreview({ p }: { p: Prospect }) {
-  const { subject, body } = prospectEmail(p)
+function EmailPreview({ p, template }: { p: Prospect; template?: ProspectTemplate | null }) {
+  const { subject, body } = prospectEmail(p, template)
   return (
     <div className="rounded border border-slate-200 bg-white p-2.5 text-sm text-slate-700">
       <p>
@@ -223,7 +224,17 @@ function EmailPreview({ p }: { p: Prospect }) {
 
 // Opens under a prospect when you click their company: where they stand and
 // every email with them (read live from Outlook).
-function ProspectDetail({ p, onDraft, drafting }: { p: Prospect; onDraft: () => void; drafting: boolean }) {
+function ProspectDetail({
+  p,
+  onDraft,
+  drafting,
+  template,
+}: {
+  p: Prospect
+  onDraft: () => void
+  drafting: boolean
+  template?: ProspectTemplate | null
+}) {
   const [showPreview, setShowPreview] = useState(false)
   const [emails, setEmails] = useState<ProspectEmail[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -275,7 +286,7 @@ function ProspectDetail({ p, onDraft, drafting }: { p: Prospect; onDraft: () => 
               Draft in Outlook
             </button>
           </div>
-          {showPreview && <EmailPreview p={p} />}
+          {showPreview && <EmailPreview p={p} template={template} />}
           {emails === null ? (
             <p className="text-xs text-slate-500">Looking up emails with {p.email}…</p>
           ) : emails.length === 0 ? (
@@ -302,7 +313,9 @@ function ProspectDetail({ p, onDraft, drafting }: { p: Prospect; onDraft: () => 
   )
 }
 
-export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
+export function ProspectsTable({ prospects, template }: { prospects: Prospect[]; template?: ProspectTemplate | null }) {
+  // Your email: edited in the box above the list, previewed per person.
+  const [tpl, setTpl] = useState(template)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [detailId, setDetailId] = useState<string | null>(null)
   const drafts = useDrafts()
@@ -363,6 +376,7 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
         <FindProspects lists={listNames} />
         <ImportList lists={listNames} />
       </div>
+      <EmailTemplate template={tpl} onSaved={setTpl} />
       {(picked.size > 0 || drafts.message) && (
         <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 shadow-sm">
           {picked.size > 0 && (
@@ -540,7 +554,7 @@ export function ProspectsTable({ prospects }: { prospects: Prospect[] }) {
                     </button>
                   </td>
                 </tr>,
-                detailId === p.id ? <ProspectDetail key={`${p.id}-detail`} p={p} onDraft={() => drafts.create([p.id])} drafting={drafts.busy} /> : null,
+                detailId === p.id ? <ProspectDetail key={`${p.id}-detail`} p={p} template={tpl} onDraft={() => drafts.create([p.id])} drafting={drafts.busy} /> : null,
               ])}
             </tbody>
           </table>

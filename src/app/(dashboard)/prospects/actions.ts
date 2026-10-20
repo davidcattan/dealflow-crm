@@ -117,3 +117,28 @@ export async function getProspectEmails(email: string): Promise<{ emails: Prospe
   }
   return { emails, ...(failed && !emails.length ? { error: "Couldn't reach Outlook — check Settings → Outlook." } : {}) }
 }
+
+// Your own cold email (subject + body with {first_name} / {company}), saved
+// on your connected mailbox. Empty = the standard email.
+export async function saveProspectEmail(subject: string, body: string) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in again.' }
+  const { data: mine } = await supabase
+    .from('outlook_connections')
+    .select('id')
+    .eq('connected_by', user.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!mine) return { error: 'Connect your Outlook in Settings first — the email is saved on your mailbox.' }
+  const { error } = await supabase
+    .from('outlook_connections')
+    .update({ prospect_subject: subject.trim() || null, prospect_body: body.trim() || null })
+    .eq('id', mine.id)
+  if (error) return { error: error.message.includes('prospect_') ? 'Run migration 048_prospect_email.sql in Supabase first.' : error.message }
+  revalidatePath('/prospects')
+  return { ok: true }
+}
