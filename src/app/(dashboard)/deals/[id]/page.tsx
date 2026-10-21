@@ -484,6 +484,7 @@ export default async function DealDetailPage({
           keyFacts={((deal as { key_facts?: unknown }).key_facts ?? null) as Parameters<typeof KeyFacts>[0]['keyFacts']}
           at={(deal as { key_facts_at?: string | null }).key_facts_at ?? null}
           stale={keyFactsStale}
+          activityAt={newestActivity ?? null}
           docUrls={Object.fromEntries(docsWithUrls.filter((d) => d.url).map((d) => [d.id, d.url as string]))}
         />
       </CollapsibleSection>

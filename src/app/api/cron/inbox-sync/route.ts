@@ -37,7 +37,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ skipped: 'Auto-sync is off' })
   }
 
-  // Keep reading batches until caught up, so a busy half hour never leaves
+  // Runs every 5 minutes: if the previous check is still going (a big batch),
+  // let it finish instead of reading the same emails twice. A run that died
+  // without finishing stops counting after 15 minutes.
+  const { data: busy } = await supabase
+    .from('inbox_sync_runs')
+    .select('id')
+    .is('finished_at', null)
+    .gte('started_at', new Date(Date.now() - 15 * 60 * 1000).toISOString())
+    .limit(1)
+  if (busy?.length) return NextResponse.json({ skipped: 'Previous check still running' })
+
+  // Keep reading batches until caught up, so a busy stretch never leaves
   // mail behind. Stop starting new batches after ~6 minutes to stay well
   // inside maxDuration; progress is saved per email, so the next run
   // continues exactly where this one stopped.

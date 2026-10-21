@@ -38,12 +38,15 @@ export function KeyFacts({
   keyFacts,
   at,
   stale,
+  activityAt = null,
   docUrls,
 }: {
   dealId: string
   keyFacts: Facts | null
   at: string | null
   stale: boolean
+  // When the newest document/email/call/note landed (re-read when it changes).
+  activityAt?: string | null
   docUrls: Record<string, string>
 }) {
   const setTab = useSetTab()
@@ -72,15 +75,18 @@ export function KeyFacts({
     if ('error' in res && res.error) setError(res.error)
     setBusy(false)
   }
-  // Opening a deal with no key facts yet, or with something new since they
-  // were read (a document, email, call or note): read it again by itself.
-  const ran = useRef(false)
+  // No key facts yet, or something new since they were read (a document,
+  // email, call or note) — on opening the deal or while it's open: read it
+  // again by itself, once per new thing.
+  const ranFor = useRef<string | null>(null)
   useEffect(() => {
-    if (ran.current || !(stale || !keyFacts)) return
-    ran.current = true
+    if (!(stale || !keyFacts)) return
+    const run = `${dealId}:${activityAt ?? ''}`
+    if (ranFor.current === run) return
+    ranFor.current = run
     void refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per deal visit
-  }, [dealId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh is stable enough; keyed on the newest activity
+  }, [dealId, stale, activityAt])
   const save = (oldLabel: string | null, label: string, value: string) =>
     start(async () => {
       const res = await saveKeyFact(dealId, oldLabel, label, value)
