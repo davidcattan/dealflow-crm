@@ -44,7 +44,7 @@ const Schema = z.object({
         ),
     })
     .describe(
-      'Read the latest emails, calls and notes: what was promised, asked or agreed most recently decides it. Newer beats older (emails show date and time). Before suggesting anything, check the team’s later emails ("we sent") and notes: if the team already did it — sent the signed NDA, the documents, the reply — it is done, so never suggest it again; pick the next open item instead.'
+      'Read the latest emails, calls and notes: what was promised, asked or agreed most recently decides it. Newer beats older (emails show date and time). Before suggesting anything, check the team’s later emails ("we sent") and notes: if the team already did it — sent the signed NDA, the documents, the reply — it is done, so never suggest it again; pick the next open item instead. Use WHO WROTE LAST: when we wrote last, never say to reply to them — the step is waiting on them (or follow_up_lender / borrower once 5+ days pass with no answer).'
     ),
   recommendation: z
     .object({
@@ -108,6 +108,18 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
     const r = c.result as { title?: string; summary?: string; key_points?: string[] } | null
     const body = r ? [r.title, r.summary, ...(r.key_points ?? [])].filter(Boolean).join('\n') : String(c.transcript ?? '').slice(0, 4000)
     parts.push(`\n--- [C${i + 1}] Call (${String(c.created_at).slice(0, 10)}${c.call_with ? `, with ${c.call_with}` : ''}) ---\n${body}`)
+  }
+  // Who wrote last, worked out here rather than left to the AI (which can
+  // mix up "we sent" and "they sent"): emails are newest first.
+  const fmt = (at: unknown) => new Date(String(at)).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const ours = (e: { classification?: unknown; from_email?: unknown }) => e.classification === 'sent' || /@jed-capitalgroup\.com$/i.test(String(e.from_email ?? ''))
+  const lastOurs = (emails ?? []).find((e) => ours(e))
+  const lastTheirs = (emails ?? []).find((e) => !ours(e))
+  if (lastOurs || lastTheirs) {
+    const weLast = Boolean(lastOurs && (!lastTheirs || String(lastOurs.received_at) > String(lastTheirs.received_at)))
+    parts.push(
+      `\nWHO WROTE LAST: our last email ${lastOurs ? `${fmt(lastOurs.received_at)} ("${lastOurs.subject ?? ''}")` : 'none'}; their last email ${lastTheirs ? `${fmt(lastTheirs.received_at)} from ${lastTheirs.from_email}` : 'none'}. ${weLast ? 'WE wrote last — the ball is in their court.' : 'THEY wrote last — we may owe a reply.'}`
+    )
   }
   for (const [i, e] of (emails ?? []).entries()) {
     refs.set(`E${i + 1}`, { kind: 'email', id: e.id as string })
