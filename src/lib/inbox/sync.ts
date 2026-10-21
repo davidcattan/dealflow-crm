@@ -1325,6 +1325,23 @@ export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMe
     .update({ deal_id: dealId, lender_id: lender?.id ?? null, body_text: bodyText, action_taken: actions.join(', ') })
     .eq('id', row.id)
 
+  // The rest of the thread comes along (e.g. the original pitch the CRM
+  // couldn't place), so the deal shows it and drafts can copy it.
+  if (row.conversation_id) {
+    const { data: moved } = await supabase
+      .from('inbox_messages')
+      .update({ deal_id: dealId, ...(lender ? { lender_id: lender.id } : {}) })
+      .eq('conversation_id', row.conversation_id)
+      .is('deal_id', null)
+      .select('id')
+    if (moved?.length) {
+      actions.push(`${moved.length} earlier email${moved.length === 1 ? '' : 's'} in the thread filed too`)
+      await supabase.from('inbox_messages').update({ action_taken: actions.join(', ') }).eq('id', row.id)
+    }
+  }
+  // Other lenders' unsent drafts copy the deal's latest pitch.
+  if (isSent && lender) await refreshDraftsFromLatestPitch(supabase, dealId).catch(() => 0)
+
   if (!alreadyHere) await notify(supabase, {
     kind: isLenderReply ? 'lender_reply' : 'deal_update',
     title: `${isLenderReply ? `${who} replied on ${deal.company_name}` : `Deal updated: ${deal.company_name}`}${
