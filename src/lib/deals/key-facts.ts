@@ -24,7 +24,7 @@ export type LoanRecommendation = { loan_type: string; why: string }
 export const STEP_CATEGORIES = ['answer_lender', 'call_todo', 'borrower', 'send_out', 'everyone_passed', 'follow_up_lender', 'waiting_on_borrower', 'waiting_on_lender', 'done'] as const
 export type AiNextStep = { text: string; category: (typeof STEP_CATEGORIES)[number] }
 export type KeyFacts = { summary?: string; recommendation?: LoanRecommendation | null; next_step?: AiNextStep | null; facts: KeyFact[]; missing: string[]; v?: number }
-export const KEY_FACTS_VERSION = 7
+export const KEY_FACTS_VERSION = 8
 
 const Schema = z.object({
   summary: z
