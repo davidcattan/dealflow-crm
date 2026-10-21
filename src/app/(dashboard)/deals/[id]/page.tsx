@@ -21,7 +21,7 @@ import type { Underwriting } from '@/lib/underwriting/schema'
 import { formatDateOnly } from '@/lib/format'
 import { DealDetails } from './deal-details'
 import { AtAGlance } from './at-a-glance'
-import { KeyFacts } from './key-facts'
+import { KeyFacts, KeyFactsRefresher } from './key-facts'
 import { ActivityTimeline } from './activity'
 import { KEY_FACTS_VERSION } from '@/lib/deals/key-facts'
 import type { DealContact } from './deal-contacts'
@@ -479,13 +479,17 @@ export default async function DealDetailPage({
         />
       </CollapsibleSection>
 
+      <KeyFactsRefresher
+        dealId={deal.id}
+        needed={keyFactsStale || !(deal as { key_facts?: unknown }).key_facts}
+        activityAt={newestActivity ?? null}
+      />
       <CollapsibleSection tab="overview" title="Key facts">
         <KeyFacts
           dealId={deal.id}
           keyFacts={((deal as { key_facts?: unknown }).key_facts ?? null) as Parameters<typeof KeyFacts>[0]['keyFacts']}
           at={(deal as { key_facts_at?: string | null }).key_facts_at ?? null}
           stale={keyFactsStale}
-          activityAt={newestActivity ?? null}
           docUrls={Object.fromEntries(docsWithUrls.filter((d) => d.url).map((d) => [d.id, d.url as string]))}
         />
       </CollapsibleSection>

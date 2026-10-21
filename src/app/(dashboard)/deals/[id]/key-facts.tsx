@@ -32,21 +32,33 @@ function FactEditor({
   )
 }
 
+// No key facts yet, or something new since they were read (a document,
+// email, call or note) — on opening the deal or while it's open: read it
+// again by itself, once per new thing. Kept outside the Key facts box so it
+// runs even when that box is collapsed or on another phone tab.
+export function KeyFactsRefresher({ dealId, needed, activityAt }: { dealId: string; needed: boolean; activityAt: string | null }) {
+  const ranFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!needed) return
+    const run = `${dealId}:${activityAt ?? ''}`
+    if (ranFor.current === run) return
+    ranFor.current = run
+    void refreshKeyFacts(dealId)
+  }, [dealId, needed, activityAt])
+  return null
+}
+
 // The few facts that matter for this deal, with where each came from.
 export function KeyFacts({
   dealId,
   keyFacts,
   at,
-  stale,
-  activityAt = null,
   docUrls,
 }: {
   dealId: string
   keyFacts: Facts | null
   at: string | null
   stale: boolean
-  // When the newest document/email/call/note landed (re-read when it changes).
-  activityAt?: string | null
   docUrls: Record<string, string>
 }) {
   const setTab = useSetTab()
@@ -75,18 +87,6 @@ export function KeyFacts({
     if ('error' in res && res.error) setError(res.error)
     setBusy(false)
   }
-  // No key facts yet, or something new since they were read (a document,
-  // email, call or note) — on opening the deal or while it's open: read it
-  // again by itself, once per new thing.
-  const ranFor = useRef<string | null>(null)
-  useEffect(() => {
-    if (!(stale || !keyFacts)) return
-    const run = `${dealId}:${activityAt ?? ''}`
-    if (ranFor.current === run) return
-    ranFor.current = run
-    void refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh is stable enough; keyed on the newest activity
-  }, [dealId, stale, activityAt])
   const save = (oldLabel: string | null, label: string, value: string) =>
     start(async () => {
       const res = await saveKeyFact(dealId, oldLabel, label, value)
