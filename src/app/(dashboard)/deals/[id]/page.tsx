@@ -23,6 +23,7 @@ import { DealDetails } from './deal-details'
 import { AtAGlance } from './at-a-glance'
 import { KeyFacts } from './key-facts'
 import { ActivityTimeline } from './activity'
+import { KEY_FACTS_VERSION } from '@/lib/deals/key-facts'
 import type { DealContact } from './deal-contacts'
 import { ProfilePanel } from './profile-panel'
 import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
@@ -381,7 +382,7 @@ export default async function DealDetailPage({
   const keyFactsStale =
     Boolean(keyFactsAt && newestActivity && newestActivity > keyFactsAt) ||
     // Older, wordier format: read once more in the short format.
-    Boolean(keyFactsAt && ((deal as { key_facts?: { v?: number } | null }).key_facts?.v ?? 1) < 6)
+    Boolean(keyFactsAt && ((deal as { key_facts?: { v?: number } | null }).key_facts?.v ?? 1) < KEY_FACTS_VERSION)
 
   const isPast = ['dead', 'old', 'closed'].includes(deal.status)
   const dealActions = (

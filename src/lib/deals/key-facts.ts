@@ -24,7 +24,7 @@ export type LoanRecommendation = { loan_type: string; why: string }
 export const STEP_CATEGORIES = ['answer_lender', 'call_todo', 'borrower', 'send_out', 'everyone_passed', 'follow_up_lender', 'waiting_on_borrower', 'waiting_on_lender', 'done'] as const
 export type AiNextStep = { text: string; category: (typeof STEP_CATEGORIES)[number] }
 export type KeyFacts = { summary?: string; recommendation?: LoanRecommendation | null; next_step?: AiNextStep | null; facts: KeyFact[]; missing: string[]; v?: number }
-export const KEY_FACTS_VERSION = 6
+export const KEY_FACTS_VERSION = 7
 
 const Schema = z.object({
   summary: z
@@ -51,9 +51,11 @@ const Schema = z.object({
       loan_type: z.enum(LOAN_TYPE_CATEGORIES).describe('The loan product that best fits what this borrower has and needs.'),
       why: z
         .string()
-        .describe('At most 20 words, grounded in the facts: what collateral/cash flow supports it and why not the obvious alternative. e.g. "AR $910K + inventory $558K support a ~$400K line; EBITDA too thin for a cash-flow term loan."'),
+        .describe('At most 30 words, grounded in the facts: what collateral/cash flow supports it, which property if real estate, and why not the obvious alternative. e.g. "AR $910K + inventory $558K support a ~$400K line; EBITDA too thin for a cash-flow term loan."'),
     })
-    .describe("A broker's recommendation of the best-fit loan type for this deal, from the facts found."),
+    .describe(
+      "A broker's recommendation of the best-fit loan type for this deal, from the facts found. When the borrower owns property, look past the ask to the strongest collateral: a second-lien HELOC/home-equity loan on the property with the most equity and a low-rate first mortgage (keep that first); a cash-out refinance where the first mortgage rate is high; a DSCR / investment-property loan where a property is rented (qualifies on the rent, not thin business income) — and say which property. Paying off MCAs or other expensive debt from the proceeds is a strong use of funds."
+    ),
   facts: z
     .array(
       z.object({
@@ -73,6 +75,7 @@ const Schema = z.object({
 
 const GUIDE = `Pick the facts a commercial loan broker needs at a glance for THIS kind of deal:
 - Real estate / HELOC / bridge / construction: property address (full), property type, occupancy (who lives there / rented), estimated or appraised value (and basis), existing liens with balances, lenders and rates, LTV / combined LTV, who is on title, borrower(s), credit score(s), income, use of funds, the ask, timing.
+- Anyone who owns property (personal financial statement, Schedule E, mortgage statements): one fact per property — label = the street address, value like "$1.3M, owes $450K at 4%, rental": value, mortgage balance, rate, and whether it's the primary residence or rented. If sources disagree on which one is the home (e.g. the PFS front page vs its real estate schedule), say so in the note.
 - ABL / working capital / factoring: legal entity name, location, what they do, revenue (latest periods), EBITDA, AR, inventory, current lender and facility (size, maturity), total debt, the ask, use of funds, timing.
 - Equipment / term / SBA / M&A: the asset or target, cost, revenue / EBITDA, collateral, current debt, the ask, timing.
 Rules: only facts actually stated in the material below — never guess or calculate new numbers (except LTV when both value and loan are stated). When sources disagree, use the newest and put the conflict in the note. Pick only the 8 most important; values must be glanceable — round money ($4.6M, $910K), no sentences.`
