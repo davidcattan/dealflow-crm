@@ -7,6 +7,7 @@ import { UpdateRow } from './update-row'
 import { CallCard, CallRecorder, useCallPolling, whoLabel, type CallRow, type CallTarget, type WhoOptions } from './calls-panel'
 import { MoveToDeal, type DealChoice } from './move-to-deal'
 import { mailboxLabel } from '@/lib/outlook/mailbox-label'
+import { addQuickUpdate } from './actions'
 import type { DealEmail } from '@/lib/deals/deal-emails'
 
 type Update = { id: string; note: string; entry_date: string | null; created_at: string; lender_id?: string | null }
@@ -46,7 +47,7 @@ export function ActivityTimeline({
 }) {
   useCallPolling(calls)
   const [filter, setFilter] = useState<(typeof FILTERS)[number]['key']>('all')
-  const [adding, setAdding] = useState<'note' | null>(null)
+  const [adding, setAdding] = useState<'note' | 'update' | null>(null)
   const [showAll, setShowAll] = useState(false)
 
   const items: Item[] = [
@@ -72,6 +73,13 @@ export function ActivityTimeline({
         >
           📝 Write notes
         </button>
+        <button
+          type="button"
+          onClick={() => setAdding(adding === 'update' ? null : 'update')}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium ${adding === 'update' ? 'bg-slate-900 text-white' : 'border border-slate-300 text-slate-700 hover:bg-slate-50'}`}
+        >
+          + Add update
+        </button>
         <div className="ml-auto flex gap-1 text-xs">
           {FILTERS.filter((f) => f.key === 'all' || counts[f.key]).map((f) => (
             <button
@@ -87,6 +95,7 @@ export function ActivityTimeline({
       </div>
 
       {adding === 'note' && <NotesPad dealId={dealId} whoOptions={whoOptions} onDone={() => setAdding(null)} />}
+      {adding === 'update' && <QuickUpdate dealId={dealId} onDone={() => setAdding(null)} />}
 
       {filtered.length === 0 ? (
         <p className="py-6 text-center text-sm text-slate-400">Nothing yet — record a call above or add a note.</p>
@@ -303,5 +312,53 @@ function NotesPad({ dealId, whoOptions, onDone }: { dealId: string; whoOptions: 
         </button>
       </div>
     </div>
+  )
+}
+
+// One line about where the deal stands ("Avo sent 2025 returns", "Spring EQ
+// passed"). Saved to the timeline; the deal's summary and next step update
+// from it a few seconds later.
+function QuickUpdate({ dealId, onDone }: { dealId: string; onDone: () => void }) {
+  const router = useRouter()
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  async function save() {
+    setBusy(true)
+    setError(null)
+    const res = await addQuickUpdate(dealId, text)
+    setBusy(false)
+    if (res && 'error' in res && res.error) return setError(res.error)
+    setText('')
+    onDone()
+    router.refresh()
+    // The summary and next step are rewritten in the background; pick them up.
+    setTimeout(() => router.refresh(), 12_000)
+  }
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (text.trim() && !busy) save()
+      }}
+      className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3"
+    >
+      <input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        autoFocus
+        placeholder="e.g. Avo sent 2025 returns — wants $250K by end of month"
+        className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm"
+      />
+      <button
+        type="submit"
+        disabled={busy || !text.trim()}
+        className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+      >
+        {busy ? 'Saving…' : 'Save'}
+      </button>
+      <p className="basis-full text-xs text-slate-500">The deal&apos;s summary and next step update from it a few seconds after you save.</p>
+      {error && <p className="basis-full text-xs text-red-600">{error}</p>}
+    </form>
   )
 }

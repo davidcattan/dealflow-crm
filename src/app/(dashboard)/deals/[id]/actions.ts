@@ -1,9 +1,11 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { DEAL_STATUSES, type DealStatus } from '@/lib/types'
+import { buildKeyFacts } from '@/lib/deals/key-facts'
 
 function emptyToNull(value: FormDataEntryValue | null): string | null {
   const str = String(value ?? '').trim()
@@ -69,6 +71,31 @@ export async function addDealUpdate(formData: FormData) {
   })
 
   revalidatePath(`/deals/${dealId}`)
+}
+
+// A quick one-line update ("Avo sent 2025 returns"): saved to the timeline,
+// then the deal's summary, key facts and next step are rewritten from it
+// (after replying, ~1¢).
+export async function addQuickUpdate(dealId: string, note: string) {
+  const text = note.trim()
+  if (!dealId || !text) return { error: 'Type an update first.' }
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const { error } = await supabase.from('deal_updates').insert({
+    deal_id: dealId,
+    note: text,
+    entry_date: new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }),
+    source: 'manual',
+    created_by: user?.id ?? null,
+  })
+  if (error) return { error: error.message }
+  after(async () => {
+    await buildKeyFacts(supabase, dealId).catch((err) => console.error('Key facts after update failed', err))
+  })
+  revalidatePath(`/deals/${dealId}`)
+  return { ok: true }
 }
 
 export async function deleteDealUpdate(formData: FormData) {
