@@ -85,6 +85,44 @@ geographies: ${GEOGRAPHY_CATEGORIES.join(', ')}, or Nationwide`
   await notify(supabase, { kind: 'deal_update', title: `Call notes ready: ${lender.name}`, body: notes.title, lenderId })
 }
 
+type LenderChange = LenderCallNotes['lender_changes'][number]
+
+// "Min loan → $250K" — how a suggested profile change reads.
+export function lenderChangeLabel(c: LenderChange) {
+  return c.field === 'add_to_mandate_notes'
+    ? `Add to mandate notes: ${c.value}`
+    : `${FIELD_LABELS[c.field]} → ${(MONEY_FIELDS as readonly string[]).includes(c.field) ? moneyLabel(c.value) : c.value}`
+}
+
+// The lenders-table update for one change (null if the value isn't valid).
+// Mandate-note lines are stamped with where they came from, e.g.
+// "2026-10-23 (call)", and added to the lender object so the next line
+// appends after it.
+export function lenderChangeUpdate(lender: { mandate_notes: string | null }, c: LenderChange, stamp: string) {
+  let update: Record<string, unknown> | null = null
+  if ((MONEY_FIELDS as readonly string[]).includes(c.field)) {
+    const n = Math.round(Number(c.value.replace(/[^0-9.]/g, '')))
+    if (Number.isFinite(n) && n >= 0) update = { [c.field]: n }
+  } else if (c.field === 'lending_type') {
+    if ((LENDING_TYPE_CATEGORIES as readonly string[]).includes(c.value)) update = { lending_type: c.value }
+  } else if (c.field in LIST_OPTIONS) {
+    const wanted = c.value.split(',').map((v) => v.trim())
+    // "Nationwide" = no regional restriction (an empty list).
+    if (c.field === 'geographies' && wanted.some((v) => /nationwide/i.test(v))) update = { geographies: [] }
+    else {
+      const valid = wanted.filter((v) => LIST_OPTIONS[c.field].includes(v))
+      if (valid.length) update = { [c.field]: valid }
+    }
+  } else if (c.field === 'website') {
+    update = { website: c.value }
+  } else if (c.field === 'add_to_mandate_notes') {
+    const line = `${stamp}: ${c.value}`
+    update = { mandate_notes: lender.mandate_notes ? `${lender.mandate_notes}\n${line}` : line }
+    lender.mandate_notes = update.mandate_notes as string
+  }
+  return update
+}
+
 function moneyLabel(value: string) {
   const n = Number(value.replace(/[^0-9.]/g, ''))
   return Number.isFinite(n) && n > 0 ? formatCompactCurrency(n) : value
@@ -93,11 +131,7 @@ function moneyLabel(value: string) {
 export function lenderCallSuggestions(notes: LenderCallNotes): CallSuggestion[] {
   const out: CallSuggestion[] = []
   notes.lender_changes.forEach((c, i) => {
-    const label =
-      c.field === 'add_to_mandate_notes'
-        ? `Add to mandate notes: ${c.value}`
-        : `${FIELD_LABELS[c.field]} → ${(MONEY_FIELDS as readonly string[]).includes(c.field) ? moneyLabel(c.value) : c.value}`
-    out.push({ key: `lender:${i}`, label, detail: c.why })
+    out.push({ key: `lender:${i}`, label: lenderChangeLabel(c), detail: c.why })
   })
   notes.new_contacts.forEach((c, i) => {
     out.push({
@@ -128,27 +162,7 @@ export async function applyLenderCallSuggestions(
     if (kind === 'lender') {
       const c = notes.lender_changes[Number(index)]
       if (!c) continue
-      let update: Record<string, unknown> | null = null
-      if ((MONEY_FIELDS as readonly string[]).includes(c.field)) {
-        const n = Math.round(Number(c.value.replace(/[^0-9.]/g, '')))
-        if (Number.isFinite(n) && n >= 0) update = { [c.field]: n }
-      } else if (c.field === 'lending_type') {
-        if ((LENDING_TYPE_CATEGORIES as readonly string[]).includes(c.value)) update = { lending_type: c.value }
-      } else if (c.field in LIST_OPTIONS) {
-        const wanted = c.value.split(',').map((v) => v.trim())
-        // "Nationwide" = no regional restriction (an empty list).
-        if (c.field === 'geographies' && wanted.some((v) => /nationwide/i.test(v))) update = { geographies: [] }
-        else {
-          const valid = wanted.filter((v) => LIST_OPTIONS[c.field].includes(v))
-          if (valid.length) update = { [c.field]: valid }
-        }
-      } else if (c.field === 'website') {
-        update = { website: c.value }
-      } else if (c.field === 'add_to_mandate_notes') {
-        const line = `${day} (call): ${c.value}`
-        update = { mandate_notes: lender.mandate_notes ? `${lender.mandate_notes}\n${line}` : line }
-        lender.mandate_notes = update.mandate_notes
-      }
+      const update = lenderChangeUpdate(lender, c, `${day} (call)`)
       if (!update) continue
       await supabase.from('lenders').update(update).eq('id', lenderId)
     } else if (kind === 'contact') {

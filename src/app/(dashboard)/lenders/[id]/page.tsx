@@ -6,6 +6,7 @@ import { CallsPanel, type CallRow } from '../../deals/[id]/calls-panel'
 import { lenderCallSuggestions } from '@/lib/calls/lender-call'
 import type { LenderCallNotes } from '@/lib/calls/schema'
 import { ApolloPanel } from './apollo-panel'
+import { LenderDocuments, type LenderDocument } from './lender-documents'
 
 // "fairviewcl.com" from a website or email address.
 function domainOf(v: string | null | undefined) {
@@ -23,7 +24,7 @@ export default async function LenderDetailPage({
 }) {
   const { id } = await params
   const supabase = await createClient()
-  const [{ data: lender }, { data: contacts }, { data: callRows }] = await Promise.all([
+  const [{ data: lender }, { data: contacts }, { data: callRows }, docs] = await Promise.all([
     supabase.from('lenders').select('*').eq('id', id).single(),
     supabase
       .from('lender_contacts')
@@ -36,6 +37,12 @@ export default async function LenderDetailPage({
       .select('id, status, created_at, duration_seconds, transcript, result, applied, error, call_with, lender_id')
       .eq('lender_id', id)
       .is('deal_id', null)
+      .order('created_at', { ascending: false }),
+    // Tear sheets etc. Missing until migration 050.
+    supabase
+      .from('lender_documents')
+      .select('id, file_name, summary, changes, created_at')
+      .eq('lender_id', id)
       .order('created_at', { ascending: false }),
   ])
 
@@ -50,6 +57,7 @@ export default async function LenderDetailPage({
   return (
     <div className="space-y-8">
       <LenderDetail lender={lender as Lender} contacts={(contacts ?? []) as LenderContact[]} />
+      <LenderDocuments lenderId={id} documents={(docs.data ?? []) as LenderDocument[]} ready={!docs.error} />
       <ApolloPanel
         lenderId={id}
         lenderName={(lender as Lender).name}

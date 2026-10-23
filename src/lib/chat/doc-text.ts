@@ -168,6 +168,20 @@ export async function getDocText(supabase: SupabaseClient, doc: DocumentRecord):
   return text
 }
 
+// Text of a file that isn't a deal document (e.g. a lender's tear sheet):
+// read the same way, scans included, but not kept in document_texts.
+export async function readFileText(
+  supabase: SupabaseClient,
+  file: { file_name: string; storage_path: string; content_type: string | null; file_size: number | null }
+): Promise<DocText | null> {
+  const doc = { ...file, id: '', deal_id: null } as unknown as DocumentRecord
+  if (/\.(xlsx|xls)$/i.test(doc.file_name) && (doc.file_size ?? 0) > MAX_SHEET_BYTES) return null
+  const buffer = await download(supabase, doc)
+  if (!buffer) return null
+  const extracted = await extract(buffer, doc).catch(() => null)
+  return extracted ? readScans(supabase, doc, buffer, extracted) : null
+}
+
 // Pages as PNG images (base64) — for scans and filled-in forms, where the
 // text alone loses which number goes in which box.
 export async function renderPages(supabase: SupabaseClient, doc: DocumentRecord, pageNumbers: number[]) {
