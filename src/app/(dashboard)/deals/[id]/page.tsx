@@ -80,7 +80,7 @@ export default async function DealDetailPage({
       supabase
         .from('deal_matches')
         .select(
-          'id, lender_id, score, reasoning, selected, created_at, draft_subject, draft_body, draft_status, draft_generated_at, outlook_draft_created_at, lenders(name)'
+          'id, lender_id, score, reasoning, selected, created_at, draft_subject, draft_body, draft_status, draft_generated_at, outlook_draft_created_at, lenders(name, contact_name, contact_email)'
         )
         .eq('deal_id', id)
         .order('score', { ascending: false }),
@@ -304,9 +304,23 @@ export default async function DealDetailPage({
     ? `${pitch.senderName ? `${pitch.senderName}'s` : 'Your'} email to ${pitch.lenderName ?? 'a lender'} (${new Date(pitch.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`
     : null
 
+  // Who each draft goes to: the lender's primary contact, else its first
+  // contact with an email (same rule as "Create draft in Outlook").
+  const lenderOf = (m: NonNullable<typeof matches>[number]) => (Array.isArray(m.lenders) ? m.lenders[0] : m.lenders)
+  const noPrimary = (matches ?? []).filter((m) => !lenderOf(m)?.contact_email).map((m) => m.lender_id as string)
+  const { data: lenderContacts } = noPrimary.length
+    ? await supabase.from('lender_contacts').select('lender_id, name, email').in('lender_id', noPrimary).not('email', 'is', null)
+    : { data: [] }
+
   const matchesWithLender: MatchWithLender[] = (matches ?? []).map((m) => {
-    const lender = Array.isArray(m.lenders) ? m.lenders[0] : m.lenders
+    const lender = lenderOf(m)
+    const fallback = (lenderContacts ?? []).find((c) => c.lender_id === m.lender_id)
     return {
+      recipient: lender?.contact_email
+        ? { name: (lender.contact_name as string | null) ?? null, email: lender.contact_email as string }
+        : fallback
+          ? { name: (fallback.name as string | null) ?? null, email: fallback.email as string }
+          : null,
       copiedFrom:
         pitch &&
         m.lender_id !== pitch.lenderId &&

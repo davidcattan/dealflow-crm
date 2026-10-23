@@ -26,6 +26,8 @@ export type MatchWithLender = {
   copiedFrom?: string | null
   // Emails you actually sent this lender about the deal (newest first).
   sent?: SentEmail[]
+  // Who the draft goes to (the lender's primary contact).
+  recipient?: { name: string | null; email: string } | null
 }
 
 export type SentEmail = { subject: string; body: string; at: string; to: string }
@@ -130,9 +132,13 @@ function DraftEmail({
   staleNote,
   staleFix = 'skeleton',
   copiedFrom = null,
+  lenderId,
+  recipient = null,
 }: {
   dealId: string
   matchId: string
+  lenderId: string
+  recipient?: { name: string | null; email: string } | null
   subject: string
   body: string
   outlookDraftCreatedAt: string | null
@@ -156,6 +162,7 @@ function DraftEmail({
   const [showAttachments, setShowAttachments] = useState(false)
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [copiedTo, setCopiedTo] = useState(false)
   const [creating, setCreating] = useState(false)
   const [outlookError, setOutlookError] = useState<string | null>(null)
 
@@ -167,6 +174,17 @@ function DraftEmail({
     } catch {
       // Clipboard access can fail quietly (e.g. permissions) — not worth
       // surfacing an error for a convenience action.
+    }
+  }
+
+  async function copyTo() {
+    if (!recipient) return
+    try {
+      await navigator.clipboard.writeText(recipient.email)
+      setCopiedTo(true)
+      setTimeout(() => setCopiedTo(false), 2000)
+    } catch {
+      // Same as copy(): a convenience, not worth an error.
     }
   }
 
@@ -352,6 +370,30 @@ function DraftEmail({
       {outlookError && <ErrorText message={outlookError} className="mt-1 block text-xs text-red-600" />}
       {open && (
         <div className="mt-2 space-y-2 text-sm text-slate-700">
+          <p className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">To:</span>
+            {recipient ? (
+              <>
+                <a href={`mailto:${recipient.email}`} className="text-blue-700 hover:underline">
+                  {recipient.name ? `${recipient.name} <${recipient.email}>` : recipient.email}
+                </a>
+                <button
+                  type="button"
+                  onClick={copyTo}
+                  className="rounded border border-amber-300 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100"
+                >
+                  {copiedTo ? 'Copied ✓' : 'Copy email'}
+                </button>
+              </>
+            ) : (
+              <span className="text-slate-500">
+                No email on file —{' '}
+                <a href={`/lenders/${lenderId}`} className="text-blue-700 hover:underline">
+                  add one on the lender&apos;s page
+                </a>
+              </span>
+            )}
+          </p>
           <p>
             <span className="font-medium">Subject:</span> {subject}
           </p>
@@ -825,6 +867,8 @@ export function MatchingPanel({
                   includeIntro={includeIntro}
                   onToggleIntro={toggleIntro}
                   copiedFrom={m.copiedFrom ?? null}
+                  lenderId={m.lender_id}
+                  recipient={m.recipient ?? null}
                   staleFix={firstPitch ? 'copy' : 'skeleton'}
                   staleNote={
                     firstPitch

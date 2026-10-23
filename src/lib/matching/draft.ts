@@ -96,7 +96,18 @@ Rules for the format:
 const AI_RULES = `${HOUSE_FORMAT}
 
 Keep the opening paragraph to one or two sentences and include only the numbers that matter to this lender.
-PERSONAL / CONSUMER loans (HELOC, home equity, personal guarantor financing): say "I'm working with a client" (or the borrower's first and last name if given) instead of a company, then labeled lines with the property, its value, existing liens, loan-to-value, the borrower's income/credit/liquidity if given, and the use of funds. No Revenue/EBITDA/AR/Inventory blocks.`
+LOANS SECURED BY PROPERTY (HELOC, home equity, second lien, bridge, real estate): the property is the story. Use labeled lines for the property and its location, its value, the existing mortgage(s) (and whether they stay in place), the loan request and lien position, combined loan-to-value, and what covers the payment (rent, income) if known. Add the borrower's credit or income only when it decides whether this lender can do it, next to the mitigant (e.g. low LTV). No Revenue/EBITDA/AR/Inventory blocks. If a business borrows against the owner's property for business purposes, open with the company ("I'm working with <Company>, a <City> based <business>.") and say it is a business-purpose loan; for a purely personal loan say "I'm working with a client" (or the borrower's name).
+Layout (fill with this deal's facts; skip lines you don't have):
+Property: <address, city, state> (<rental / primary home / land…>)
+Estimated Value: ~$<x>
+1st Mortgage: ~$<x> at <rate> (staying in place)
+
+Loan Request: $<x>, <first / second> lien
+Combined LTV: ~<x>%
+<what covers the payment, e.g. "Rental income covers the new payment">
+
+ASK: <one sentence: amount, product, lien position, LTV>.
+Use the newest numbers: the latest deal summary and activity log win over older documents (e.g. a newer estimated value).`
 
 type Sender = { name: string; intro: string | null; signature: string | null }
 
@@ -147,10 +158,13 @@ function applyIntroAndSignature(body: string, sender: Sender, includeIntro: bool
   return out
 }
 
+const PROPERTY_LOANS = ['HELOC / Home Equity', 'Real Estate / Bridge', 'Construction Financing']
+
 // The lender email. Default ('auto'): once a submission on this deal has
 // been sent, the same email word for word, re-addressed to this lender;
 // before that ('skeleton'), the team's fixed skeleton (Eli's format) filled
-// with this deal's numbers — no AI, free and instant either way.
+// with this deal's numbers — no AI, free and instant either way. Loans
+// against property (HELOC, bridge…) skip the skeleton and go to the AI.
 // 'ai': written by the AI in the same house format, for deals the skeleton
 // doesn't fit (personal loans like a HELOC, real estate) — a few cents.
 export async function draftSubmissionEmail(
@@ -166,6 +180,13 @@ export async function draftSubmissionEmail(
 
   if (style === 'auto' || style === 'copy') {
     const pitch = await loadLatestPitch(supabase, dealId)
+    // Nothing sent yet on a loan against property: the business skeleton
+    // (revenue, EBITDA, AR, inventory) doesn't fit, so the AI writes it in
+    // the same format with the property numbers.
+    if (!pitch && style === 'auto') {
+      const { data: d } = await supabase.from('deals').select('loan_type').eq('id', dealId).single()
+      if (PROPERTY_LOANS.includes(String(d?.loan_type ?? ''))) return draftWithAi(dealId, lenderId, reasoning, includeIntro)
+    }
     if (pitch && pitch.lenderId !== lenderId) {
       const [to, { data: deal }, { data: documents }] = await Promise.all([
         lenderGreeting(supabase, lenderId),

@@ -3,6 +3,7 @@ import type { Deal, DealUpdate } from '@/lib/types'
 import type { Underwriting } from '@/lib/underwriting/schema'
 import type { Snapshot } from '@/lib/snapshot/schema'
 import { snapshotToText } from '@/lib/snapshot/text'
+import type { KeyFacts } from '@/lib/deals/key-facts'
 
 // Shared plain-text summary of a deal — used both when matching it against
 // lenders and when drafting a submission email for it, so the two stay
@@ -42,6 +43,19 @@ export function buildDealProfile(
     )
   } else {
     parts.push('', '(No AI research-report underwriting has been run on this deal.)')
+  }
+
+  // The deal's live summary (rewritten after every email, call and note):
+  // the newest picture of the deal — value, ask, plan.
+  const keyFacts = (deal as { key_facts?: KeyFacts | null }).key_facts
+  if (keyFacts?.facts?.length || keyFacts?.summary) {
+    parts.push(
+      '',
+      '--- Latest deal summary (newest — wins over older numbers above) ---',
+      ...(keyFacts.summary ? [keyFacts.summary] : []),
+      ...(keyFacts.facts ?? []).map((f) => `${f.label}: ${f.value}${f.note ? ` (${f.note})` : ''}`),
+      ...(keyFacts.recommendation ? [`Best-fit loan: ${keyFacts.recommendation.loan_type} — ${keyFacts.recommendation.why}`] : [])
+    )
   }
 
   if (updates && updates.length > 0) {

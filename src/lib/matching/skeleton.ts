@@ -1,7 +1,7 @@
 // The team's lender email skeleton (Eli's format). Same layout on every
 // deal; the numbers come straight from the deal's underwriting snapshot.
-// Anything missing shows as "$[ ]" / "[ ]" so the gap is obvious and easy
-// to fill in. No AI.
+// Only blocks with real numbers are shown (a $0 EBITDA off a tax return
+// isn't one); the ask shows "[ ]" if missing so it's easy to fill in. No AI.
 //
 //   Hi Tom, hope all is well.
 //
@@ -95,11 +95,12 @@ export function skeletonEmail(opts: {
 
   // The two latest periods, older first (as Eli writes them).
   const periods = (c?.periods?.length ? c.periods : (e?.periods ?? [])).slice(0, 2).reverse()
-  const lines = (pick: (p: Period) => number | null) => {
-    const out = periods.map((p) => `${periodLabel(p.label)}: ${money(pick(p))}`)
-    while (out.length < 2) out.unshift(`[Year]: ${BLANK}`)
-    return out
+  // A block of periods, or nothing when none has a real (non-zero) number.
+  const block = (title: string, pick: (p: Period) => number | null) => {
+    const real = periods.filter((p) => pick(p) !== null && pick(p) !== 0)
+    return real.length ? [title, ...real.map((p) => `${periodLabel(p.label)}: ${money(pick(p))}`), ''] : []
   }
+  const line = (label: string, n: number | null | undefined) => (n ? [`${label}: ${money(n)}`] : [])
 
   const ar = c ? c.accounts_receivable : (e?.assets?.accounts_receivable ?? null)
   const inventory = c ? c.inventory : (e?.assets?.inventory ?? null)
@@ -110,16 +111,12 @@ export function skeletonEmail(opts: {
     '',
     /[.!?]$/.test(intro) ? intro : `${intro}.`,
     '',
-    'Revenue',
-    ...lines((p) => p.revenue),
-    '',
-    'EBITDA',
-    ...lines((p) => p.ebitda),
-    '',
-    `AR: ${money(ar)}`,
-    `Inventory: ${money(inventory)}`,
-    `Total Debt: ${money(debt)}`,
-    '',
+    ...block('Revenue', (p) => p.revenue),
+    ...block('EBITDA', (p) => p.ebitda),
+    ...line('AR', ar),
+    ...line('Inventory', inventory),
+    ...line('Total Debt', debt),
+    ...(ar || inventory || debt ? [''] : []),
     `ASK: ${opts.ask?.trim() || '[What the client needs — amount and product]'}`,
     '',
     'Let me know if you have time to discuss briefly.',
