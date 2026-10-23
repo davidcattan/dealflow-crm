@@ -80,7 +80,9 @@ export async function classifyEmail(
   // About this one email (changes every time).
   const emailNotes = [
     context.threadDealCompany
-      ? `This email is in the thread where deal "${context.threadDealCompany}" was submitted to lender "${context.threadLenderName ?? 'unknown'}".`
+      ? context.threadLenderName
+        ? `This email is in the thread where deal "${context.threadDealCompany}" was submitted to lender "${context.threadLenderName}".`
+        : `This email is in a thread already filed on deal "${context.threadDealCompany}".`
       : null,
     context.senderLenderName ? `The sender is a known lender in the CRM: ${context.senderLenderName}.` : null,
     context.internalFirmDomain && context.forwardedByColleague
@@ -135,7 +137,9 @@ export async function classifyEmail(
     }
   }
 
-  const structured = await client.messages.parse({
+  // A rare malformed answer ("Failed to parse structured output") is
+  // retried once instead of leaving the email unread.
+  const read = () => client.messages.parse({
     model: INBOX_MODEL,
     max_tokens: 4000,
     messages: [
@@ -159,6 +163,10 @@ export async function classifyEmail(
       },
     ],
     output_config: { effort: 'medium', format: zodOutputFormat(EmailClassificationSchema) },
+  })
+  const structured = await read().catch((err) => {
+    if (err instanceof Error && /Failed to parse structured output/.test(err.message)) return read()
+    throw err
   })
 
   await logUsage({ feature: 'inbox-classify', model: INBOX_MODEL, usage: structured.usage, supabase })

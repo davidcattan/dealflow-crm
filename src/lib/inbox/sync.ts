@@ -345,6 +345,11 @@ async function processMessage(
   try {
     const internalDomain = firmDomain(message.from, ctx.accountEmail)
     const thread = ctx.threadByConversation.get(message.conversationId) ?? null
+    // An email in a thread that's already filed on a deal (e.g. a lender
+    // answering the pitch you sent from Outlook, or the borrower replying
+    // about a meeting) belongs to that deal even when the subject doesn't
+    // name the company.
+    const threadDealId = thread ? null : (ctx.dealByConversation.get(message.conversationId) ?? null)
     // A reply from someone we cold-emailed (or a colleague at their company)
     // gets sorted by the cheap model instead of the deal classifier — unless
     // it already turned into a deal, which the normal flow handles.
@@ -381,13 +386,17 @@ async function processMessage(
         forwardedByColleague: Boolean(internalDomain) && isForward(message),
         referralPartner: referralPartnerFor(message.from)?.name ?? null,
         referralPartnerAlsoLends: Boolean(referralPartnerFor(message.from)?.alsoLender),
-        threadDealCompany: thread ? (ctx.dealById.get(thread.dealId)?.company_name ?? null) : null,
+        threadDealCompany: thread
+          ? (ctx.dealById.get(thread.dealId)?.company_name ?? null)
+          : threadDealId
+            ? (ctx.dealById.get(threadDealId)?.company_name ?? null)
+            : null,
         threadLenderName: thread ? (ctx.lenderById.get(thread.lenderId)?.name ?? null) : null,
       },
       supabase
     )
 
-    return await act({ supabase, ctx, message, classification, attachments, thread, senderLenderId, internal: Boolean(internalDomain) })
+    return await act({ supabase, ctx, message, classification, attachments, thread, threadDealId, senderLenderId, internal: Boolean(internalDomain) })
   } catch (err) {
     if (isBillingError(err)) throw err
     return {
@@ -1015,6 +1024,7 @@ async function act({
   classification,
   attachments,
   thread,
+  threadDealId = null,
   senderLenderId,
   internal,
 }: {
@@ -1024,6 +1034,7 @@ async function act({
   classification: EmailClassification
   attachments: Awaited<ReturnType<typeof getMessageAttachments>>
   thread: { dealId: string; lenderId: string } | null
+  threadDealId?: string | null
   senderLenderId: string | null
   internal: boolean
 }): Promise<{ counter: Counter; record: Record<string, unknown> }> {
@@ -1068,6 +1079,7 @@ async function act({
     const reply = classification.lender_reply
     const dealId =
       thread?.dealId ??
+      threadDealId ??
       (reply?.deal_ref ? ctx.dealByRef.get(reply.deal_ref)?.id : undefined) ??
       findDealByText(ctx.deals, `${message.subject}\n${message.bodyText}`)?.id ??
       null
@@ -1223,6 +1235,28 @@ async function act({
         deal_id: dealId,
         summary: d.description,
         action_taken: `${actions.join(', ')}.${docsText}`,
+      },
+    }
+  }
+
+  // Nothing to act on, but it's part of a deal's thread (a borrower
+  // confirming a meeting, a lender's quick question): keep it on the deal so
+  // its summary and next step see it.
+  if (threadDealId && !internal) {
+    await supabase.from('deal_updates').insert({
+      deal_id: threadDealId,
+      entry_date: today(),
+      note: `Email from ${sender}: ${classification.reason}`,
+      source: 'email',
+    })
+    return {
+      counter: 'other',
+      record: {
+        classification: 'other',
+        deal_id: threadDealId,
+        body_text: message.bodyText,
+        summary: classification.reason,
+        action_taken: 'Logged on deal (same email thread)',
       },
     }
   }
