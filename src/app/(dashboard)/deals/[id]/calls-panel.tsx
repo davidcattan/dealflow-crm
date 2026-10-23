@@ -62,20 +62,34 @@ export type CallTarget = {
   href: string
 }
 
+// Storage takes files up to 50 MB, so a bigger recording goes up in pieces
+// ("….mp4.part000", "….mp4.part001", …) that the server joins back together.
+const PIECE_BYTES = 25 * 1024 * 1024
+
 // An existing recording file (e.g. from Zoom) uploaded by hand.
-async function uploadFileCall(target: CallTarget, file: File, who: Who) {
+async function uploadFileCall(target: CallTarget, file: File, who: Who, onProgress: (message: string) => void) {
   const supabase = createClient()
   const ext = (file.name.split('.').pop() ?? 'audio').toLowerCase().replace(/[^a-z0-9]/g, '') || 'audio'
-  const storagePath = `${target.pathPrefix}${Date.now()}.${ext}`
-  const { error } = await supabase.storage
-    .from('borrower-documents')
-    .upload(storagePath, file, { contentType: file.type || undefined })
-  if (error) throw new Error(`Upload failed: ${error.message}`)
+  const base = `${target.pathPrefix}${Date.now()}.${ext}`
+  const pieces = Math.max(1, Math.ceil(file.size / PIECE_BYTES))
+  const storagePaths: string[] = []
+  for (let i = 0; i < pieces; i++) {
+    const path = pieces > 1 ? `${base}.part${String(i).padStart(3, '0')}` : base
+    if (pieces > 1) onProgress(`Uploading ${Math.round((i / pieces) * 100)}%…`)
+    const { error } = await supabase.storage
+      .from('borrower-documents')
+      .upload(path, pieces > 1 ? file.slice(i * PIECE_BYTES, (i + 1) * PIECE_BYTES) : file, {
+        contentType: file.type || undefined,
+      })
+    if (error) throw new Error(`Upload failed: ${error.message}`)
+    storagePaths.push(path)
+  }
+  if (pieces > 1) onProgress('Sending for transcription…')
   const res = await fetch(target.uploadUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      storagePaths: [storagePath],
+      storagePaths,
       durationSeconds: null,
       ...who,
     }),
@@ -165,6 +179,7 @@ export function CallRecorder({ target, whoOptions, hint }: { target: CallTarget;
   const rec = useCallRecorder()
   const [who, setWho] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const here = rec.target?.uploadUrl === target.uploadUrl
@@ -189,12 +204,13 @@ export function CallRecorder({ target, whoOptions, hint }: { target: CallTarget;
     setError(null)
     setUploading(true)
     try {
-      await uploadFileCall(target, file, whoOptions ? parseWho(who) : { callWith: 'lender', lenderId: null })
+      await uploadFileCall(target, file, whoOptions ? parseWho(who) : { callWith: 'lender', lenderId: null }, setProgress)
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setUploading(false)
+      setProgress(null)
       if (fileInput.current) fileInput.current.value = ''
     }
   }
@@ -234,7 +250,7 @@ export function CallRecorder({ target, whoOptions, hint }: { target: CallTarget;
             {rec.state === 'starting' && here
               ? 'Starting…'
               : rec.state === 'uploading' || uploading
-                ? 'Saving recording…'
+                ? (progress ?? 'Saving recording…')
                 : busy
                   ? 'Recording another call…'
                   : 'Record call'}

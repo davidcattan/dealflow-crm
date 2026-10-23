@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { startTranscription } from '@/lib/calls/process'
 
-export const maxDuration = 60
+export const maxDuration = 300
 
 // A call recording was just uploaded (straight from the browser to
 // storage): save it and send it off to be transcribed.

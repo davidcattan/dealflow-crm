@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { startTranscription } from '@/lib/calls/process'
 
-export const maxDuration = 60
+export const maxDuration = 300
 
 // A call with a lender (not about one deal) was just uploaded: save it and
 // send it off to be transcribed.

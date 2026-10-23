@@ -27,21 +27,86 @@ async function fail(supabase: SupabaseClient, callId: string, message: string) {
   await supabase.from('deal_calls').update({ status: 'error', error: message, updated_at: new Date().toISOString() }).eq('id', callId)
 }
 
+// A file over the storage limit is uploaded in pieces ("x.mp4.part000",
+// "x.mp4.part001", …). Consecutive pieces of the same file are one recording.
+const PIECE = /\.part\d{3}$/
+function groupPieces(paths: string[]) {
+  const groups: string[][] = []
+  for (const path of paths) {
+    const last = groups.at(-1)
+    if (last && PIECE.test(path) && PIECE.test(last[0]) && last[0].replace(PIECE, '') === path.replace(PIECE, '')) last.push(path)
+    else groups.push([path])
+  }
+  return groups
+}
+
+async function signedUrl(supabase: SupabaseClient, path: string) {
+  const { data: signed, error } = await supabase.storage.from('borrower-documents').createSignedUrl(path, 60 * 60 * 6)
+  if (error || !signed) throw new Error('Couldn’t read the recording')
+  return signed.signedUrl
+}
+
+// Streams the pieces, in order, into one file on AssemblyAI (never holding
+// the whole recording in memory) and returns where it landed.
+async function uploadJoined(supabase: SupabaseClient, paths: string[]) {
+  const urls = await Promise.all(paths.map((p) => signedUrl(supabase, p)))
+  let next = 0
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      for (;;) {
+        if (!reader) {
+          if (next >= urls.length) return controller.close()
+          const res = await fetch(urls[next++])
+          if (!res.ok || !res.body) throw new Error('Couldn’t read the recording')
+          reader = res.body.getReader()
+        }
+        const { done, value } = await reader.read()
+        if (done) {
+          reader = null
+          continue
+        }
+        controller.enqueue(value)
+        return
+      }
+    },
+  })
+  const res = await fetch('https://api.assemblyai.com/v2/upload', {
+    method: 'POST',
+    headers: { authorization: assemblyKey(), 'content-type': 'application/octet-stream' },
+    body,
+    duplex: 'half',
+  } as RequestInit & { duplex: 'half' })
+  const out = (await res.json().catch(() => ({}))) as { upload_url?: string; error?: string }
+  if (!res.ok || !out.upload_url) throw new Error(out.error ?? `Couldn’t send the recording for transcription (${res.status})`)
+  return out.upload_url
+}
+
 // Sends the uploaded audio off to be transcribed — one job per piece
 // (a recording that was interrupted and continued has several).
 export async function startTranscription(supabase: SupabaseClient, callId: string) {
   const { data: call } = await supabase.from('deal_calls').select('*').eq('id', callId).single()
   if (!call) throw new Error('Call not found')
+  // Claim the start so the page's polling or the scheduled job can't send
+  // the same recording twice while a big one is still on its way (a claim
+  // older than 6 minutes is from a run that died and can be retried).
+  const { data: claimed } = await supabase
+    .from('deal_calls')
+    .update({ transcript_job_id: 'starting', updated_at: new Date().toISOString() })
+    .eq('id', callId)
+    .eq('status', 'uploaded')
+    .or(`transcript_job_id.is.null,updated_at.lt.${new Date(Date.now() - 6 * 60_000).toISOString()}`)
+    .select('id')
+  if (!claimed?.length) return
   try {
     const paths = [call.storage_path as string, ...(((call.extra_paths as string[] | undefined) ?? []))]
     const jobIds: string[] = []
-    for (const path of paths) {
-      const { data: signed, error } = await supabase.storage.from('borrower-documents').createSignedUrl(path, 60 * 60 * 6)
-      if (error || !signed) throw new Error('Couldn’t read the recording')
+    for (const group of groupPieces(paths)) {
+      const audioUrl = PIECE.test(group[0]) ? await uploadJoined(supabase, group) : await signedUrl(supabase, group[0])
       const res = await fetch(ASSEMBLY, {
         method: 'POST',
         headers: { authorization: assemblyKey(), 'content-type': 'application/json' },
-        body: JSON.stringify({ audio_url: signed.signedUrl, speaker_labels: true }),
+        body: JSON.stringify({ audio_url: audioUrl, speaker_labels: true }),
       })
       const body = (await res.json()) as { id?: string; error?: string }
       if (!res.ok || !body.id) throw new Error(body.error ?? `Transcription service error (${res.status})`)
