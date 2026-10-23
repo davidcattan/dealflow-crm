@@ -26,33 +26,47 @@ export function LenderDocuments({ lenderId, documents, ready }: { lenderId: stri
   const [result, setResult] = useState<Result | null>(null)
   const [open, setOpen] = useState<string | null>(null)
 
-  async function upload(file: File) {
+  // Several files at once: one after another, each read and applied in turn
+  // (so a later sheet builds on what an earlier one filled in).
+  async function uploadAll(files: File[]) {
     setError(null)
     setResult(null)
-    try {
-      setStatus('Uploading…')
-      const safe = file.name.replace(/[^\w.\- ]+/g, '_')
-      const storagePath = `lenders/${lenderId}/${Date.now()}-${safe}`
-      const { error: upError } = await createClient()
-        .storage.from('borrower-documents')
-        .upload(storagePath, file, { contentType: file.type || undefined })
-      if (upError) throw new Error(`Upload failed: ${upError.message}`)
-      setStatus('Reading it and updating the profile…')
-      const res = await fetch(`/api/lenders/${lenderId}/documents`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ storagePath, fileName: file.name, size: file.size, contentType: file.type || null }),
-      })
-      const out = await readJsonResponse<Result>(res)
-      if (!out.ok) throw new Error(out.message)
-      setResult(out.body)
-      router.refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed')
-    } finally {
-      setStatus(null)
-      if (input.current) input.current.value = ''
+    const all: Result = { summary: null, changes: [] }
+    const problems: string[] = []
+    for (const [i, file] of files.entries()) {
+      const label = files.length > 1 ? ` (${i + 1} of ${files.length})` : ''
+      try {
+        const out = await upload(file, label)
+        all.changes.push(...out.changes.filter((c) => !all.changes.includes(c)))
+        if (out.warning) problems.push(`${file.name}: ${out.warning}`)
+      } catch (err) {
+        problems.push(`${file.name}: ${err instanceof Error ? err.message : 'upload failed'}`)
+      }
     }
+    setStatus(null)
+    if (input.current) input.current.value = ''
+    if (problems.length) setError(problems.join(' · '))
+    if (problems.length < files.length) setResult(all)
+    router.refresh()
+  }
+
+  async function upload(file: File, label: string): Promise<Result> {
+    setStatus(`Uploading${label}…`)
+    const safe = file.name.replace(/[^\w.\- ]+/g, '_')
+    const storagePath = `lenders/${lenderId}/${Date.now()}-${safe}`
+    const { error: upError } = await createClient()
+      .storage.from('borrower-documents')
+      .upload(storagePath, file, { contentType: file.type || undefined })
+    if (upError) throw new Error(`Upload failed: ${upError.message}`)
+    setStatus(`Reading${label} and updating the profile…`)
+    const res = await fetch(`/api/lenders/${lenderId}/documents`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ storagePath, fileName: file.name, size: file.size, contentType: file.type || null }),
+    })
+    const out = await readJsonResponse<Result>(res)
+    if (!out.ok) throw new Error(out.message)
+    return out.body
   }
 
   async function remove(id: string) {
@@ -77,14 +91,15 @@ export function LenderDocuments({ lenderId, documents, ready }: { lenderId: stri
             disabled={!!status}
             className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
           >
-            {status ?? '+ Add tear sheet / document'}
+            {status ?? '+ Add tear sheets / documents'}
           </button>
           <input
             ref={input}
             type="file"
             accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.xlsx,.xls,.csv,.txt"
+            multiple
             className="hidden"
-            onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
+            onChange={(e) => e.target.files?.length && uploadAll(Array.from(e.target.files))}
           />
         </div>
       )}
