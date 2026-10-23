@@ -131,7 +131,8 @@ export function LenderDocuments({ lenderId, documents, ready }: { lenderId: stri
                   {d.file_name}
                 </a>
                 <span className="text-xs text-slate-400">{new Date(d.created_at).toLocaleDateString()}</span>
-                {d.summary && (
+                {(!d.summary || d.summary === '(reading…)') && <span className="text-xs text-amber-700">being read — check back in a few minutes</span>}
+                {d.summary && d.summary !== '(reading…)' && (
                   <button type="button" onClick={() => setOpen(open === d.id ? null : d.id)} className="text-xs text-slate-500 hover:underline">
                     {open === d.id ? 'Hide what it says' : 'What it says'}
                   </button>

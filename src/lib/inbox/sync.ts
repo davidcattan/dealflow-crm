@@ -27,6 +27,7 @@ import { companyDomain, type Prospect } from '@/lib/prospects/types'
 import { readProspectReply } from '@/lib/prospects/reply'
 import type { Snapshot } from '@/lib/snapshot/schema'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
+import { lenderMaterialNames, saveLenderMaterials } from '@/lib/lenders/lender-materials'
 
 // Deal-worthy attachment types; everything else (calendar invites, vCards,
 // signature images that aren't marked inline) is ignored.
@@ -902,6 +903,44 @@ async function saveAttachments(
   return saved
 }
 
+// A lender reply's files: the lender's own materials (tear sheet, program
+// guides, rate sheet) go on the lender's profile, where they're read to
+// learn what the lender does; everything else (term sheets, the borrower's
+// documents) goes on the deal.
+async function saveLenderReplyAttachments(
+  supabase: SupabaseClient,
+  dealId: string,
+  lender: { id: string; name: string } | null | undefined,
+  message: { subject: string; bodyText: string },
+  attachments: Awaited<ReturnType<typeof getMessageAttachments>>
+) {
+  const files = attachments.filter(
+    (a) => KEEP_EXT.test(a.name) && a.size <= MAX_ATTACHMENT_BYTES && !(/\.(png|jpe?g)$/i.test(a.name) && a.size < 30 * 1024)
+  )
+  const materials =
+    lender && files.length
+      ? await lenderMaterialNames(supabase, { lenderName: lender.name, subject: message.subject, body: message.bodyText, names: files.map((a) => a.name) }).catch(
+          () => new Set<string>()
+        )
+      : new Set<string>()
+  let toDeal = files.filter((a) => !materials.has(a.name))
+  let onLender = 0
+  const toLender = files.filter((a) => materials.has(a.name))
+  if (lender && toLender.length) {
+    try {
+      onLender = await saveLenderMaterials(supabase, lender.id, toLender)
+    } catch {
+      toDeal = files
+    }
+  }
+  const onDeal = toDeal.length ? await saveAttachments(supabase, dealId, toDeal) : 0
+  const parts = [
+    onDeal ? `saved ${onDeal} attachment${onDeal === 1 ? '' : 's'}` : null,
+    onLender && lender ? `${onLender} of ${lender.name}'s own materials (tear sheet etc.) added to their profile` : null,
+  ].filter(Boolean)
+  return parts.join(', ')
+}
+
 // The prospect behind a sender: their own email, or (for a colleague who
 // answers for them) the one prospect at that company domain we emailed.
 function prospectFor(ctx: Context, email: string): Prospect | null {
@@ -1137,8 +1176,10 @@ async function act({
     // Files on a lender thread (term sheets, or the borrower's staff
     // replying-all with the docs a lender asked for) belong on the deal too.
     if (message.hasAttachments) {
-      const saved = await saveAttachments(supabase, dealId, await getMessageAttachments(ctx.accessToken, message.id)).catch(() => 0)
-      if (saved) actions.push(`saved ${saved} attachment${saved === 1 ? '' : 's'}`)
+      const saved = await saveLenderReplyAttachments(supabase, dealId, lender, message, await getMessageAttachments(ctx.accessToken, message.id)).catch(
+        () => ''
+      )
+      if (saved) actions.push(saved)
     }
 
     if (reply?.mandate_notes && lender) {
@@ -1346,8 +1387,14 @@ export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMe
       const message = await getInboxMessage(accessToken, row.graph_message_id)
       bodyText = bodyText ?? message.bodyText
       if (message.hasAttachments) {
-        const saved = await saveAttachments(supabase, dealId, await getMessageAttachments(accessToken, message.id))
-        if (saved) actions.push(`${saved} attachment${saved === 1 ? '' : 's'} saved`)
+        const files = await getMessageAttachments(accessToken, message.id)
+        if (isLenderReply && lender) {
+          const saved = await saveLenderReplyAttachments(supabase, dealId, lender, message, files)
+          if (saved) actions.push(saved)
+        } else {
+          const saved = await saveAttachments(supabase, dealId, files)
+          if (saved) actions.push(`${saved} attachment${saved === 1 ? '' : 's'} saved`)
+        }
       }
     }
   } catch {

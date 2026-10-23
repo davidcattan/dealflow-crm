@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { readTearSheet } from '@/lib/lenders/tear-sheet'
+import { READING, readTearSheet } from '@/lib/lenders/tear-sheet'
 
 export const maxDuration = 300
 
@@ -23,7 +23,8 @@ export async function POST(request: Request, ctx: RouteContext<'/api/lenders/[id
 
   const { data: doc, error } = await supabase
     .from('lender_documents')
-    .insert({ lender_id: id, storage_path: storagePath, file_name: fileName, file_size: size ?? null, content_type: contentType ?? null, uploaded_by: user.id })
+    // Marked as being read so the scheduled reader leaves it alone.
+    .insert({ lender_id: id, storage_path: storagePath, file_name: fileName, file_size: size ?? null, content_type: contentType ?? null, uploaded_by: user.id, summary: READING })
     .select('id')
     .single()
   if (error || !doc) {
@@ -34,6 +35,8 @@ export async function POST(request: Request, ctx: RouteContext<'/api/lenders/[id
     return NextResponse.json({ id: doc.id, ...(await readTearSheet(supabase, doc.id)) })
   } catch (err) {
     // The file stays on the profile either way.
-    return NextResponse.json({ id: doc.id, summary: null, changes: [], warning: err instanceof Error ? err.message : 'Couldn’t read the file' })
+    const warning = err instanceof Error ? err.message : 'Couldn’t read the file'
+    await supabase.from('lender_documents').update({ summary: `Couldn’t read it: ${warning}` }).eq('id', doc.id)
+    return NextResponse.json({ id: doc.id, summary: null, changes: [], warning })
   }
 }

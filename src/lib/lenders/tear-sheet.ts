@@ -106,3 +106,33 @@ geographies: ${GEOGRAPHY_CATEGORIES.join(', ')}, or Nationwide`
   await supabase.from('lender_documents').update({ summary, changes }).eq('id', documentId)
   return { summary, changes }
 }
+
+// Shown while a file is being read (so two runs don't read it twice).
+export const READING = '(reading…)'
+
+// Lender files that came in by email (saved unread): read a few per
+// scheduled run. A read that died partway is picked up again after 15 min.
+export async function readPendingLenderDocuments(supabase: SupabaseClient, limit = 4) {
+  const stale = new Date(Date.now() - 15 * 60_000).toISOString()
+  const { data } = await supabase
+    .from('lender_documents')
+    .select('id')
+    .or(`summary.is.null,and(summary.eq."${READING}",created_at.lt.${stale})`)
+    .order('created_at', { ascending: true })
+    .limit(limit)
+  for (const d of data ?? []) {
+    const { data: claimed } = await supabase
+      .from('lender_documents')
+      .update({ summary: READING })
+      .eq('id', d.id)
+      .or(`summary.is.null,summary.eq."${READING}"`)
+      .select('id')
+    if (!claimed?.length) continue
+    await readTearSheet(supabase, d.id as string).catch(async (err) => {
+      await supabase
+        .from('lender_documents')
+        .update({ summary: `Couldn’t read it: ${err instanceof Error ? err.message : 'unknown error'}` })
+        .eq('id', d.id)
+    })
+  }
+}

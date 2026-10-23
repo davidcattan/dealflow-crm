@@ -5,6 +5,7 @@ import { startRun, finishRun } from '@/lib/inbox/run-log'
 import { isQuietHours } from '@/lib/inbox/quiet-hours'
 import { advancePendingCalls } from '@/lib/calls/process'
 import { refreshStaleKeyFacts } from '@/lib/deals/key-facts'
+import { readPendingLenderDocuments } from '@/lib/lenders/tear-sheet'
 
 // Needs Fluid Compute on Vercel Pro (max 800s).
 export const maxDuration = 800
@@ -26,6 +27,8 @@ export async function GET(request: Request) {
 
   // Finish any recorded calls still processing (cheap; runs even overnight).
   await advancePendingCalls(supabase).catch((err) => console.error('Pending calls failed', err))
+  // Read lender tear sheets that came in by email (a few each run).
+  await readPendingLenderDocuments(supabase).catch((err) => console.error('Lender documents failed', err))
 
   // Paused overnight; the first run after 7am catches up.
   if (isQuietHours()) {
