@@ -58,7 +58,7 @@ export function DocumentUploader({
         setFiles([])
       }
       // Fill in the deal's business name, industry… from the new files.
-      const newIds = results.filter((r) => r.ok && r.id).map((r) => r.id!)
+      const newIds = results.filter((r) => r.ok && r.id && !r.alreadyThere).map((r) => r.id!)
       if (newIds.length) {
         await fetch(`/api/deals/${dealId}/autofill`, {
           method: 'POST',
@@ -67,7 +67,7 @@ export function DocumentUploader({
         }).catch(() => null)
       }
       router.refresh()
-      if (failed.length < files.length) await analyze()
+      if (newIds.length) await analyze()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {

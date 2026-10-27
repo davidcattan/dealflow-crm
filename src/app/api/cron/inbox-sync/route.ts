@@ -6,6 +6,7 @@ import { isQuietHours } from '@/lib/inbox/quiet-hours'
 import { advancePendingCalls } from '@/lib/calls/process'
 import { refreshStaleKeyFacts } from '@/lib/deals/key-facts'
 import { readPendingLenderDocuments } from '@/lib/lenders/tear-sheet'
+import { removeDuplicateDocuments } from '@/lib/deals/duplicate-documents'
 
 // Needs Fluid Compute on Vercel Pro (max 800s).
 export const maxDuration = 800
@@ -29,6 +30,8 @@ export async function GET(request: Request) {
   await advancePendingCalls(supabase).catch((err) => console.error('Pending calls failed', err))
   // Read lender tear sheets that came in by email (a few each run).
   await readPendingLenderDocuments(supabase).catch((err) => console.error('Lender documents failed', err))
+  // The same file saved twice on a deal (email + Mac folder + drag and drop).
+  await removeDuplicateDocuments(supabase, { sinceHours: 24 }).catch((err) => console.error('Duplicate documents failed', err))
 
   // Paused overnight; the first run after 7am catches up.
   if (isQuietHours()) {

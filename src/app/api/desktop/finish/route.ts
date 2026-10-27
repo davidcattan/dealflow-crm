@@ -2,6 +2,7 @@ import { NextResponse, after } from 'next/server'
 import { authenticateShortcut } from '@/lib/shortcut/keys'
 import { autofillDeal } from '@/lib/deals/autofill'
 import { buildKeyFacts } from '@/lib/deals/key-facts'
+import { removeDuplicateDocuments } from '@/lib/deals/duplicate-documents'
 
 export const maxDuration = 300
 
@@ -41,6 +42,10 @@ export async function POST(request: Request) {
       filed.push(f.fileName)
     }
   }
+
+  // A copy of the same file may have come in another way (email, drag and
+  // drop) while this one was uploading: keep just one.
+  if (newIds.length) await removeDuplicateDocuments(supabase, { dealId }).catch(() => 0)
 
   if (newIds.length) {
     after(async () => {

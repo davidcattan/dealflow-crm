@@ -9,7 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 // access to any authenticated user (small trusted team model), so the
 // browser's own session is enough to do this directly.
 
-export type UploadResult = { fileName: string; ok: boolean; error?: string; id?: string }
+export type UploadResult = { fileName: string; ok: boolean; error?: string; id?: string; alreadyThere?: boolean }
 
 export async function uploadDealDocuments(
   dealId: string,
@@ -23,6 +23,20 @@ export async function uploadDealDocuments(
   const results: UploadResult[] = []
 
   for (const file of files) {
+    // Already on the deal (same name and size, e.g. it came in by email or
+    // from the Desktop folder): don't save a second copy.
+    const { data: same } = await supabase
+      .from('documents')
+      .select('id')
+      .eq('deal_id', dealId)
+      .eq('file_name', file.name)
+      .eq('file_size', file.size)
+      .limit(1)
+    if (same?.length) {
+      results.push({ fileName: file.name, ok: true, id: same[0].id as string, alreadyThere: true })
+      continue
+    }
+
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
     const storagePath = `${dealId}/${Date.now()}-${safeName}`
 
