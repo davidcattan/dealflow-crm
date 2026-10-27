@@ -7,11 +7,16 @@ import { MatchSchema } from './schema'
 import { buildDealProfile } from './deal-profile'
 import type { Deal, DealUpdate } from '@/lib/types'
 
-const MATCH_INSTRUCTIONS = `You are helping an asset-based lending broker match a borrower deal to the lenders most likely to fund it. Most lenders here describe their mandate in free-text notes, not clean structured fields — read those notes carefully rather than relying only on the loan-size numbers.
+const MATCH_INSTRUCTIONS = `You are helping a commercial debt broker (asset-based lending, cash-flow lending, acquisition financing and real estate) match a borrower deal to the lenders most likely to fund it. Most lenders here describe their mandate in free-text notes, not clean structured fields — read those notes carefully rather than relying only on the loan-size numbers.
+
+The deal's "Loan type" is the broker's starting guess, not a filter. Match every product the deal can genuinely support:
+- Collateral (receivables, inventory, equipment, real estate) supports asset-based, equipment and real estate lenders.
+- Real, recurring profit supports cash-flow lenders (senior cash-flow term loans, unitranche, private credit, mezzanine/junior capital). As a rough guide, about $2-3M+ of EBITDA (or the lender's stated minimum) makes a company a cash-flow candidate; at $5M+ EBITDA cash-flow lenders are usually as relevant as ABL.
+- Most deals have more than one way to get done, and the team pursues all of them. First work out the 2-4 financing solutions this deal could realistically use (e.g. ABL refinance, cash-flow term loan, junior/growth capital, equipment term loan, real estate loan, SBA, factoring) — only ones its collateral, profit and ask actually support. Then return the strongest 2-5 lenders for each solution, labeled with that solution.
 
 Consider, in rough priority order:
 1. Loan size fit (the lender's min/max against what the deal appears to need, if known).
-2. Asset type / lending type fit (e.g. AR & inventory ABL vs. equipment vs. real estate vs. cash-flow term loan vs. factoring) — this is usually the biggest factor.
+2. Product fit — which structure this lender would provide (AR & inventory ABL, equipment, real estate, cash-flow term loan / unitranche, junior capital, factoring) and whether the deal's collateral or EBITDA supports it. This is usually the biggest factor.
 3. Revenue/EBITDA minimums, if the lender specifies them and the deal's financials are known.
 4. Industry fit or exclusions mentioned in the lender's notes.
 5. Anything else in the lender's notes that clearly rules a deal in or out (e.g. "won't do cannabis", "SBA lender", "needs PE sponsor").
@@ -21,7 +26,7 @@ Lenders under "New lenders" have no relationship with the team yet (no deals sen
 
 Most real deals here are small private companies with thin or incomplete documentation — that is normal. If the deal has no underwriting or financials yet, match on industry/asset-type/loan-size signals from its notes and flag in your overall notes that financials would sharpen the match. Do not invent numbers that were not given to you.
 
-Return only lenders that are genuinely plausible — it is fine and expected to return fewer than 10, or even just 1-2, for a niche or thin deal. Reference lenders by their L# from the list, not by name.`
+Return only lenders that are genuinely plausible — for a niche or thin deal it is fine to return just a few, even if that leaves a solution with only one lender. Reference lenders by their L# from the list, not by name.`
 
 function truncate(text: string | null | undefined, max: number): string {
   if (!text) return ''
@@ -163,7 +168,8 @@ export async function runMatching(dealId: string) {
     .map((m) => ({
       lenderId: lenderRefs.get(m.lender_ref) ?? null,
       score: m.score,
-      reasoning: m.reasoning,
+      // "Cash-flow term loan — …": the solution leads, so the list reads by option.
+      reasoning: m.solution ? `${m.solution} — ${m.reasoning}` : m.reasoning,
     }))
     .filter((m): m is { lenderId: string; score: number; reasoning: string } => m.lenderId !== null)
     // At most 2 lenders the team has never worked with, labeled as such.

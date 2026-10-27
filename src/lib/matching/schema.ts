@@ -12,21 +12,24 @@ export const MatchSchema = z.object({
           .min(0)
           .max(100)
           .describe('Fit score 0-100 — how well this lender matches the deal'),
+        solution: z
+          .string()
+          .describe('Which of the deal\'s financing solutions this lender is for, in a few words, e.g. "ABL refinance", "Cash-flow term loan", "Junior capital", "Equipment term loan", "Real estate bridge".'),
         reasoning: z
           .string()
           .describe(
-            '2-4 sentences: why this lender is a plausible fit, and any real concerns or gaps.'
+            '2-4 sentences: why this lender is a plausible fit for that solution, and any real concerns or gaps.'
           ),
       })
     )
     .describe(
-      'Between 1 and 10 realistic candidate lenders, ranked best-fit first. Do not pad the list with weak fits just to reach 10 — return fewer if fewer are genuinely plausible.'
+      'Up to 15 realistic candidate lenders across the deal\'s solutions, ranked best-fit first — the strongest few for each solution. Do not pad the list with weak fits; return fewer if fewer are genuinely plausible.'
     ),
   notes: z
     .string()
     .nullable()
     .describe(
-      'Caveats about match quality overall — e.g. missing financials, ask amount unclear from the deal notes.'
+      'Start with the financing solutions this deal could realistically use, one short line each (e.g. "1. ABL refinance of Meritrust — $8-10M against AR and inventory"). Then any caveats about match quality — e.g. missing financials, ask amount unclear.'
     ),
 })
 
