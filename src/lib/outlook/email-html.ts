@@ -12,8 +12,12 @@ function escape(s: string) {
 const BULLET = /^\s*(?:[-•*]|\d+[.)])\s+/
 // "The deal:", "Why you:", "Things to know:" on their own line.
 const LABEL_LINE = /^[A-Z][A-Za-z' ]{1,28}:$/
-// "Heads up: …" / "Why you: …" at the start of a line.
-const LABEL_PREFIX = /^((?:Heads up|Why you|Why it fits|Structure|Note|Things to know|The deal|Ask|Timing|Use of funds)):\s*/i
+// The house format's block titles on their own line: "Revenue", "EBITDA".
+const BLOCK_TITLE = /^(?:Revenue|Net Revenue|Sales|Gross Profit|EBITDA|Adj\.? EBITDA|Adjusted EBITDA|Net Income)$/i
+// "Heads up: …" / "Why you: …" and the house format's number lines
+// ("AR: $5.8M", "Total Debt: …", "ASK: …") at the start of a line.
+const LABEL_PREFIX =
+  /^((?:Heads up|Why you|Why it fits|Structure|Note|Things to know|The deal|Ask|Timing|Use of funds|AR|A\/R|Inventory(?: on Hand| in Transit)?|Equipment|Real Estate|Total Debt|Debt|Property|Estimated Value|Appraised Value|1st Mortgage|Loan Request|Loan to Value|Combined LTV|Credit)):\s*/i
 
 function inline(line: string) {
   const text = escape(line.trim())
@@ -48,7 +52,7 @@ export function textToEmailHtml(body: string): string {
       if (BULLET.test(line)) {
         flushParagraph()
         list.push(inline(line.replace(BULLET, '')))
-      } else if (LABEL_LINE.test(line.trim())) {
+      } else if (LABEL_LINE.test(line.trim()) || BLOCK_TITLE.test(line.trim())) {
         flushParagraph()
         flushList()
         out.push(`<p style="margin: 0 0 4px 0;"><strong>${escape(line.trim())}</strong></p>`)
