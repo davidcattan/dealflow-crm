@@ -6,6 +6,7 @@ import { RetryButton } from '../settings/retry-button'
 import { AssignToDeal, LinkLender } from '../settings/assign-to-deal'
 import { getInboxHealth } from '@/lib/inbox/health'
 import { TimeAgo } from '@/components/time-ago'
+import { SearchBar } from '@/components/search-bar'
 
 const KIND_STYLES: Record<string, string> = {
   new_deal: 'bg-emerald-100 text-emerald-800',
@@ -22,19 +23,26 @@ const KIND_LABELS: Record<string, string> = {
   sent: 'Sent',
 }
 
-export default async function InboxPage() {
+export default async function InboxPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const { q: rawQuery } = await searchParams
+  // Search subject, sender, recipients and summary; quotes would break the filter.
+  const q = (rawQuery ?? '').replace(/["\\]/g, '').trim()
   const supabase = await createClient()
+  let emailQuery = supabase
+    .from('inbox_messages')
+    .select('id, from_email, to_emails, subject, received_at, classification, deal_id, lender_id, summary, action_taken, mailbox, deals(company_name)')
+    .order('received_at', { ascending: false })
+  if (q) {
+    const like = `"%${q}%"`
+    emailQuery = emailQuery.or(`subject.ilike.${like},from_email.ilike.${like},to_emails.ilike.${like},summary.ilike.${like}`)
+  }
   const [{ data: connections }, { data: syncState }, { data: recent }, health, { data: runs }, { data: dealRows }] = await Promise.all([
     supabase
       .from('outlook_connections')
       .select('id, account_email, connected_by, created_at, updated_at, email_intro, email_signature')
       .order('created_at', { ascending: true }),
     supabase.from('inbox_sync_state').select('*').eq('id', 1).maybeSingle(),
-    supabase
-      .from('inbox_messages')
-      .select('id, from_email, to_emails, subject, received_at, classification, deal_id, lender_id, summary, action_taken, mailbox, deals(company_name)')
-      .order('received_at', { ascending: false })
-      .limit(200),
+    emailQuery.limit(200),
     getInboxHealth(supabase),
     supabase
       .from('inbox_sync_runs')
@@ -165,9 +173,18 @@ export default async function InboxPage() {
 
       </section>
 
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-slate-900">Email log</h2>
+          <div className="w-full sm:w-80">
+            <SearchBar placeholder="Search emails (company, sender, subject)…" />
+          </div>
+        </div>
+        {q && (!recent || recent.length === 0) && <p className="text-sm text-slate-500">No emails match “{q}”.</p>}
+      </section>
+
       {recent && recent.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-slate-900">Email log</h2>
 
           {/* Phone: one card per email. */}
           <ul className="space-y-2.5 sm:hidden">
