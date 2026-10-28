@@ -34,7 +34,7 @@ export default async function InboxPage() {
       .from('inbox_messages')
       .select('id, from_email, to_emails, subject, received_at, classification, deal_id, lender_id, summary, action_taken, mailbox, deals(company_name)')
       .order('received_at', { ascending: false })
-      .limit(30),
+      .limit(200),
     getInboxHealth(supabase),
     supabase
       .from('inbox_sync_runs')

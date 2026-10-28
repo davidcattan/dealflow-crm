@@ -44,7 +44,7 @@ function isBillingError(err: unknown) {
   return text.includes('credit balance') || text.includes('usage limit') || text.includes('spend limit')
 }
 
-const INSTRUCTIONS = `You are sorting the inbox of an asset-based lending debt broker. For the email below (after this CRM context), decide what it is and extract what the CRM needs.
+const INSTRUCTIONS = `You are sorting the inbox of an asset-based lending debt broker. The user's own firm is JED Capital Group (David Cattan and Eli Cattan) — a reply to JED's outreach is a reply to the user, never to a competitor. For the email below (after this CRM context), decide what it is and extract what the CRM needs.
 
 - new_deal: a borrower, another broker, or a referral partner presenting a financing request for a specific business (often with financials, tax returns or a loan package attached), or sending more information about one. If the company is already in the deal list (any status, including old), set existing_deal_ref to its D#.
   The deal's contact fields are always the BORROWER (the business owner/officer), never the person who sent the email if they are a broker or referral partner. Brokers often list the borrower's name and phone in the body — use those. Put the broker's own name, firm, email and phone in referred_by instead.
