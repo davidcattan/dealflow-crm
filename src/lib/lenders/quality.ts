@@ -16,7 +16,8 @@ export function lenderGaps(l: LenderForQuality): string[] {
   const type = (l.lending_type ?? '').trim()
   // "?" or a phone number pasted into the type field.
   if (!type || type === '?' || /\d{3}[.\-\s]\d{3}[.\-\s]\d{4}/.test(type)) gaps.push('lending type not set')
-  if (l.min_loan_amount == null && l.max_loan_amount == null) gaps.push('loan size not set')
+  // A missing loan size alone isn't flagged: half the list has none, and
+  // matching reads sizes from the notes, so it would bury the real gaps.
   return gaps
 }
 
