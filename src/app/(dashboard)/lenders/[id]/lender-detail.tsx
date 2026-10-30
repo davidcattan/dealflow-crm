@@ -16,6 +16,7 @@ import type { Lender, LenderContact } from '@/lib/types'
 import { LenderContacts } from './lender-contacts'
 import { LenderNda } from './lender-nda'
 import { MatchSwitch } from './match-switch'
+import { lenderGaps } from '@/lib/lenders/quality'
 
 function moneyInputDefault(value: number | null): string {
   return value === null ? '' : formatCompactCurrency(value)
@@ -48,8 +49,17 @@ export function LenderDetail({
         ? 'No'
         : null
 
+  const flags = lender as { match_excluded?: boolean; is_lender?: boolean }
+  const gaps = lender.status === 'active' && !flags.match_excluded && flags.is_lender !== false ? lenderGaps(lender) : []
+
   return (
     <div className="space-y-8">
+      {gaps.length > 0 && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+          Matching may not suggest this lender for deals that fit: {gaps.join(', ')}. Click <b>Edit</b> and add what they lend on
+          (products, deal sizes, industries, what they won&apos;t do).
+        </p>
+      )}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">

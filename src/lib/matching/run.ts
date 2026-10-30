@@ -7,6 +7,10 @@ import { MatchSchema } from './schema'
 import { buildDealProfile } from './deal-profile'
 import type { Deal, DealUpdate } from '@/lib/types'
 
+// How many lenders the team has never worked with a match may include. Almost
+// half the list is researched-but-untried lenders, so 2 hid strong fits.
+const MAX_NEW_LENDERS = 4
+
 const MATCH_INSTRUCTIONS = `You are helping a commercial debt broker (asset-based lending, cash-flow lending, acquisition financing and real estate) match a borrower deal to the lenders most likely to fund it. Most lenders here describe their mandate in free-text notes, not clean structured fields — read those notes carefully rather than relying only on the loan-size numbers.
 
 The deal's "Loan type" is the broker's starting guess, not a filter. Match every product the deal can genuinely support:
@@ -23,7 +27,7 @@ Consider, in rough priority order:
 5. Anything else in the lender's notes that clearly rules a deal in or out (e.g. "won't do cannabis", "SBA lender", "needs PE sponsor").
 6. The team's track record with the lender — as important as fit on paper. Lenders that were interested in, issued term sheets on or funded similar deals for the team rank high; lenders that keep declining similar deals rank lower. A lender this deal was already sent to that is interested belongs near the top. A good-looking mandate with no history is weaker than a proven relationship.
 
-Lenders under "New lenders" have no relationship with the team yet (no deals sent, no emails). Include at most 2 of them, only when clearly strong fits, and score them below comparable lenders the team works with.
+Lenders under "New lenders" have no relationship with the team yet (no deals sent, no emails). Include at most ${MAX_NEW_LENDERS} of them, only when clearly strong fits, and score them below comparable lenders the team works with.
 
 Most real deals here are small private companies with thin or incomplete documentation — that is normal. If the deal has no underwriting or financials yet, match on industry/asset-type/loan-size signals from its notes and flag in your overall notes that financials would sharpen the match. Do not invent numbers that were not given to you.
 
@@ -173,8 +177,8 @@ export async function runMatching(dealId: string) {
       reasoning: m.solution ? `${m.solution} — ${m.reasoning}` : m.reasoning,
     }))
     .filter((m): m is { lenderId: string; score: number; reasoning: string } => m.lenderId !== null)
-    // At most 2 lenders the team has never worked with, labeled as such.
-    .filter((m) => !newLenderIds.has(m.lenderId) || ++newKept <= 2)
+    // Lenders the team has never worked with: capped, and labeled as such.
+    .filter((m) => !newLenderIds.has(m.lenderId) || ++newKept <= MAX_NEW_LENDERS)
     .map((m) => (newLenderIds.has(m.lenderId) ? { ...m, reasoning: `New lender — no relationship yet. ${m.reasoning}` } : m))
 
   return { matches: resolvedMatches, notes: structured.parsed_output.notes }

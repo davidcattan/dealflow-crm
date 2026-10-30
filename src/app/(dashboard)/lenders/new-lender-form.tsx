@@ -1,7 +1,9 @@
 'use client'
 
 import { useActionState, useState } from 'react'
+import Link from 'next/link'
 import { createLender } from './actions'
+import { similarLender } from '@/lib/lenders/quality'
 import { CategoryChecklist } from '@/components/category-checklist'
 import {
   LENDING_TYPE_CATEGORIES,
@@ -10,9 +12,12 @@ import {
   GEOGRAPHY_CATEGORIES,
 } from '@/lib/lenders/categories'
 
-export function NewLenderForm() {
+export function NewLenderForm({ existing }: { existing: { id: string; name: string }[] }) {
   const [open, setOpen] = useState(false)
   const [state, formAction, pending] = useActionState(createLender, undefined)
+  // Catches "Sienna Lending" when "Siena Lending Group" is already in.
+  const [name, setName] = useState('')
+  const twin = name.trim() ? similarLender(name.trim(), existing) : null
 
   if (!open) {
     return (
@@ -40,8 +45,19 @@ export function NewLenderForm() {
         <input
           name="name"
           required
+          value={name}
+          onChange={(e) => setName(e.target.value)}
           className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
+        {twin && (
+          <p className="mt-1 text-xs text-amber-700">
+            Looks like this lender is already in the CRM:{' '}
+            <Link href={`/lenders/${twin.id}`} className="font-medium underline">
+              {twin.name}
+            </Link>
+            . Open it and add to it instead, unless it&apos;s a different firm.
+          </p>
+        )}
       </div>
       <div>
         <label className="block text-xs font-medium text-slate-600">

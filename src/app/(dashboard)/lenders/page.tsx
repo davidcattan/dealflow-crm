@@ -4,6 +4,7 @@ import { NewLenderForm } from './new-lender-form'
 import { LenderFilterBar } from './filter-bar'
 import { formatCompactCurrency } from '@/lib/format'
 import { LENDER_TYPE_GROUPS, lenderTypeKeys, type LenderTypeKey } from '@/lib/lenders/type-groups'
+import { lenderGaps, similarLender } from '@/lib/lenders/quality'
 
 function formatAmount(n: number | null) {
   return formatCompactCurrency(n, { zeroLabel: 'No minimum' })
@@ -62,9 +63,9 @@ function loanSize(l: { min_loan_amount: number | null; max_loan_amount: number |
 export default async function LendersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; sort?: string; type?: string }>
+  searchParams: Promise<{ q?: string; sort?: string; type?: string; needs?: string }>
 }) {
-  const { q, sort, type } = await searchParams
+  const { q, sort, type, needs } = await searchParams
   const sortKey: SortKey = sort && sort in SORT_CONFIG ? (sort as SortKey) : 'name_asc'
   const sortConfig = SORT_CONFIG[sortKey]
 
@@ -72,7 +73,7 @@ export default async function LendersPage({
   let query = supabase
     .from('lenders')
     .select(
-      'id, name, min_loan_amount, max_loan_amount, asset_types, lending_type, status, created_at'
+      'id, name, min_loan_amount, max_loan_amount, asset_types, lending_type, status, created_at, mandate_notes, match_excluded, is_lender'
     )
 
   if (q) {
@@ -103,7 +104,20 @@ export default async function LendersPage({
     .map((o) => ({ ...o, count: withKeys.filter((l) => l.typeKeys.includes(o.key)).length }))
     .filter((o) => o.count > 0)
   const activeType = typeOptions.some((o) => o.key === type) ? (type as LenderTypeKey) : null
-  const filtered = activeType ? withKeys.filter((l) => l.typeKeys.includes(activeType)) : withKeys
+  // Lenders matching can't find for deals: thin records and likely duplicates
+  // (only ones matching actually reads — active, lenders, not switched off).
+  const matchable = withKeys.filter((l) => l.status === 'active' && !l.match_excluded && l.is_lender !== false)
+  const gapsById = new Map<string, string[]>()
+  for (const l of matchable) {
+    const gaps = lenderGaps(l)
+    const twin = similarLender(l.name, matchable)
+    if (twin) gaps.push(`may be a duplicate of ${twin.name}`)
+    if (gaps.length) gapsById.set(l.id, gaps)
+  }
+  const needsView = needs === '1'
+  const filtered = (activeType ? withKeys.filter((l) => l.typeKeys.includes(activeType)) : withKeys).filter(
+    (l) => !needsView || gapsById.has(l.id)
+  )
   // Loan size, type and status orders (blanks always last).
   const typeText = (l: (typeof filtered)[number]) =>
     (l.asset_types?.length ? l.asset_types.join(', ') : l.lending_type ?? '').trim()
@@ -136,6 +150,7 @@ export default async function LendersPage({
     const params = new URLSearchParams()
     if (q) params.set('q', q)
     if (type) params.set('type', type)
+    if (needsView) params.set('needs', '1')
     const active = sortKey === `${key}_asc` || sortKey === `${key}_desc`
     params.set('sort', active ? (sortKey.endsWith('_asc') ? `${key}_desc` : `${key}_asc`) : `${key}_${firstDir}`)
     return `/lenders?${params.toString()}`
@@ -159,7 +174,7 @@ export default async function LendersPage({
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Lenders</h1>
           <p className="mt-1 text-sm text-slate-500">
-            {activeType || q
+            {activeType || q || needsView
               ? `${lenders.length} of ${withKeys.length} lenders`
               : 'Your lender network and their mandates.'}
           </p>
@@ -168,9 +183,22 @@ export default async function LendersPage({
           <Link href="/lenders/import" className="hidden text-slate-500 hover:underline sm:inline">
             Import
           </Link>
-          <NewLenderForm />
+          <NewLenderForm existing={(suggestionRows ?? []).map((l) => ({ id: l.id as string, name: l.name as string }))} />
         </div>
       </div>
+
+      {gapsById.size > 0 && !q && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+          <span>
+            {needsView
+              ? 'These lenders are missing info, so matching may not suggest them for deals that fit. Open each one and fill in what they lend on.'
+              : `${gapsById.size} lender${gapsById.size === 1 ? ' is' : 's are'} missing info, so matching may not suggest ${gapsById.size === 1 ? 'it' : 'them'} for deals that fit.`}
+          </span>
+          <Link href={needsView ? '/lenders' : '/lenders?needs=1'} className="font-medium underline">
+            {needsView ? 'Show all lenders' : 'Show them'}
+          </Link>
+        </div>
+      )}
 
       <LenderFilterBar typeOptions={typeOptions} suggestions={suggestions} />
 
@@ -195,6 +223,9 @@ export default async function LendersPage({
                     >
                       {l.name}
                     </Link>
+                    {needsView && gapsById.has(l.id) && (
+                      <p className="mt-0.5 text-xs text-amber-700">{gapsById.get(l.id)!.join(' · ')}</p>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {formatLoanRange(l.min_loan_amount, l.max_loan_amount)}
@@ -217,7 +248,7 @@ export default async function LendersPage({
                   colSpan={4}
                   className="px-4 py-10 text-center text-slate-400"
                 >
-                  {q || activeType
+                  {q || activeType || needsView
                     ? 'No lenders match these filters.'
                     : 'No lenders yet. Add your first one above.'}
                 </td>
