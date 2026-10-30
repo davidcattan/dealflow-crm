@@ -81,6 +81,9 @@ const GUIDE = `Pick the facts a commercial loan broker needs at a glance for THI
 Rules: only facts actually stated in the material below — never guess or calculate new numbers (except LTV when both value and loan are stated). When sources disagree, use the newest and put the conflict in the note. Pick only the 8 most important; values must be glanceable — round money ($4.6M, $910K), no sentences.`
 
 export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): Promise<KeyFacts> {
+  // Stamped with when the material was read, so anything that lands while
+  // the AI is working still counts as newer.
+  const readAt = new Date().toISOString()
   const [{ data: deal }, { data: updates }, { data: calls }, { data: emails }, { data: docs }, { data: contacts }] = await Promise.all([
     supabase.from('deals').select('*').eq('id', dealId).single(),
     supabase.from('deal_updates').select('entry_date, note').eq('deal_id', dealId).order('created_at', { ascending: false }).limit(25),
@@ -184,7 +187,7 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
   const facts = [...pinned, ...ai.filter((f) => !pinnedLabels.has(f.label.toLowerCase()))]
   const missing = res.parsed_output.missing.filter((m) => !pinnedLabels.has(m.toLowerCase()))
   const result = { summary: res.parsed_output.summary, recommendation: res.parsed_output.recommendation, next_step: res.parsed_output.next_step, facts: facts.slice(0, Math.max(8, pinned.length)), missing: missing.slice(0, 3), v: KEY_FACTS_VERSION }
-  await supabase.from('deals').update({ key_facts: result, key_facts_at: new Date().toISOString() }).eq('id', dealId)
+  await supabase.from('deals').update({ key_facts: result, key_facts_at: readAt }).eq('id', dealId)
   return result
 }
 
@@ -199,7 +202,7 @@ export async function refreshStaleKeyFacts(supabase: SupabaseClient, limit = 8) 
   if (error || !deals?.length) return 0
   const ids = deals.map((d) => d.id as string)
   const [{ data: emails }, { data: updates }, { data: docs }, { data: calls }] = await Promise.all([
-    supabase.from('inbox_messages').select('deal_id, received_at').in('deal_id', ids).order('received_at', { ascending: false }).limit(3000),
+    supabase.from('inbox_messages').select('deal_id, created_at').in('deal_id', ids).order('created_at', { ascending: false }).limit(3000),
     supabase.from('deal_updates').select('deal_id, created_at').in('deal_id', ids).order('created_at', { ascending: false }).limit(3000),
     supabase.from('documents').select('deal_id, uploaded_at').in('deal_id', ids),
     supabase.from('deal_calls').select('deal_id, created_at').in('deal_id', ids).eq('status', 'done'),
@@ -208,7 +211,8 @@ export async function refreshStaleKeyFacts(supabase: SupabaseClient, limit = 8) 
   const bump = (id: string, at: string | null | undefined) => {
     if (at && (!latest.has(id) || at > latest.get(id)!)) latest.set(id, at)
   }
-  for (const r of emails ?? []) bump(r.deal_id as string, r.received_at as string)
+  // Emails by when they reached the CRM (an older email synced late is still news).
+  for (const r of emails ?? []) bump(r.deal_id as string, r.created_at as string)
   for (const r of updates ?? []) bump(r.deal_id as string, r.created_at as string)
   for (const r of docs ?? []) bump(r.deal_id as string, r.uploaded_at as string)
   for (const r of calls ?? []) bump(r.deal_id as string, r.created_at as string)

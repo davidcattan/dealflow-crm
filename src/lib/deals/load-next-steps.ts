@@ -53,25 +53,59 @@ export async function loadNextSteps(supabase: SupabaseClient, dealIds: string[])
   // AI steps (empty before migration 044) and when each deal last had news.
   const [{ data: kfRows }, { data: emailRows }, { data: docRows }] = await Promise.all([
     supabase.from('deals').select('id, key_facts, key_facts_at').in('id', dealIds),
-    supabase.from('inbox_messages').select('deal_id, received_at').in('deal_id', dealIds).order('received_at', { ascending: false }).limit(3000),
+    supabase
+      .from('inbox_messages')
+      .select('deal_id, received_at, created_at, from_email, classification')
+      .in('deal_id', dealIds)
+      .order('received_at', { ascending: false })
+      .limit(3000),
     supabase.from('documents').select('deal_id, uploaded_at').in('deal_id', dealIds),
   ])
   const newsAt = new Map<string, string>()
   const bump = (id: string, at: string | null | undefined) => {
     if (at && (!newsAt.has(id) || at > newsAt.get(id)!)) newsAt.set(id, at)
   }
-  for (const r of emailRows ?? []) bump(r.deal_id as string, r.received_at as string)
+  // When the email reached the CRM, not when it was sent: an email synced
+  // after the key facts were read is news even if it was sent earlier.
+  for (const r of emailRows ?? []) bump(r.deal_id as string, (r.created_at ?? r.received_at) as string)
   for (const r of docRows ?? []) bump(r.deal_id as string, r.uploaded_at as string)
   for (const r of updates ?? []) bump(r.deal_id as string, r.created_at as string)
   for (const r of calls ?? []) bump(r.deal_id as string, r.created_at as string)
+  // Each deal's newest email (rows are newest first).
+  const lastEmail = new Map<string, { at: string; ours: boolean }>()
+  for (const r of emailRows ?? []) {
+    if (lastEmail.has(r.deal_id as string)) continue
+    const ours = r.classification === 'sent' || /@jed-capitalgroup\.com$/i.test(String(r.from_email ?? ''))
+    lastEmail.set(r.deal_id as string, { at: r.received_at as string, ours })
+  }
+  const day = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' })
   const aiStep = new Map<string, NextStep>()
   for (const r of kfRows ?? []) {
     const step = (r.key_facts as { next_step?: AiNextStep | null } | null)?.next_step
     const at = r.key_facts_at as string | null
     const news = newsAt.get(r.id as string)
-    if (step?.text && at && (!news || news <= at) && AI_STEP[step.category]) {
-      aiStep.set(r.id as string, { ...AI_STEP[step.category], text: step.text })
+    if (!(step?.text && at && (!news || news <= at) && AI_STEP[step.category])) continue
+    const last = lastEmail.get(r.id as string)
+    // The AI sometimes says "reply to them" after the team already replied.
+    // If our email is the newest one, there's nothing to answer: it's their move.
+    if (step.category === 'answer_lender' && last?.ours) {
+      const quiet = Math.floor((Date.now() - new Date(last.at).getTime()) / 86_400_000)
+      aiStep.set(
+        r.id as string,
+        quiet >= 5
+          ? { rank: 6, urgency: 'follow_up', text: `Follow up — no answer since you wrote ${day(last.at)}`, detail: `Was: ${step.text}` }
+          : { rank: 9, urgency: 'waiting', text: `Waiting on their answer — you wrote ${day(last.at)}`, detail: `Was: ${step.text}` }
+      )
+      continue
     }
+    // A "reply to the lender" with nothing new in two weeks was most likely
+    // handled by phone or another inbox: show it as a check, not a fire.
+    const idle = news ? Math.floor((Date.now() - new Date(news).getTime()) / 86_400_000) : 0
+    if (step.category === 'answer_lender' && idle >= 14) {
+      aiStep.set(r.id as string, { rank: 6, urgency: 'follow_up', text: step.text, detail: `Nothing new since ${day(news!)} — mark done if it's handled` })
+      continue
+    }
+    aiStep.set(r.id as string, { ...AI_STEP[step.category], text: step.text })
   }
 
   for (const d of deals ?? []) {
