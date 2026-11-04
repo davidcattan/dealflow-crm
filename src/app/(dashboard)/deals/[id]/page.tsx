@@ -350,6 +350,11 @@ export default async function DealDetailPage({
           matches[0].created_at
         )
       : null
+  // Deal news since matching last ran (calls, notes, borrower emails — not
+  // lender replies, which don't change who fits).
+  const changesSinceMatch = lastMatchRunAt
+    ? ((updates ?? []) as (DealUpdate & { lender_id?: string | null })[]).filter((u) => !u.lender_id && u.created_at > lastMatchRunAt).length
+    : 0
 
   // Open links for every document in one request; download links are made
   // when clicked.
@@ -689,6 +694,7 @@ export default async function DealDetailPage({
         dealId={deal.id}
         matches={matchesWithLender}
         lastRunAt={lastMatchRunAt}
+        changesSinceRun={changesSinceMatch}
         hasUnderwriting={Boolean(deal.underwriting || deal.snapshot)}
         currentLoanType={deal.loan_type}
         sentLenderIds={submissions.map((x) => x.lender_id)}

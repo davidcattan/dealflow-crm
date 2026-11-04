@@ -8,15 +8,19 @@ import { buildDealProfile } from './deal-profile'
 import type { Deal, DealUpdate } from '@/lib/types'
 
 // How many lenders the team has never worked with a match may include. Almost
-// half the list is researched-but-untried lenders, so 2 hid strong fits.
-const MAX_NEW_LENDERS = 4
+// half the list is researched-but-untried lenders, so 2 (and then 4) hid
+// strong fits.
+const MAX_NEW_LENDERS = 6
+// Lenders per financing solution, so one solution (e.g. cash-flow lenders the
+// team knows) can't crowd the specialists for the main one off the list.
+const MAX_PER_SOLUTION = 4
 
 const MATCH_INSTRUCTIONS = `You are helping a commercial debt broker (asset-based lending, cash-flow lending, acquisition financing and real estate) match a borrower deal to the lenders most likely to fund it. Most lenders here describe their mandate in free-text notes, not clean structured fields — read those notes carefully rather than relying only on the loan-size numbers.
 
 The deal's "Loan type" is the broker's starting guess, not a filter. Match every product the deal can genuinely support:
 - Collateral (receivables, inventory, equipment, real estate) supports asset-based, equipment and real estate lenders.
 - Real, recurring profit supports cash-flow lenders (senior cash-flow term loans, unitranche, private credit, mezzanine/junior capital). As a rough guide, about $2-3M+ of EBITDA (or the lender's stated minimum) makes a company a cash-flow candidate; at $5M+ EBITDA cash-flow lenders are usually as relevant as ABL.
-- Most deals have more than one way to get done, and the team pursues all of them. First work out the 2-4 financing solutions this deal could realistically use (e.g. ABL refinance, cash-flow term loan, junior/growth capital, equipment term loan, real estate loan, SBA, factoring) — only ones its collateral, profit and ask actually support. Then return the strongest 2-5 lenders for each solution, labeled with that solution.
+- Most deals have more than one way to get done, and the team pursues all of them. First work out the 2-4 financing solutions this deal could realistically use (e.g. ABL refinance, cash-flow term loan, junior/growth capital, equipment term loan, real estate loan, SBA, factoring) — only ones its collateral, profit and ask actually support. Then return the strongest 2-${MAX_PER_SOLUTION} lenders for each solution, labeled with that solution — never more than ${MAX_PER_SOLUTION} for one solution, and give the solution the deal most clearly supports its full ${MAX_PER_SOLUTION}.
 - Size each solution from what the deal can actually support, not only from the stated ask. Rough guides: ABL ≈ 80-90% of eligible receivables (about 85% for receivables paid by government programs or insurers) plus 40-60% of inventory; factoring ≈ 80-90% of invoices; cash-flow term loans ≈ 2-3.5x EBITDA (toward the low end for small companies). When the deal supports a materially bigger or cheaper facility than the ask (e.g. a full refinance of the current lender instead of a small bridge), or the ask has a condition lenders won't meet (e.g. "no UCC filing" on a receivables loan), match lenders for that better structure too and say so in your overall notes — the broker's job is to bring the borrower the best option, not only the one they asked for. Don't rule a lender out just because its minimum is above the ask if the deal can support that size.
 
 Consider, in rough priority order:
@@ -25,9 +29,11 @@ Consider, in rough priority order:
 3. Revenue/EBITDA minimums, if the lender specifies them and the deal's financials are known.
 4. Industry fit or exclusions mentioned in the lender's notes.
 5. Anything else in the lender's notes that clearly rules a deal in or out (e.g. "won't do cannabis", "SBA lender", "needs PE sponsor").
-6. The team's track record with the lender — as important as fit on paper. Lenders that were interested in, issued term sheets on or funded similar deals for the team rank high; lenders that keep declining similar deals rank lower. A lender this deal was already sent to that is interested belongs near the top. A good-looking mandate with no history is weaker than a proven relationship.
+6. The team's track record with the lender. Lenders that were interested in, issued term sheets on or funded similar deals for the team rank high; lenders that keep declining similar deals rank lower. A lender this deal was already sent to that is interested belongs near the top. Use history to rank lenders of similar fit — it never pushes out a lender whose mandate is clearly the better fit.
 
-Lenders under "New lenders" have no relationship with the team yet (no deals sent, no emails). Include at most ${MAX_NEW_LENDERS} of them, only when clearly strong fits, and score them below comparable lenders the team works with.
+Specialists first: when the deal is in an industry with dedicated lenders (healthcare receivables, government contracts, consumer products, aviation, cannabis, etc.), a lender whose type, notes or past deals show it lends to that industry outranks a generalist, whether or not the team has history with it. Look for that in the notes, not only in the industry field — many lender records are thin, and a one-line note like "medical AR" or a past healthcare deal is enough.
+
+Lenders under "New lenders" have no relationship with the team yet (no deals sent, no emails). Include at most ${MAX_NEW_LENDERS} of them, only when clearly strong fits. Score them on fit like any other lender; when two lenders fit about equally, rank the one the team works with higher.
 
 Most real deals here are small private companies with thin or incomplete documentation — that is normal. If the deal has no underwriting or financials yet, match on industry/asset-type/loan-size signals from its notes and flag in your overall notes that financials would sharpen the match. Do not invent numbers that were not given to you.
 
@@ -169,7 +175,13 @@ export async function runMatching(dealId: string) {
   }
 
   let newKept = 0
+  const perSolution = new Map<string, number>()
   const resolvedMatches = structured.parsed_output.matches
+    .filter((m) => {
+      const key = m.solution.trim().toLowerCase()
+      perSolution.set(key, (perSolution.get(key) ?? 0) + 1)
+      return (perSolution.get(key) ?? 0) <= MAX_PER_SOLUTION
+    })
     .map((m) => ({
       lenderId: lenderRefs.get(m.lender_ref) ?? null,
       score: m.score,

@@ -23,7 +23,7 @@ export const MatchSchema = z.object({
       })
     )
     .describe(
-      'Up to 15 realistic candidate lenders across the deal\'s solutions, ranked best-fit first — the strongest few for each solution. Do not pad the list with weak fits; return fewer if fewer are genuinely plausible.'
+      'Up to 18 realistic candidate lenders across the deal\'s solutions, ranked best-fit first — at most 4 for each solution. Do not pad the list with weak fits; return fewer if fewer are genuinely plausible.'
     ),
   notes: z
     .string()

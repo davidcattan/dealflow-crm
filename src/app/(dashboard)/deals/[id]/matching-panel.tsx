@@ -491,6 +491,7 @@ export function MatchingPanel({
   dealId,
   matches,
   lastRunAt,
+  changesSinceRun = 0,
   hasUnderwriting,
   currentLoanType,
   sentLenderIds,
@@ -506,6 +507,8 @@ export function MatchingPanel({
   dealId: string
   matches: MatchWithLender[]
   lastRunAt: string | null
+  // Deal updates logged since that run.
+  changesSinceRun?: number
   hasUnderwriting: boolean
   currentLoanType: string | null
   sentLenderIds: string[]
@@ -689,6 +692,11 @@ export function MatchingPanel({
           {lastRunAt && (
             <p className="mt-0.5 text-xs text-slate-400">
               Last run {new Date(lastRunAt).toLocaleString()}
+            </p>
+          )}
+          {lastRunAt && changesSinceRun > 0 && matches.length > 0 && (
+            <p className="mt-0.5 text-xs text-amber-700">
+              {changesSinceRun} deal update{changesSinceRun === 1 ? '' : 's'} since then — re-run to match on the latest.
             </p>
           )}
         </div>
