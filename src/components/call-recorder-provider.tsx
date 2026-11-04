@@ -58,6 +58,50 @@ function recorderType() {
 const totalSeconds = (s: RecordingSession) => s.segments.reduce((n, x) => n + x.seconds, 0)
 // Saved within this long = still being recorded (in another tab).
 const LIVE_MS = 20_000
+// This long with no sound at all reaching the mic = warn. A phone that's on
+// the call itself hands the recorder pure silence, which only showed up after
+// the call as "No speech was picked up".
+const SILENT_WARN_MS = 10_000
+
+// Watches the mic while recording and reports when nothing at all is coming
+// through (a muted or blocked mic gives exact zeros, not quiet sound).
+function listenForSilence(stream: MediaStream, onChange: (silent: boolean) => void) {
+  const track = stream.getAudioTracks()[0]
+  let ctx: AudioContext | null = null
+  let timer: ReturnType<typeof setInterval> | null = null
+  try {
+    ctx = new AudioContext()
+    ctx.resume().catch(() => {})
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 2048
+    ctx.createMediaStreamSource(stream).connect(analyser)
+    const buf = new Float32Array(analyser.fftSize)
+    let silentSince: number | null = null
+    timer = setInterval(() => {
+      analyser.getFloatTimeDomainData(buf)
+      let peak = 0
+      for (const v of buf) peak = Math.max(peak, Math.abs(v))
+      if (peak > 0.001 && !track?.muted) {
+        silentSince = null
+        onChange(false)
+      } else {
+        silentSince ??= Date.now()
+        if (Date.now() - silentSince >= SILENT_WARN_MS) onChange(true)
+      }
+    }, 1000)
+  } catch {
+    // No Web Audio here — the mute events below still work.
+  }
+  if (track) {
+    track.onmute = () => onChange(true)
+    track.onunmute = () => onChange(false)
+  }
+  return () => {
+    if (timer) clearInterval(timer)
+    ctx?.close().catch(() => {})
+    if (track) track.onmute = track.onunmute = null
+  }
+}
 
 // Uploads every segment and creates the call. Throws on failure (the
 // recording stays saved on the device).
@@ -101,6 +145,8 @@ export function CallRecorderProvider({ children }: { children: ReactNode }) {
   const segmentStarted = useRef(0)
   const userStopped = useRef(false)
   const wakeLock = useRef<{ release: () => Promise<void> } | null>(null)
+  const [noSound, setNoSound] = useState(false)
+  const stopListening = useRef<(() => void) | null>(null)
 
   const persist = useCallback(async () => {
     const s = sessionRef.current
@@ -184,6 +230,8 @@ export function CallRecorderProvider({ children }: { children: ReactNode }) {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true },
         })
+        stopListening.current?.()
+        stopListening.current = listenForSilence(stream, setNoSound)
         const mimeType = recorderType()
         const rec = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 32_000 })
         s.priorSeconds = totalSeconds(s)
@@ -195,6 +243,9 @@ export function CallRecorderProvider({ children }: { children: ReactNode }) {
           if (e.data.size) appendChunk(s.id, segment, e.data).catch(() => {})
         }
         rec.onstop = async () => {
+          stopListening.current?.()
+          stopListening.current = null
+          setNoSound(false)
           stream.getTracks().forEach((t) => t.stop())
           wakeLock.current?.release().catch(() => {})
           wakeLock.current = null
@@ -300,7 +351,14 @@ export function CallRecorderProvider({ children }: { children: ReactNode }) {
             <Link href={session.target.href} className="truncate text-red-800 underline">
               {session.target.label}
             </Link>
-            <span className="hidden text-xs text-red-700/80 md:inline">Keeps going while you move around the CRM.</span>
+            {noSound ? (
+              <span className="w-full rounded bg-red-600 px-2 py-1 text-xs font-medium text-white md:order-last">
+                No sound is reaching the microphone — nothing is being recorded. If the call is on this same phone, the phone blocks
+                recording: record on another device. Otherwise check the mic isn’t muted or taken by Zoom/Teams.
+              </span>
+            ) : (
+              <span className="hidden text-xs text-red-700/80 md:inline">Keeps going while you move around the CRM.</span>
+            )}
             <button
               type="button"
               onClick={stop}
