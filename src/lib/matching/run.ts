@@ -14,6 +14,7 @@ const MAX_NEW_LENDERS = 6
 // Lenders per financing solution, so one solution (e.g. cash-flow lenders the
 // team knows) can't crowd the specialists for the main one off the list.
 const MAX_PER_SOLUTION = 4
+const YES_STATUSES = ['interested', 'needs_more_info', 'term_sheet', 'funded']
 
 const MATCH_INSTRUCTIONS = `You are helping a commercial debt broker (asset-based lending, cash-flow lending, acquisition financing and real estate) match a borrower deal to the lenders most likely to fund it. Most lenders here describe their mandate in free-text notes, not clean structured fields — read those notes carefully rather than relying only on the loan-size numbers.
 
@@ -29,7 +30,7 @@ Consider, in rough priority order:
 3. Revenue/EBITDA minimums, if the lender specifies them and the deal's financials are known.
 4. Industry fit or exclusions mentioned in the lender's notes.
 5. Anything else in the lender's notes that clearly rules a deal in or out (e.g. "won't do cannabis", "SBA lender", "needs PE sponsor").
-6. The team's track record with the lender. Lenders that were interested in, issued term sheets on or funded similar deals for the team rank high; lenders that keep declining similar deals rank lower. A lender this deal was already sent to that is interested belongs near the top. Use history to rank lenders of similar fit — it never pushes out a lender whose mandate is clearly the better fit.
+6. The team's track record with the lender. Lenders that were interested in, issued term sheets on or funded similar deals for the team rank high; lenders that keep declining similar deals rank lower. A lender this deal was already sent to that is interested belongs near the top. Use history to rank lenders of similar fit — it never pushes out a lender whose mandate is clearly the better fit. One exception works the other way: a lender that said yes to a deal like this one (same industry, collateral or structure, similar size) is strong evidence of fit even when its notes are thin or say nothing about it — include it.
 
 Specialists first: when the deal is in an industry with dedicated lenders (healthcare receivables, government contracts, consumer products, aviation, cannabis, etc.), a lender whose type, notes or past deals show it lends to that industry outranks a generalist, whether or not the team has history with it. Look for that in the notes, not only in the industry field — many lender records are thin, and a one-line note like "medical AR" or a past healthcare deal is enough.
 
@@ -60,7 +61,7 @@ export async function runMatching(dealId: string) {
         .order('entry_date', { ascending: false, nullsFirst: false })
         .limit(8),
       supabase.from('deal_submissions').select('lender_id, deal_id, status, sent_on').order('sent_on', { ascending: false }).limit(5000),
-      supabase.from('deals').select('id, company_name, loan_type'),
+      supabase.from('deals').select('id, company_name, loan_type, industry, deal_type'),
       supabase.from('inbox_messages').select('lender_id').not('lender_id', 'is', null).limit(20000),
     ])
   const lenders = (allLenders ?? []).filter((l) => !l.match_excluded && l.is_lender !== false)
@@ -82,20 +83,30 @@ export async function runMatching(dealId: string) {
   const isNew = (l: { id: string; research_lead?: boolean }) =>
     Boolean(l.research_lead) && !subsByLender.has(l.id) && !emailCount.has(l.id)
 
+  // What the lender has said yes and no to, by kind of deal — the best
+  // evidence of fit, since most lender records have thin notes and no
+  // industries filled in.
   function trackRecord(lenderId: string) {
     const subs = (subsByLender.get(lenderId) ?? []).filter((s) => s.deal_id !== dealId)
     const emails = emailCount.get(lenderId) ?? 0
     if (!subs.length) return emails ? `track record: no other deals sent yet; ${emails} emails with the team` : 'track record: no deals sent yet'
     const tally = (st: string[]) => subs.filter((s) => st.includes(s.status)).length
-    const recent = subs
-      .slice(0, 5)
-      .map((s) => {
-        const d = dealById.get(s.deal_id)
-        return `${d?.company_name ?? 'a deal'}${d?.loan_type ? ` (${d.loan_type})` : ''}: ${s.status.replace(/_/g, ' ')}`
-      })
-      .join('; ')
-    return `track record: ${subs.length} deals sent — ${tally(['interested', 'needs_more_info'])} engaged, ${tally(['term_sheet', 'funded'])} term sheet/funded, ${tally(['declined'])} declined, ${tally(['sent'])} no answer yet. Recent: ${recent}`
+    const describe = (s: { deal_id: string; status: string }, withAsk: boolean) => {
+      const d = dealById.get(s.deal_id)
+      const kind = [d?.industry, d?.loan_type, withAsk ? truncate(d?.deal_type, 60) : null].filter(Boolean).join('; ')
+      return `${d?.company_name ?? 'a deal'}${kind ? ` (${kind})` : ''}: ${s.status.replace(/_/g, ' ')}`
+    }
+    const yes = subs.filter((s) => YES_STATUSES.includes(s.status)).slice(0, 6)
+    const no = subs.filter((s) => s.status === 'declined').slice(0, 3)
+    return [
+      `track record: ${subs.length} deals sent — ${tally(['interested', 'needs_more_info'])} engaged, ${tally(['term_sheet', 'funded'])} term sheet/funded, ${tally(['declined'])} declined, ${tally(['sent'])} no answer yet.`,
+      yes.length ? `Said yes to: ${yes.map((s) => describe(s, true)).join('; ')}.` : null,
+      no.length ? `Declined: ${no.map((s) => describe(s, false)).join('; ')}.` : null,
+    ]
+      .filter(Boolean)
+      .join(' ')
   }
+
 
   const lenderRefs = new Map<string, string>() // L# -> lender uuid
   const newLenderIds = new Set<string>()
