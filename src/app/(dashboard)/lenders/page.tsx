@@ -60,6 +60,9 @@ function loanSize(l: { min_loan_amount: number | null; max_loan_amount: number |
   return l.min_loan_amount && l.min_loan_amount > 0 ? l.min_loan_amount : null
 }
 
+// Merged records are kept (renamed "(Duplicate - ...)") but left off the list.
+const isRetiredDuplicate = (name: string) => name.startsWith('(Duplicate')
+
 export default async function LendersPage({
   searchParams,
 }: {
@@ -82,7 +85,7 @@ export default async function LendersPage({
 
   // Every lender, for the type-ahead suggestions under the search box.
   const { data: suggestionRows } = await supabase.from('lenders').select('id, name, lending_type, contact_name').order('name')
-  const suggestions = (suggestionRows ?? []).map((l) => ({
+  const suggestions = (suggestionRows ?? []).filter((l) => !isRetiredDuplicate(l.name)).map((l) => ({
     id: l.id as string,
     label: l.name as string,
     sublabel: (l.lending_type as string | null) ?? null,
@@ -96,7 +99,9 @@ export default async function LendersPage({
   })
 
   // Lender-type filter: groups built from each lender's free-text type.
-  const withKeys = (allLenders ?? []).map((l) => ({ ...l, typeKeys: lenderTypeKeys(l) }))
+  const withKeys = (allLenders ?? [])
+    .filter((l) => !isRetiredDuplicate(l.name))
+    .map((l) => ({ ...l, typeKeys: lenderTypeKeys(l) }))
   const typeOptions = [
     ...LENDER_TYPE_GROUPS.map((g) => ({ key: g.key as LenderTypeKey, label: g.label })),
     { key: 'unknown' as LenderTypeKey, label: 'Type not set' },
