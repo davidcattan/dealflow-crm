@@ -28,6 +28,7 @@ import { readProspectReply } from '@/lib/prospects/reply'
 import type { Snapshot } from '@/lib/snapshot/schema'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
 import { lenderMaterialNames, saveLenderMaterials } from '@/lib/lenders/lender-materials'
+import { fileFindings, learnFromSignature } from './findings'
 
 // Deal-worthy attachment types; everything else (calendar invites, vCards,
 // signature images that aren't marked inline) is ignored.
@@ -207,6 +208,17 @@ function firmDomain(sender: string, accountEmail: string): string | null {
   return sender.endsWith(`@${domain}`) ? domain : null
 }
 
+// A person's lender: by email domain, or by a firm name that matches exactly
+// one lender.
+function matchLender(ctx: Context, email: string | null, firm: string | null) {
+  const byEmail = email ? findLenderBySender(ctx.lenders, ctx.contacts, email) : null
+  if (byEmail) return byEmail
+  const core = firm ? lenderCore(firm) : ''
+  if (core.length < 4) return null
+  const hits = ctx.lenders.filter((l) => lenderCore(l.name) === core)
+  return hits.length === 1 ? hits[0].id : null
+}
+
 // A forwarded email (FW:/Fwd: subject, or Gmail's forwarded-message marker).
 function isForward(message: InboxMessage) {
   return /^\s*(fw|fwd)\s*:/i.test(message.subject) || message.bodyText.includes('---------- Forwarded message')
@@ -345,6 +357,8 @@ async function processMessage(
 
   try {
     const internalDomain = firmDomain(message.from, ctx.accountEmail)
+    // Phone and title from the signature (free), whatever the email is about.
+    if (!internalDomain) await learnFromSignature(supabase, message).catch(() => undefined)
     const thread = ctx.threadByConversation.get(message.conversationId) ?? null
     // An email in a thread that's already filed on a deal (e.g. a lender
     // answering the pitch you sent from Outlook, or the borrower replying
@@ -397,7 +411,27 @@ async function processMessage(
       supabase
     )
 
-    return await act({ supabase, ctx, message, classification, attachments, thread, threadDealId, senderLenderId, internal: Boolean(internalDomain) })
+    const result = await act({ supabase, ctx, message, classification, attachments, thread, threadDealId, senderLenderId, internal: Boolean(internalDomain) })
+
+    // People, requests and follow-ups the email mentions. Never allowed to
+    // fail the email itself.
+    const notes = await fileFindings(supabase, message, classification, {
+      dealId: (result.record.deal_id as string | null | undefined) ?? null,
+      lenderId: (result.record.lender_id as string | null | undefined) ?? senderLenderId,
+      matchLender: (email, firm) => matchLender(ctx, email, firm),
+      dealIdForRef: (ref) => ctx.dealByRef.get(ref)?.id ?? null,
+      onContactAdded: (lenderId, email) => {
+        ctx.lenderByEmail.set(email, lenderId)
+        ctx.contacts.push({ lender_id: lenderId, email })
+      },
+    }).catch(() => [] as string[])
+    if (notes.length) {
+      const taken = result.record.action_taken
+      const done = notes.join(', ')
+      result.record.action_taken = taken && taken !== 'No action' ? `${taken}, ${done}` : done.charAt(0).toUpperCase() + done.slice(1)
+      result.record.body_text ??= message.bodyText
+    }
+    return result
   } catch (err) {
     if (isBillingError(err)) throw err
     return {
@@ -747,14 +781,15 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
       for (const lenderId of lenderIds) {
         const lender = ctx.lenderById.get(lenderId)
         // Answering a lender that asked for more info puts the ball back in
-        // their court.
+        // their court. Only an email carrying files counts as an answer: a
+        // "thanks, will send soon" leaves them waiting on us.
         const { data: current } = await supabase
           .from('deal_submissions')
           .select('status')
           .eq('deal_id', dealId)
           .eq('lender_id', lenderId)
           .maybeSingle()
-        const answered = current?.status === 'needs_more_info'
+        const answered = current?.status === 'needs_more_info' && Boolean(m.hasAttachments)
         await recordSubmission(supabase, {
           dealId,
           lenderId,
@@ -1124,7 +1159,9 @@ async function act({
       null
     const lenderId = thread?.lenderId ?? senderLenderId
     const lender = lenderId ? ctx.lenderById.get(lenderId) : undefined
-    const outcomeLabel = reply ? OUTCOME_LABELS[reply.outcome] : 'Replied'
+    // A lender passing the deal to another firm isn't interested itself.
+    const outcome = reply ? (reply.handoff_only ? 'other' : reply.outcome) : null
+    const outcomeLabel = outcome ? OUTCOME_LABELS[outcome] : 'Replied'
     const summaryText = reply?.summary ?? classification.reason
 
     if (!dealId) {
@@ -1158,11 +1195,11 @@ async function act({
       const { movedFrom } = await recordSubmission(supabase, {
         dealId,
         lenderId,
-        status: reply ? OUTCOME_TO_SUBMISSION[reply.outcome] : undefined,
+        status: outcome ? OUTCOME_TO_SUBMISSION[outcome] : undefined,
         conversationId: message.conversationId,
       })
       ctx.threadByConversation.set(message.conversationId, { dealId, lenderId })
-      actions.push(`lender status updated${reply && OUTCOME_TO_SUBMISSION[reply.outcome] ? ` to ${outcomeLabel}` : ''}`)
+      actions.push(`lender status updated${outcome && OUTCOME_TO_SUBMISSION[outcome] ? ` to ${outcomeLabel}` : ''}`)
       if (movedFrom && deal) {
         actions.push(movedFrom === 'old' ? 'moved from Old back to Submitted' : 'moved to Submitted')
         deal.status = 'submitted'

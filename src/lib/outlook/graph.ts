@@ -336,13 +336,14 @@ export type SentMessage = {
   sentDateTime: string
   to: { email: string; name: string }[]
   bodyText: string
+  hasAttachments?: boolean
 }
 
 // Sent Items after `sinceIso`, oldest first (same catch-up logic as the
 // inbox). Recipients include To and CC.
 export async function listSentMessagesSince(accessToken: string, sinceIso: string, top = 25): Promise<SentMessage[]> {
   const filter = `$filter=${encodeURIComponent(`sentDateTime gt ${sinceIso}`)}`
-  const select = '$select=id,internetMessageId,conversationId,subject,sentDateTime,toRecipients,ccRecipients,body'
+  const select = '$select=id,internetMessageId,conversationId,subject,sentDateTime,toRecipients,ccRecipients,hasAttachments,body'
   const json = await graphFetch(
     `/me/mailFolders/sentitems/messages?${filter}&${select}&$orderby=sentDateTime asc&$top=${top}`,
     accessToken,
@@ -356,6 +357,7 @@ export async function listSentMessagesSince(accessToken: string, sinceIso: strin
     sentDateTime: m.sentDateTime as string,
     to: recipients(m),
     bodyText: toInboxMessage({ ...m, from: null }).bodyText,
+    hasAttachments: Boolean(m.hasAttachments),
   }))
 }
 

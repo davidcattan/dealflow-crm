@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react'
 import { OwnerSelect } from '@/components/owner-select'
 import { TEAM, type TeamMember } from '@/lib/team'
 import { addTodo, deleteTodo, dismissStep, setTodoDone } from './actions'
@@ -378,6 +378,7 @@ function AddTodo({ defaultFor, deals }: { defaultFor: TeamMember; deals: { id: s
 }
 
 export function TodoList({
+  findings,
   who,
   me,
   sections,
@@ -385,6 +386,7 @@ export function TodoList({
   todos,
   deals,
 }: {
+  findings?: ReactNode
   who: TeamMember | 'all'
   me: TeamMember | null
   sections: TodoSection[]
@@ -507,6 +509,8 @@ export function TodoList({
         {waiting.length > 0 && ` · ${waiting.length} waiting`}
         {!both && <span className="text-slate-400"> · {who}’s deals and shared ones</span>}
       </p>
+
+      {findings}
 
       <AddTodo defaultFor={both ? (me ?? 'David') : who} deals={deals} />
 

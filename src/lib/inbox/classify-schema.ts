@@ -70,9 +70,34 @@ export const EmailClassificationSchema = z.object({
         .string()
         .nullable()
         .describe('New facts the lender stated about what it does or does not finance (size, industries, collateral, geography). Null if none.'),
+      handoff_only: z
+        .boolean()
+        .describe('True when the sender is only passing the deal to someone at a DIFFERENT firm (e.g. "please meet Eddie from Valley Bank, he is interested"). The interest belongs to that other person, not to the sender. False otherwise.'),
     })
     .nullable()
     .describe('Fill only when kind is lender_reply, otherwise null.'),
+  people: z
+    .array(
+      z.object({
+        name: z.string(),
+        firm: z.string().nullable(),
+        title: z.string().nullable(),
+        email: z.string().nullable(),
+        phone: z.string().nullable(),
+        role: z.enum(['lender', 'broker', 'borrower', 'unknown']),
+        why: z.string().describe('One short line: why they are mentioned, e.g. "Introduced by Joe at Gibraltar for APD".'),
+      })
+    )
+    .describe('People this email introduces, refers or lists as contacts, other than the sender. Only as written in the sender\'s own message. Empty for most emails.'),
+  action_items: z
+    .array(
+      z.object({
+        type: z.enum(['lender_request', 'follow_up', 'possible_deal']),
+        text: z.string().describe('One short line saying what to do, e.g. "Send Chase the AR aging report".'),
+        deal_ref: z.string().nullable().describe('The D# of the deal it relates to, if any.'),
+      })
+    )
+    .describe('Things that would otherwise get lost. Empty for most emails.'),
 })
 
 export type EmailClassification = z.infer<typeof EmailClassificationSchema>

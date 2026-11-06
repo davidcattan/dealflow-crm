@@ -20,6 +20,8 @@ const TRIAGE_INSTRUCTIONS = `You are doing a quick first-pass sort of a debt bro
 - lender_reply: a lender or funder responding about a deal submitted to them
 - other: clearly neither (newsletters, marketing, notifications, scheduling, personal mail)
 
+Never choose other for an email that introduces or refers someone, lists contacts at a bank or lender, asks the broker for a document or information, or tells the broker to follow up later. Those need the careful read even when no deal is named: choose lender_reply if a lender sent it, otherwise new_deal.
+
 When in doubt between other and one of the first two, choose the first two — a second, more careful reader checks everything you flag. Only choose other when you are confident.`
 
 async function triageEmail(emailText: string, contextHint: string, supabase: SupabaseClient) {
@@ -51,7 +53,17 @@ const INSTRUCTIONS = `You are sorting the inbox of an asset-based lending debt b
 - lender_reply: a lender or funder responding about a deal that was submitted to them (interest, questions, document requests, term sheet, or a pass).
 - other: anything else — newsletters, a lender's marketing blast about its own programs, notifications, scheduling, internal or personal mail.
 
-Only use facts stated in the email. Never invent a company, amount or contact. If it is ambiguous whether this is a real deal, choose other.`
+Only use facts stated in the email. Never invent a company, amount or contact. If it is ambiguous whether this is a real deal, choose other.
+
+For every email, whatever its kind, also fill these. Leave them empty unless the email clearly calls for it:
+- people: anyone the sender's own message introduces, refers, or lists as a contact (an intro, "reach out to X at Y", a list of contacts at a bank). Give only what is written. Skip the sender, David and Eli Cattan, people who are merely named in passing, and everyone in the quoted thread below the sender's message.
+- action_items:
+  - lender_request: a lender or contact asks the team for a document or an answer, and it isn't already captured in lender_reply.requested_items. Use this especially when you chose other because no deal was named.
+  - follow_up: someone says to come back at a later time ("reach out in Q1", "we're in Chapter 11, follow up later").
+  - possible_deal: someone mentions a business that might need financing, but it isn't a new_deal yet.
+  Never add items for marketing blasts, scheduling, calendar acceptances or small talk.
+
+If a lender is only handing the deal to someone at a different firm, set lender_reply.handoff_only to true and list that person in people. Otherwise set it to false.`
 
 export type ClassifyContext = {
   deals: { ref: string; company_name: string; contact_name: string | null; status: string; hints?: string[] }[]
@@ -129,7 +141,7 @@ export async function classifyEmail(
     try {
       const triage = await triageEmail(emailText, hint, supabase)
       if (triage?.kind === 'other') {
-        return { kind: 'other', reason: triage.reason, new_deal: null, lender_reply: null }
+        return { kind: 'other', reason: triage.reason, new_deal: null, lender_reply: null, people: [], action_items: [] }
       }
     } catch (err) {
       if (isBillingError(err)) throw err

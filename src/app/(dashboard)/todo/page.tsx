@@ -3,6 +3,7 @@ import { loadLastActivity, loadNextSteps } from '@/lib/deals/load-next-steps'
 import { TODO_GROUPS, type NextStep } from '@/lib/deals/next-step'
 import { TEAM, isTeamMember, teamMemberOf, type TeamMember } from '@/lib/team'
 import { TodoList, type MyTodo, type TodoItem, type TodoSection } from './todo-list'
+import { EmailFindings, type EmailFinding } from './email-findings'
 
 // "What do I need to do next?" — every active deal's next step in one list,
 // most pressing first, plus to-dos the team writes themselves. Each person
@@ -115,8 +116,27 @@ export default async function TodoPage({ searchParams }: { searchParams: Promise
     .sort((a, b) => a.company_name.localeCompare(b.company_name))
     .map((d) => ({ id: d.id, name: d.company_name }))
 
+  // What the inbox reader found that needs a yes or no (empty before
+  // migration 051).
+  const { data: findingRows } = await supabase
+    .from('email_findings')
+    .select('id, kind, title, detail, people, deal_id, source_subject, created_at')
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+    .limit(40)
+  const findings: EmailFinding[] = (findingRows ?? []).map((f) => ({
+    id: f.id as string,
+    kind: f.kind as EmailFinding['kind'],
+    title: f.title as string,
+    detail: (f.detail as string | null) ?? null,
+    people: (f.people as EmailFinding['people']) ?? [],
+    dealId: (f.deal_id as string | null) ?? null,
+    subject: (f.source_subject as string | null) ?? null,
+  }))
+
   return (
     <TodoList
+      findings={<EmailFindings items={findings} />}
       who={who}
       me={me}
       sections={sections}
