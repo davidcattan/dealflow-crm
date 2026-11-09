@@ -222,6 +222,16 @@ export default async function DealDetailPage({
     }
     peopleByLender.set(lenderId, list)
   }
+  // The person you wrote to is your contact; an assistant who replied for
+  // them (e.g. sending an upload link) comes after.
+  const addressed = new Set(
+    (lenderEmails ?? [])
+      .filter((m) => m.classification === 'sent')
+      .flatMap((m) => String(m.to_emails ?? '').split(/[,;]\s*/).map((e) => e.trim().toLowerCase()))
+  )
+  for (const [lenderId, list] of peopleByLender) {
+    peopleByLender.set(lenderId, [...list.filter((p) => addressed.has(p.email)), ...list.filter((p) => !addressed.has(p.email))])
+  }
   const submissions: SubmissionRow[] = (submissionRows ?? []).map((r) => {
     const lender = Array.isArray(r.lenders) ? r.lenders[0] : r.lenders
     const primary = (subLenders ?? []).find((l) => l.id === r.lender_id)
