@@ -31,6 +31,7 @@ export const LOAN_TYPE_CATEGORIES = [
   'Real Estate / Bridge',
   'HELOC / Home Equity',
   'Factoring',
+  'PO Financing',
   'Construction Financing',
   'Working Capital / Line of Credit',
   'SBA Loan',

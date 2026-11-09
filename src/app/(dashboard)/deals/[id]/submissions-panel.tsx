@@ -1,5 +1,6 @@
 'use client'
 
+import { lenderRole, ROLE_LABELS } from '@/lib/deals/lender-role'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState, useTransition } from 'react'
@@ -25,6 +26,8 @@ export type SubmissionRow = {
   id: string
   lender_id: string
   lender_name: string
+  // The lender's free-text lending type (used to group PO vs AR lenders).
+  lender_type?: string | null
   status: SubmissionStatus
   sent_on: string
   last_activity_at: string
@@ -461,6 +464,17 @@ function NdaToggle({ dealId, required, missing }: { dealId: string; required: bo
   )
 }
 
+// On a two-part deal (PO financing plus factoring), lenders are listed by
+// the job they'd do. Any other deal keeps one plain list.
+function roleGroups(subs: SubmissionRow[]) {
+  const roleOf = (s: SubmissionRow) => lenderRole(s.lender_type) ?? 'other'
+  const roles = new Set(subs.map(roleOf))
+  if (!(roles.has('po') && roles.has('ar'))) return [{ key: 'all', label: null as string | null, subs }]
+  return (['po', 'ar', 'other'] as const)
+    .map((key) => ({ key, label: ROLE_LABELS[key] as string | null, subs: subs.filter((s) => roleOf(s) === key) }))
+    .filter((g) => g.subs.length)
+}
+
 export function SubmissionsPanel({
   dealId,
   requiresNda = false,
@@ -551,18 +565,27 @@ export function SubmissionsPanel({
       )}
 
       {submissions.length > 0 ? (
-        <ul className="mt-4 space-y-3">
-          {submissions.map((sub) => (
-            <LenderCard
-              key={sub.id}
-              dealId={dealId}
-              requiresNda={requiresNda}
-              sub={sub}
-              items={timeline.filter((t) => t.lender_id === sub.lender_id)}
-              onChanges={setChanges}
-            />
-          ))}
-        </ul>
+        roleGroups(submissions).map((group) => (
+          <div key={group.key} className="mt-4">
+            {group.label && (
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {group.label} ({group.subs.length})
+              </h3>
+            )}
+            <ul className="space-y-3">
+              {group.subs.map((sub) => (
+                <LenderCard
+                  key={sub.id}
+                  dealId={dealId}
+                  requiresNda={requiresNda}
+                  sub={sub}
+                  items={timeline.filter((t) => t.lender_id === sub.lender_id)}
+                  onChanges={setChanges}
+                />
+              ))}
+            </ul>
+          </div>
+        ))
       ) : (
         !adding && (
           <p className="mt-4 py-4 text-center text-sm text-slate-400">

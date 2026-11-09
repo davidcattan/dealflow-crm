@@ -121,7 +121,7 @@ export default async function DealDetailPage({
   const [{ data: submissionRows }, { data: lenderRows }, { data: lenderEmails }, dealEmails, duplicates, { data: allDeals }, { data: mailboxRows }, { data: callRows }] = await Promise.all([
     supabase
       .from('deal_submissions')
-      .select('id, lender_id, status, sent_on, last_activity_at, lenders(name)')
+      .select('id, lender_id, status, sent_on, last_activity_at, lenders(name, lending_type)')
       .eq('deal_id', id)
       .order('last_activity_at', { ascending: false }),
     supabase.from('lenders').select('id, name').order('name'),
@@ -236,6 +236,7 @@ export default async function DealDetailPage({
       id: r.id,
       lender_id: r.lender_id,
       lender_name: lender?.name ?? 'Unknown lender',
+      lender_type: (lender as { lending_type?: string | null } | null)?.lending_type ?? null,
       status: r.status as SubmissionStatus,
       sent_on: r.sent_on,
       last_activity_at: r.last_activity_at,
