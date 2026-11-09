@@ -18,12 +18,16 @@ export async function POST(request: Request) {
   const deal = await dealForFolder(auth.supabase, folder)
   if (!deal) return NextResponse.json({ skip: 'no_deal' })
 
+  // Same size and same file type counts as the same file, whatever it's
+  // named: a renamed copy (e.g. a lender package built from the deal's own
+  // files) would otherwise upload every document a second time.
+  const ext = fileName.includes('.') ? fileName.split('.').pop()!.toLowerCase() : ''
   const { data: same } = await auth.supabase
     .from('documents')
     .select('id')
     .eq('deal_id', deal.id)
-    .eq('file_name', fileName)
     .eq('file_size', size)
+    .ilike('file_name', ext ? `%.${ext}` : fileName)
     .limit(1)
   if (same?.length) return NextResponse.json({ skip: 'already_there', dealId: deal.id, dealName: deal.name })
 

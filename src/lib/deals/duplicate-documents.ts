@@ -65,7 +65,11 @@ export async function removeDuplicateDocuments(supabase: SupabaseClient, opts: {
   const families = new Map<string, Doc[]>()
   for (const d of (data ?? []) as Doc[]) {
     if (d.file_size === null) continue
-    const key = `${d.deal_id}|${d.file_name}|${d.file_size}`
+    // Same size and type is the same file even under another name (renamed
+    // copies, "file[2].pdf" re-downloads). Tiny files are matched by name
+    // too, since unrelated small files can share a size.
+    const ext = d.file_name.includes('.') ? d.file_name.split('.').pop()!.toLowerCase() : ''
+    const key = d.file_size >= 2048 ? `${d.deal_id}|${ext}|${d.file_size}` : `${d.deal_id}|${d.file_name}|${d.file_size}`
     if (kept.has(key)) {
       extra.push(d)
       continue
