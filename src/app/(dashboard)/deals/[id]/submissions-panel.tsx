@@ -538,6 +538,16 @@ export function SubmissionsPanel({
 
   const alreadySent = useMemo(() => new Set(submissions.map((s) => s.lender_id)), [submissions])
   const compactList = submissions.length >= COMPACT_AT
+  // Long lists get a search box: lender name, contact name or email.
+  const [query, setQuery] = useState('')
+  const q = compactList ? query.trim().toLowerCase() : ''
+  const shown = q
+    ? submissions.filter((s) =>
+        [s.lender_name, s.lender_type ?? '', ...(s.people ?? []).flatMap((p) => [p.name ?? '', p.email])].some((v) =>
+          v.toLowerCase().includes(q)
+        )
+      )
+    : submissions
   const counts = SUBMISSION_STATUSES.map((s) => [s, submissions.filter((x) => x.status === s).length] as const).filter(
     ([, n]) => n > 0
   )
@@ -593,8 +603,21 @@ export function SubmissionsPanel({
         <AddLenders dealId={dealId} lenders={lenders} alreadySent={alreadySent} onDone={() => setAdding(false)} />
       )}
 
+      {compactList && (
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={`Search ${submissions.length} lenders by name, contact or email…`}
+          className="mt-4 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+      )}
+      {q && !shown.length && (
+        <p className="mt-4 py-4 text-center text-sm text-slate-400">No lenders on this deal match &ldquo;{query.trim()}&rdquo;.</p>
+      )}
+
       {submissions.length > 0 ? (
-        roleGroups(submissions).map((group) => (
+        roleGroups(shown).map((group) => (
           <div key={group.key} className="mt-5">
             {group.label && (
               <div className={`mb-3 flex flex-wrap items-baseline gap-x-2 rounded-lg border-l-4 px-3 py-2 ${group.tint}`}>
