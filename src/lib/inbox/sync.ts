@@ -219,6 +219,17 @@ function matchLender(ctx: Context, email: string | null, firm: string | null) {
   return hits.length === 1 ? hits[0].id : null
 }
 
+// An email with a lender that names no deal ("Follow Up", "Bank <> JED"),
+// when that lender is working on exactly one live deal, is about that deal.
+async function onlyLiveDealFor(supabase: SupabaseClient, ctx: Context, lenderId: string) {
+  const { data } = await supabase.from('deal_submissions').select('deal_id').eq('lender_id', lenderId)
+  const live = [...new Set((data ?? []).map((r) => r.deal_id as string))].filter((id) => {
+    const deal = ctx.dealById.get(id)
+    return deal && !INACTIVE.includes(deal.status)
+  })
+  return live.length === 1 ? live[0] : null
+}
+
 // A forwarded email (FW:/Fwd: subject, or Gmail's forwarded-message marker).
 function isForward(message: InboxMessage) {
   return /^\s*(fw|fwd)\s*:/i.test(message.subject) || message.bodyText.includes('---------- Forwarded message')
@@ -746,6 +757,7 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
     ctx.dealByConversation.get(m.conversationId) ??
     external.map((r) => ctx.dealByContactEmail.get(r.email)).find(Boolean) ??
     findDealByText(ctx.deals, `${m.subject}\n${m.bodyText}`)?.id ??
+    (lenderIds.length === 1 ? await onlyLiveDealFor(supabase, ctx, lenderIds[0]) : null) ??
     null
 
   // Nothing to do with a deal or a lender — e.g. personal mail.
@@ -1151,13 +1163,14 @@ async function act({
 
   if (kind === 'lender_reply') {
     const reply = classification.lender_reply
+    const lenderId = thread?.lenderId ?? senderLenderId
     const dealId =
       thread?.dealId ??
       threadDealId ??
       (reply?.deal_ref ? ctx.dealByRef.get(reply.deal_ref)?.id : undefined) ??
       findDealByText(ctx.deals, `${message.subject}\n${message.bodyText}`)?.id ??
+      (lenderId ? await onlyLiveDealFor(supabase, ctx, lenderId) : null) ??
       null
-    const lenderId = thread?.lenderId ?? senderLenderId
     const lender = lenderId ? ctx.lenderById.get(lenderId) : undefined
     // A lender passing the deal to another firm isn't interested itself.
     const outcome = reply ? (reply.handoff_only ? 'other' : reply.outcome) : null
