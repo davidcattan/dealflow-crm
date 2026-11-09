@@ -10,8 +10,8 @@ export function lenderRole(lendingType: string | null | undefined): LenderRole |
   return null
 }
 
-export const ROLE_LABELS: Record<LenderRole | 'other', string> = {
-  po: 'PO financing (pays the suppliers)',
-  ar: 'Factoring / AR (advances on invoices, takes out the PO lender)',
-  other: 'Other lenders',
+export const ROLE_LABELS: Record<LenderRole | 'other', { title: string; note: string }> = {
+  po: { title: 'PO financing', note: 'pays the suppliers' },
+  ar: { title: 'Factoring / AR', note: 'advances on the invoices and takes out the PO lender' },
+  other: { title: 'Other lenders', note: '' },
 }

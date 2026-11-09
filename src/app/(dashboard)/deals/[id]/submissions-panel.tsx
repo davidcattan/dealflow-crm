@@ -278,11 +278,15 @@ function LenderCard({
   items,
   requiresNda,
   onChanges,
+  compact = false,
 }: {
   dealId: string
   sub: SubmissionRow
   items: TimelineItem[]
   requiresNda: boolean
+  // Long lists (10+ lenders): every screen size shows one line per lender,
+  // click to open the rest.
+  compact?: boolean
   // What the CRM changed because of a note (shown above the list, since a
   // note can take this lender off it).
   onChanges: (changes: string[]) => void
@@ -296,8 +300,12 @@ function LenderCard({
   const latest = items[0]
 
   return (
-    <li className="rounded-lg border border-slate-200 p-4 max-sm:p-0">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="block w-full px-3.5 py-3 text-left sm:hidden">
+    <li className={`rounded-lg border border-slate-200 ${compact ? 'p-0' : 'p-4 max-sm:p-0'}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`block w-full px-3.5 py-3 text-left hover:bg-slate-50 ${compact ? 'rounded-lg' : 'sm:hidden'}`}
+      >
         <span className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate font-medium text-slate-900">
             {sub.lender_name}
@@ -316,9 +324,15 @@ function LenderCard({
           </span>
         )}
       </button>
-      <div className={`max-sm:border-t max-sm:border-slate-100 max-sm:px-3.5 max-sm:pb-3.5 max-sm:pt-3 ${open ? '' : 'max-sm:hidden'}`}>
+      <div
+        className={
+          compact
+            ? `border-t border-slate-100 px-3.5 pb-3.5 pt-3 ${open ? '' : 'hidden'}`
+            : `max-sm:border-t max-sm:border-slate-100 max-sm:px-3.5 max-sm:pb-3.5 max-sm:pt-3 ${open ? '' : 'max-sm:hidden'}`
+        }
+      >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2 max-sm:hidden">
+        <div className={`flex min-w-0 items-center gap-2 ${compact ? '' : 'max-sm:hidden'}`}>
           <Link href={`/lenders/${sub.lender_id}`} className="truncate font-medium text-slate-800 hover:underline">
             {sub.lender_name}
           </Link>
@@ -466,14 +480,25 @@ function NdaToggle({ dealId, required, missing }: { dealId: string; required: bo
 
 // On a two-part deal (PO financing plus factoring), lenders are listed by
 // the job they'd do. Any other deal keeps one plain list.
+const ROLE_TINT = { po: 'border-sky-500 bg-sky-50', ar: 'border-emerald-500 bg-emerald-50', other: 'border-slate-300 bg-slate-50' }
+
 function roleGroups(subs: SubmissionRow[]) {
   const roleOf = (s: SubmissionRow) => lenderRole(s.lender_type) ?? 'other'
   const roles = new Set(subs.map(roleOf))
-  if (!(roles.has('po') && roles.has('ar'))) return [{ key: 'all', label: null as string | null, subs }]
+  if (!(roles.has('po') && roles.has('ar')))
+    return [{ key: 'all', label: null as (typeof ROLE_LABELS)[keyof typeof ROLE_LABELS] | null, tint: '', subs }]
   return (['po', 'ar', 'other'] as const)
-    .map((key) => ({ key, label: ROLE_LABELS[key] as string | null, subs: subs.filter((s) => roleOf(s) === key) }))
+    .map((key) => ({
+      key,
+      label: ROLE_LABELS[key] as (typeof ROLE_LABELS)[keyof typeof ROLE_LABELS] | null,
+      tint: ROLE_TINT[key],
+      subs: subs.filter((s) => roleOf(s) === key),
+    }))
     .filter((g) => g.subs.length)
 }
+
+// From this many lenders on, each one shows as a single line until clicked.
+const COMPACT_AT = 10
 
 export function SubmissionsPanel({
   dealId,
@@ -512,6 +537,7 @@ export function SubmissionsPanel({
   }, [router])
 
   const alreadySent = useMemo(() => new Set(submissions.map((s) => s.lender_id)), [submissions])
+  const compactList = submissions.length >= COMPACT_AT
   const counts = SUBMISSION_STATUSES.map((s) => [s, submissions.filter((x) => x.status === s).length] as const).filter(
     ([, n]) => n > 0
   )
@@ -520,7 +546,10 @@ export function SubmissionsPanel({
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Lenders sent to ({submissions.length})</h2>
+          <h2 className="text-sm font-semibold text-slate-900">
+            Lenders sent to ({submissions.length})
+            {compactList && <span className="ml-2 font-normal text-slate-400">Click a lender to open it</span>}
+          </h2>
           <p className="mt-0.5 text-xs text-slate-500">
             Lenders you email from a CRM draft, and their replies, are added here automatically.
           </p>
@@ -566,13 +595,16 @@ export function SubmissionsPanel({
 
       {submissions.length > 0 ? (
         roleGroups(submissions).map((group) => (
-          <div key={group.key} className="mt-4">
+          <div key={group.key} className="mt-5">
             {group.label && (
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                {group.label} ({group.subs.length})
-              </h3>
+              <div className={`mb-3 flex flex-wrap items-baseline gap-x-2 rounded-lg border-l-4 px-3 py-2 ${group.tint}`}>
+                <h3 className="text-base font-semibold text-slate-900">
+                  {group.label.title} <span className="font-normal text-slate-500">({group.subs.length})</span>
+                </h3>
+                {group.label.note && <span className="text-sm text-slate-600">{group.label.note}</span>}
+              </div>
             )}
-            <ul className="space-y-3">
+            <ul className={compactList ? 'space-y-2' : 'space-y-3'}>
               {group.subs.map((sub) => (
                 <LenderCard
                   key={sub.id}
@@ -581,6 +613,7 @@ export function SubmissionsPanel({
                   sub={sub}
                   items={timeline.filter((t) => t.lender_id === sub.lender_id)}
                   onChanges={setChanges}
+                  compact={compactList}
                 />
               ))}
             </ul>
