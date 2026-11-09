@@ -5,7 +5,9 @@ export const DOC_CATEGORIES = [
   'Term sheets & offers',
   'Bank statements',
   'Tax returns',
-  'Financial statements',
+  'Balance sheets',
+  'P&L / income statements',
+  'Financial statements (full / other)',
   'AR / AP & inventory',
   'Debt schedule & loans',
   'Personal financial statement',
@@ -19,15 +21,20 @@ export const DOC_CATEGORIES = [
 
 export type DocCategory = (typeof DOC_CATEGORIES)[number]
 
+const BALANCE_SHEET = /balance\s*sheet|\bbs\b/i
+const PROFIT_AND_LOSS = /p\s*&\s*l|\bpnl\b|profit|income\s*st(?:ate)?m(?:e)?n?ts?\b|operating statement/i
+
 // First match wins, so more specific groups come first.
 const RULES: [DocCategory, RegExp][] = [
   ['Term sheets & offers', /term\s*sheet|\bloi\b.*(lend|loan|financ)|commitment letter|indicative|proposal|\boffer\b|approval letter|conditional approval/i],
   ['Personal financial statement', /\bpfs\b|personal financial|net worth statement/i],
-  ['Bank statements', /bank|\b(chase|wells ?fargo|wellsfargo|bofa|citi|pnc|td bank|truist|mercury|amex|capital one|us bank|regions|huntington|santander)\b|\bstmt|\bdda\b|checking|savings|e-?statement|statements?\b/i],
+  ['Bank statements', /bank|\b(chase|wells ?fargo|wellsfargo|bofa|citi|pnc|td bank|truist|mercury|amex|capital one|us bank|regions|huntington|santander)\b|\bstmt|\bdda\b|checking|savings|e-?statement|(?<!(?:financial|income|operating|cash flow|earnings)\s)statements?\b/i],
   ['Tax returns', /tax|1040|1120|1065|990|\bk-?1\b|schedule c|\bw-?2\b|\birs\b|return/i],
   ['AR / AP & inventory', /\bar\b|\bap\b|aging|receivable|payable|inventory|borrowing base|\bbbc\b/i],
   ['Debt schedule & loans', /debt|loan|note payable|mca|lease|amortization|payoff|ucc/i],
-  ['Financial statements', /p\s*&\s*l|\bpnl\b|profit|income statement|balance sheet|\bbs\b|financial|ytd|year[- ]end|cash flow|budget|projection|pro ?forma|10-?[kq]\b|audit|trial balance|quickbooks|\bqbo\b/i],
+  ['Balance sheets', BALANCE_SHEET],
+  ['P&L / income statements', PROFIT_AND_LOSS],
+  ['Financial statements (full / other)', /financial|ytd|year[- ]end|cash flow|budget|projection|pro ?forma|10-?[kq]\b|audit|trial balance|quickbooks|\bqbo\b/i],
   ['Applications & forms', /application|\bapp\b|form|questionnaire|authorization|consent|signed|docusign|w-?9/i],
   ['Appraisals & property', /apprais|property|survey|\bbpo\b|deed|title|rent roll|lease|plat|site plan|insurance|environmental|phase i/i],
   ['Legal & corporate', /\bloi\b|letter of intent|agreement|contract|operating|articles|bylaws|certificate|good standing|\bein\b|org chart|ownership|cap table|resolution|purchase agreement|\bnda\b/i],
@@ -40,7 +47,13 @@ export function guessCategory(fileName: string, docType?: string | null): DocCat
   const name = base.replace(/[_-]+/g, ' ')
   for (const text of [docType ?? '', name]) {
     if (!text) continue
-    for (const [cat, re] of RULES) if (re.test(text)) return cat
+    for (const [cat, re] of RULES) {
+      if (!re.test(text)) continue
+      // One file with both (a full set of statements) isn't either one.
+      if ((cat === 'Balance sheets' || cat === 'P&L / income statements') && BALANCE_SHEET.test(text) && PROFIT_AND_LOSS.test(text))
+        return 'Financial statements (full / other)'
+      return cat
+    }
   }
   // Monthly files named by date, e.g. "26_02 Solid Max Holdings" or
   // "013126 …", are almost always bank statements.
