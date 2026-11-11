@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DOC_CATEGORIES } from '@/lib/documents/categories'
 
 // The lender snapshot: the short template the brokerage sends to lenders.
 // One block per entity, plus a combined block when there is more than one.
@@ -79,7 +80,23 @@ export const SnapshotSchema = z.object({
   request_list: z
     .array(z.string())
     .describe('Documents to request from the client (short, one per line), tailored to what is missing for ABL / lender review.'),
+  documents: z
+    .array(
+      z.object({
+        file_name: z.string().describe('The file name exactly as attached.'),
+        group: z.enum(DOC_CATEGORIES).describe('Which group the file belongs in, judged from what is inside it, not its name.'),
+        what: z.string().describe('3-8 words on what it actually is, e.g. "2025 P&L, balance sheet, cash flow, AR aging".'),
+      })
+    )
+    .nullable()
+    .describe('One entry per attached file: what it really is, from its contents. Null only if no files were attached.'),
 })
+
+// The underwriting's read of each file, keyed by lower-case file name.
+export function documentGroupsOf(snapshot: unknown): Map<string, { group: string; what: string }> {
+  const docs = (snapshot as { documents?: { file_name: string; group: string; what: string }[] | null } | null)?.documents
+  return new Map((docs ?? []).map((d) => [d.file_name.toLowerCase(), { group: d.group, what: d.what }]))
+}
 
 export type Snapshot = z.infer<typeof SnapshotSchema>
 export type SnapshotEntity = z.infer<typeof EntitySchema>

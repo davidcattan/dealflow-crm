@@ -1,3 +1,5 @@
+import { DOC_CATEGORIES } from '@/lib/documents/categories'
+
 // The rules the brokerage's own analyst workflow follows, written down once
 // so the free (Claude.ai), Claude Code, and paid routes all produce the same
 // snapshot.
@@ -18,7 +20,8 @@ Rules:
 4. Coverage: annual debt service (from the debt schedule if given) against EBITDA, as a ratio. Say in one line what basis you used and how much to trust it (for example seasonality of a partial year).
 5. FLAGS: list every inconsistency or red flag as one short line each. Examples: the loan application says "no balances" but debt exists; unexplained "other income"; interim P&L with no depreciation; round-number receivables; balance sheet not reconciling to the tax return; thin coverage; concentrated or related-party debt; SBA anti-stacking restrictions; missing documents.
 6. REQUEST LIST: the documents to ask the client for, one short line each, tailored to what is missing for an asset-based or cash-flow lender (AR aging, fixed asset register, equipment list with serials/VINs, inventory listing, AP aging, UCC search, payoff statements, loan agreements, appraisals, and so on). Only list what is actually missing.
-7. ALWAYS: if the business has accounts receivable, request an AR aging report; if it has inventory, request an inventory list; if it has equipment, request an equipment list (make, model, year, serial/VIN, value) — unless that exact document is already in the package.`
+7. ALWAYS: if the business has accounts receivable, request an AR aging report; if it has inventory, request an inventory list; if it has equipment, request an equipment list (make, model, year, serial/VIN, value) — unless that exact document is already in the package.
+8. DOCUMENTS: for every attached file, say what it actually is from its CONTENTS (not its file name, which is often wrong or vague) and put it in exactly one group: ${DOC_CATEGORIES.join('; ')}. A file with only a P&L goes in "P&L / income statements"; only a balance sheet, "Balance sheets"; a P&L and a balance sheet together (a full set, often with cash flow), projections or audits, "Financial statements (full / other)".`
 
 export function buildSnapshotPrompt(
   deal: {

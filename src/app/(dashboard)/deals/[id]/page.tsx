@@ -8,7 +8,7 @@ import { SnapshotPanel } from './snapshot-panel'
 import { QuickReadPanel } from './quick-read-panel'
 import type { QuickRead } from '@/lib/quickread/schema'
 import { buildSnapshotPrompt } from '@/lib/snapshot/prompt'
-import type { Snapshot } from '@/lib/snapshot/schema'
+import { documentGroupsOf, type Snapshot } from '@/lib/snapshot/schema'
 import { docTextsOf, withCollateralRequests } from '@/lib/snapshot/collateral'
 import { estimateUnderwriting } from '@/lib/underwriting/estimate'
 import { buildManualPrompt } from '@/lib/underwriting/prompt'
@@ -381,6 +381,8 @@ export default async function DealDetailPage({
     url: viewUrls?.[i]?.signedUrl ?? null,
     downloadUrl: `/api/deals/${deal.id}/documents/${doc.id}/download`,
   }))
+  // Groups from the AI underwriting, which read what's inside each file.
+  const aiDocs = documentGroupsOf(deal.snapshot)
 
   // Overview card: the most recent thing that happened, from any source.
   const activityUpdates = ((updates ?? []) as (DealUpdate & { source?: string | null })[]).filter((u) => u.source !== 'call' && u.source !== 'email')
@@ -603,7 +605,8 @@ export default async function DealDetailPage({
             dealId={deal.id}
             dealName={deal.company_name}
             docs={docsWithUrls.map((doc) => {
-              const category = doc.category || guessCategory(doc.file_name, doc.triage?.doc_type)
+              const ai = aiDocs.get(doc.file_name.toLowerCase())
+              const category = doc.category || ai?.group || guessCategory(doc.file_name, doc.triage?.doc_type)
               const lenderId =
                 doc.lender_id ??
                 (category === 'Term sheets & offers' ? guessLender(doc.file_name, termSheetLenders)?.id : null) ??
@@ -616,6 +619,7 @@ export default async function DealDetailPage({
                 size: formatBytes(doc.file_size),
                 uploaded_at: doc.uploaded_at,
                 triage: doc.triage,
+                what: ai?.what ?? null,
                 category,
                 lender: lenderId ? { id: lenderId, name: lenderNameById.get(lenderId) ?? 'Lender' } : null,
               }
@@ -639,7 +643,7 @@ export default async function DealDetailPage({
             : `${docsWithUrls.length} document${docsWithUrls.length === 1 ? '' : 's'}: ` +
               Object.entries(
                 docsWithUrls.reduce<Record<string, number>>((acc, d) => {
-                  const c = d.category || guessCategory(d.file_name, d.triage?.doc_type)
+                  const c = d.category || aiDocs.get(d.file_name.toLowerCase())?.group || guessCategory(d.file_name, d.triage?.doc_type)
                   acc[c] = (acc[c] ?? 0) + 1
                   return acc
                 }, {})

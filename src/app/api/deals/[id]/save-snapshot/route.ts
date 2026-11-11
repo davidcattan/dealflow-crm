@@ -12,7 +12,10 @@ export async function POST(request: Request, ctx: RouteContext<'/api/deals/[id]/
   const { supabase } = auth
 
   const { id } = await ctx.params
-  const parsed = SnapshotSchema.safeParse(await request.json().catch(() => null))
+  const body = await request.json().catch(() => null)
+  // Older snapshots (and edits from the deal page) may not list documents.
+  if (body && typeof body === 'object' && !('documents' in body)) body.documents = null
+  const parsed = SnapshotSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json(
       { error: 'Snapshot did not match the expected format', issues: parsed.error.issues },

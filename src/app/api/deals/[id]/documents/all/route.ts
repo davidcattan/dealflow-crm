@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { guessCategory } from '@/lib/documents/categories'
+import { documentGroupsOf } from '@/lib/snapshot/schema'
 import type { DocumentRecord } from '@/lib/types'
 
 // Fresh download links for every document on a deal, with its group, so the
@@ -22,11 +23,13 @@ export async function GET(_request: Request, ctx: RouteContext<'/api/deals/[id]/
     return true
   })
   if (!docs.length) return NextResponse.json({ files: [] })
+  const { data: deal } = await supabase.from('deals').select('snapshot').eq('id', id).single()
+  const aiDocs = documentGroupsOf(deal?.snapshot)
   const { data: signed } = await supabase.storage.from('borrower-documents').createSignedUrls(docs.map((d) => d.storage_path), 600)
   return NextResponse.json({
     files: docs.map((d, i) => ({
       name: d.file_name,
-      group: d.category || guessCategory(d.file_name, d.triage?.doc_type),
+      group: d.category || aiDocs.get(d.file_name.toLowerCase())?.group || guessCategory(d.file_name, d.triage?.doc_type),
       url: signed?.[i]?.signedUrl ?? null,
     })),
   })

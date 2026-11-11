@@ -17,6 +17,8 @@ export type GroupedDoc = {
   size: string
   uploaded_at: string
   triage: DocTriage | null
+  // What the AI underwriting says the file is, from its contents.
+  what?: string | null
   category: string
   lender: { id: string; name: string } | null
   // Same name and size as an earlier upload.
@@ -94,7 +96,7 @@ function DocRow({
           )}
           {doc.lender && <span className="mr-1.5 rounded bg-violet-50 px-1.5 py-0.5 font-medium text-violet-700">{doc.lender.name}</span>}
           {[doc.size, new Date(doc.uploaded_at).toLocaleDateString()].filter(Boolean).join(' · ')}
-          {doc.triage && <span className="max-sm:hidden"> · {doc.triage.doc_type}</span>}
+          {(doc.what || doc.triage) && <span className="max-sm:hidden"> · {doc.what || doc.triage?.doc_type}</span>}
         </p>
         {error && <p className="text-xs text-red-600">{error}</p>}
       </div>
