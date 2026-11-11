@@ -295,8 +295,8 @@ export async function setUnderwritingQueued(
 }
 
 // Merges a duplicate deal (source) into the deal being kept (target):
-// documents, updates, emails, lender submissions, matches and AI spend all
-// move over; blank fields on the target are filled from the source; then
+// documents, updates, emails, calls, to-dos, contacts, AI chats, lender
+// submissions, matches and AI spend all move over; blank fields on the target are filled from the source; then
 // the source deal is removed. Documents' stored files are untouched — only
 // which deal they belong to changes.
 export async function mergeDeals(sourceId: string, targetId: string) {
@@ -318,6 +318,30 @@ export async function mergeDeals(sourceId: string, targetId: string) {
     .eq('deal_id', sourceId)
   await supabase.from('deal_updates').update({ deal_id: targetId }).eq('deal_id', sourceId)
   await supabase.from('ai_usage').update({ deal_id: targetId }).eq('deal_id', sourceId)
+  // Everything else hung on the deal. Most of these are deleted along with
+  // the source deal, so they must move first (a call recording was lost
+  // this way on Nov 10).
+  const { count: callCount } = await supabase
+    .from('deal_calls')
+    .update({ deal_id: targetId }, { count: 'exact' })
+    .eq('deal_id', sourceId)
+  for (const table of ['todos', 'deal_contacts', 'ai_chats', 'notifications', 'prospects', 'email_findings'] as const) {
+    await supabase.from(table).update({ deal_id: targetId }).eq('deal_id', sourceId)
+  }
+
+  // Keep the source deal's main contact as an extra contact on the target
+  // when it's a different person.
+  const sameEmail =
+    source.contact_email && target.contact_email && source.contact_email.toLowerCase() === target.contact_email.toLowerCase()
+  if (source.contact_name && target.contact_name && !sameEmail && source.contact_name !== target.contact_name) {
+    await supabase.from('deal_contacts').insert({
+      deal_id: targetId,
+      name: source.contact_name,
+      email: source.contact_email ?? null,
+      phone: source.contact_phone ?? null,
+      notes: `Main contact on merged deal "${source.company_name}"`,
+    })
+  }
 
   // Lender rows are unique per deal: move the ones the target doesn't have.
   for (const table of ['deal_submissions', 'deal_matches'] as const) {
@@ -348,7 +372,7 @@ export async function mergeDeals(sourceId: string, targetId: string) {
   await supabase.from('deal_updates').insert({
     deal_id: targetId,
     entry_date: new Date().toISOString().slice(0, 10),
-    note: `Merged duplicate deal "${source.company_name}" into this one (${docCount ?? 0} documents, ${emailCount ?? 0} emails moved).`,
+    note: `Merged duplicate deal "${source.company_name}" into this one (${docCount ?? 0} documents, ${emailCount ?? 0} emails, ${callCount ?? 0} calls moved).`,
     source: 'manual',
     created_by: user?.id ?? null,
   })

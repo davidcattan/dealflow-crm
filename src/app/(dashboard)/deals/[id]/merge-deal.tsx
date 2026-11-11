@@ -11,7 +11,7 @@ type DealOption = { id: string; company_name: string; status: string }
 const PAST = ['dead', 'closed', 'old']
 
 function explain(source: string, target: string) {
-  return `Merge "${source}" into "${target}"?\n\nAll documents, emails, updates and lender history move to "${target}", and "${source}" is removed. This can't be undone.`
+  return `Merge "${source}" into "${target}"?\n\nAll documents, emails, calls, to-dos, contacts, updates and lender history move to "${target}", and "${source}" is removed. This can't be undone.`
 }
 
 // Header button: merge THIS deal into another one (this deal goes away).
