@@ -64,13 +64,19 @@ export function followUpDue(lastTouch: string | Date) {
 type DealRow = { id: string; company_name: string; status: string; owner?: string | null }
 
 // Every lender follow-up that's due today or earlier, oldest first.
-export async function loadFollowUps(supabase: SupabaseClient, today = etDate(new Date())): Promise<FollowUp[]> {
+export async function loadFollowUps(
+  supabase: SupabaseClient,
+  today = etDate(new Date()),
+  onlyDealId?: string
+): Promise<FollowUp[]> {
   // Works before the owner column exists (migration 037).
   const withOwner = await supabase.from('deals').select('id, company_name, status, owner')
   const dealRows = (
     withOwner.error ? (await supabase.from('deals').select('id, company_name, status')).data : withOwner.data
   ) as DealRow[] | null
-  const deals = new Map((dealRows ?? []).filter((d) => !INACTIVE.includes(d.status)).map((d) => [d.id, d]))
+  const deals = new Map(
+    (dealRows ?? []).filter((d) => !INACTIVE.includes(d.status) && (!onlyDealId || d.id === onlyDealId)).map((d) => [d.id, d])
+  )
   if (!deals.size) return []
 
   // Only lenders still deciding: "sent" (waiting on them) and "interested"

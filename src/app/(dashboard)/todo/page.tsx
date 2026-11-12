@@ -5,7 +5,7 @@ import { TEAM, isTeamMember, teamMemberOf, type TeamMember } from '@/lib/team'
 import { TodoList, type MyTodo, type TodoItem, type TodoSection } from './todo-list'
 import { EmailFindings, type EmailFinding } from './email-findings'
 import { LenderFollowUps } from './lender-follow-ups'
-import { loadFollowUps, MAX_FOLLOW_UPS } from '@/lib/deals/follow-ups'
+import { loadFollowUps } from '@/lib/deals/follow-ups'
 
 // "What do I need to do next?" — every active deal's next step in one list,
 // most pressing first, plus to-dos the team writes themselves. Each person
@@ -145,16 +145,7 @@ export default async function TodoPage({ searchParams }: { searchParams: Promise
           <LenderFollowUps
             items={followUps
               .filter((f) => mine(f.owner))
-              .map((f) => ({
-                dealId: f.dealId,
-                dealName: f.dealName,
-                lenderId: f.lenderId,
-                lenderName: f.lenderName,
-                lastTouchAt: f.lastTouchAt,
-                lastBy: f.lastBy,
-                followUpsSent: f.followUpsSent,
-                maxFollowUps: MAX_FOLLOW_UPS,
-              }))}
+              .map((f) => ({ dealId: f.dealId, dealName: f.dealName, lenderName: f.lenderName, lastTouchAt: f.lastTouchAt }))}
           />
         </>
       }

@@ -11,6 +11,7 @@ import {
   type SubmissionStatus,
 } from '@/lib/deals/submission-status'
 import { editDealUpdate, removeDealUpdate } from './actions'
+import { FollowUpActions, type FollowUpInfo } from './follow-up-actions'
 import {
   addLenderNote,
   addNewLenderSubmission,
@@ -37,6 +38,8 @@ export type SubmissionRow = {
   // first), else the lender's primary contact.
   people?: { name: string | null; email: string }[]
   peopleFromEmails?: boolean
+  // Set when this lender hasn't answered in 3 days (lib/deals/follow-ups).
+  followUp?: FollowUpInfo | null
 }
 
 // "mark.rosen@amusa.com" → "Mark Rosen" when no name is saved.
@@ -312,6 +315,7 @@ function LenderCard({
             {sub.people?.[0] && <span className="font-normal text-slate-500"> · {personLabel(sub.people[0])}</span>}
           </span>
           {requiresNda && !sub.nda && <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">No NDA</span>}
+          {sub.followUp && <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">Follow up</span>}
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${SUBMISSION_STYLES[sub.status]}`}>
             {SUBMISSION_LABELS[sub.status]}
           </span>
@@ -338,6 +342,7 @@ function LenderCard({
           </Link>
           <WithWhom sub={sub} />
           <span className="text-xs text-slate-400">updated {ago(sub.last_activity_at)}</span>
+          {sub.followUp && <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">Follow up</span>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {requiresNda && <NdaChip dealId={dealId} sub={sub} />}
@@ -375,6 +380,8 @@ function LenderCard({
           </button>
         </div>
       </div>
+
+      {sub.followUp && <FollowUpActions dealId={dealId} lenderId={sub.lender_id} lenderName={sub.lender_name} info={sub.followUp} />}
 
       {items.length > 0 && (
         <ul className="mt-3 space-y-2 border-l-2 border-slate-100 pl-3">

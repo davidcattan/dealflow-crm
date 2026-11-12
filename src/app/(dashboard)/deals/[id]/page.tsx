@@ -9,6 +9,7 @@ import { QuickReadPanel } from './quick-read-panel'
 import type { QuickRead } from '@/lib/quickread/schema'
 import { buildSnapshotPrompt } from '@/lib/snapshot/prompt'
 import { documentGroupsOf, type Snapshot } from '@/lib/snapshot/schema'
+import { loadFollowUps, MAX_FOLLOW_UPS } from '@/lib/deals/follow-ups'
 import { docTextsOf, withCollateralRequests } from '@/lib/snapshot/collateral'
 import { estimateUnderwriting } from '@/lib/underwriting/estimate'
 import { buildManualPrompt } from '@/lib/underwriting/prompt'
@@ -232,7 +233,10 @@ export default async function DealDetailPage({
   for (const [lenderId, list] of peopleByLender) {
     peopleByLender.set(lenderId, [...list.filter((p) => addressed.has(p.email)), ...list.filter((p) => !addressed.has(p.email))])
   }
+  // Lenders on this deal that haven't answered in 3 days.
+  const followUps = new Map((await loadFollowUps(supabase, undefined, deal.id)).map((f) => [f.lenderId, f]))
   const submissions: SubmissionRow[] = (submissionRows ?? []).map((r) => {
+    const due = followUps.get(r.lender_id as string)
     const lender = Array.isArray(r.lenders) ? r.lenders[0] : r.lenders
     const primary = (subLenders ?? []).find((l) => l.id === r.lender_id)
     const fromEmails = peopleByLender.get(r.lender_id as string) ?? []
@@ -251,6 +255,9 @@ export default async function DealDetailPage({
       sent_on: r.sent_on,
       last_activity_at: r.last_activity_at,
       nda: masterNda.has(r.lender_id as string) ? 'master' : dealNda.has(r.id as string) ? 'deal' : null,
+      followUp: due
+        ? { lastTouchAt: due.lastTouchAt, lastBy: due.lastBy, followUpsSent: due.followUpsSent, maxFollowUps: MAX_FOLLOW_UPS }
+        : null,
     }
   })
   // Per-lender timeline: received emails (from the inbox log) plus notes.
