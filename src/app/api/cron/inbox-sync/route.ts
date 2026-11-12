@@ -7,6 +7,7 @@ import { advancePendingCalls } from '@/lib/calls/process'
 import { refreshStaleKeyFacts } from '@/lib/deals/key-facts'
 import { readPendingLenderDocuments } from '@/lib/lenders/tear-sheet'
 import { removeDuplicateDocuments } from '@/lib/deals/duplicate-documents'
+import { notifyFollowUpsOnce } from '@/lib/deals/follow-ups'
 
 // Needs Fluid Compute on Vercel Pro (max 800s).
 export const maxDuration = 800
@@ -37,6 +38,8 @@ export async function GET(request: Request) {
   if (isQuietHours()) {
     return NextResponse.json({ skipped: 'Overnight pause (10pm–7am ET)' })
   }
+  // First run of the morning: which lenders need a follow-up today.
+  await notifyFollowUpsOnce(supabase).catch((err) => console.error('Follow-up reminder failed', err))
 
   const { data: state } = await supabase.from('inbox_sync_state').select('auto_sync_enabled').eq('id', 1).single()
   if (!state?.auto_sync_enabled) {

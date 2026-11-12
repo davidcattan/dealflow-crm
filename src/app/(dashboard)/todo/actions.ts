@@ -59,3 +59,28 @@ export async function dismissStep(dealId: string, text: string | null) {
   revalidatePath('/todo')
   return { ok: true }
 }
+
+// Lender follow-ups: log that we nudged a lender some other way (a call, a
+// text), which restarts its 3-day clock, or stop reminding about it.
+export async function logLenderFollowUp(dealId: string, lenderId: string, lenderName: string, how: 'followed_up' | 'stop') {
+  const { FOLLOWED_UP_NOTE, STOP_NOTE, etDate } = await import('@/lib/deals/follow-ups')
+  const supabase = await createClient()
+  const note =
+    how === 'stop'
+      ? `${STOP_NOTE} for ${lenderName} (no answer).`
+      : `${FOLLOWED_UP_NOTE} ${lenderName} (call or message).`
+  const { error } = await supabase
+    .from('deal_updates')
+    .insert({ deal_id: dealId, lender_id: lenderId, entry_date: etDate(new Date()), note, source: 'manual' })
+  if (error) return { error: error.message }
+  if (how === 'followed_up') {
+    await supabase
+      .from('deal_submissions')
+      .update({ last_activity_at: new Date().toISOString() })
+      .eq('deal_id', dealId)
+      .eq('lender_id', lenderId)
+  }
+  revalidatePath('/todo')
+  revalidatePath(`/deals/${dealId}`)
+  return { ok: true }
+}

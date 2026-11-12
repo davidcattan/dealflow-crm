@@ -4,6 +4,8 @@ import { TODO_GROUPS, type NextStep } from '@/lib/deals/next-step'
 import { TEAM, isTeamMember, teamMemberOf, type TeamMember } from '@/lib/team'
 import { TodoList, type MyTodo, type TodoItem, type TodoSection } from './todo-list'
 import { EmailFindings, type EmailFinding } from './email-findings'
+import { LenderFollowUps } from './lender-follow-ups'
+import { loadFollowUps, MAX_FOLLOW_UPS } from '@/lib/deals/follow-ups'
 
 // "What do I need to do next?" — every active deal's next step in one list,
 // most pressing first, plus to-dos the team writes themselves. Each person
@@ -54,7 +56,7 @@ export default async function TodoPage({ searchParams }: { searchParams: Promise
   ) as DealRow[] | null
   const active = (deals ?? []).filter((d) => !INACTIVE.includes(d.status))
   const ids = active.map((d) => d.id)
-  const [steps, last, { data: todoRows }] = await Promise.all([
+  const [steps, last, { data: todoRows }, followUps] = await Promise.all([
     loadNextSteps(supabase, ids),
     loadLastActivity(supabase, ids),
     supabase
@@ -63,6 +65,7 @@ export default async function TodoPage({ searchParams }: { searchParams: Promise
       .is('done_at', null)
       .order('due_date', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true }),
+    loadFollowUps(supabase),
   ])
 
   const mine = (owner: string | null | undefined) => who === 'all' || !isTeamMember(owner) || owner === who
@@ -136,7 +139,25 @@ export default async function TodoPage({ searchParams }: { searchParams: Promise
 
   return (
     <TodoList
-      findings={<EmailFindings items={findings} />}
+      findings={
+        <>
+          <EmailFindings items={findings} />
+          <LenderFollowUps
+            items={followUps
+              .filter((f) => mine(f.owner))
+              .map((f) => ({
+                dealId: f.dealId,
+                dealName: f.dealName,
+                lenderId: f.lenderId,
+                lenderName: f.lenderName,
+                lastTouchAt: f.lastTouchAt,
+                lastBy: f.lastBy,
+                followUpsSent: f.followUpsSent,
+                maxFollowUps: MAX_FOLLOW_UPS,
+              }))}
+          />
+        </>
+      }
       who={who}
       me={me}
       sections={sections}

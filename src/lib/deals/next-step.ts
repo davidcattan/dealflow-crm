@@ -35,7 +35,6 @@ export type NextStepInput = {
   callStep?: { text: string; at: string } | null
 }
 
-const FOLLOW_UP_AFTER_DAYS = 5
 const STALE_AFTER_DAYS = 14
 
 function daysSince(iso: string) {
@@ -105,11 +104,9 @@ export function nextStep(d: NextStepInput): NextStep {
     }
   }
 
-  const overdue = waiting.filter((s) => daysSince(s.lastActivityAt) >= FOLLOW_UP_AFTER_DAYS)
-  if (overdue.length) {
-    const days = Math.max(...overdue.map((s) => daysSince(s.lastActivityAt)))
-    return { rank: 6, urgency: 'follow_up', text: `Follow up with ${names(overdue.map((s) => s.lender))} — no reply in ${days} days` }
-  }
+  // Chasing quiet lenders is its own per-lender list on the To do page
+  // ("Lenders to follow up", lib/deals/follow-ups.ts), so a deal that's
+  // waiting just says so here.
 
   const sentDays = Math.max(...waiting.map((s) => daysSince(s.sentOn ?? s.lastActivityAt)))
   const quiet = daysSince(d.lastActivityAt)
