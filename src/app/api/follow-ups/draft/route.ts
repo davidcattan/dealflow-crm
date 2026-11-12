@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getValidAccessToken, createOutlookDraft, graphFetch } from '@/lib/outlook/graph'
 import { jedSignatureHtml } from '@/lib/outlook/jed-signature'
+import { writeFollowUpEmail } from '@/lib/deals/follow-up-email'
+
+export const maxDuration = 60
 
 // Puts a short follow-up to a lender in the signed-in person's Outlook
 // Drafts: a reply-all on the last email in the thread when it's in their
@@ -55,10 +58,21 @@ export async function POST(request: Request) {
     contacts?.find((c) => c.email && theirEmail && c.email.toLowerCase() === theirEmail.toLowerCase())?.name ??
     (lender.contact_email && theirEmail && lender.contact_email.toLowerCase() === theirEmail.toLowerCase() ? lender.contact_name : null)
   const first = person?.trim().split(/\s+/)[0]
+  const greeting = `Hi${first ? ` ${first}` : ''},`
+  // Written by the AI from what we originally sent this lender (about
+  // 0.1-0.3¢); a plain template if that fails. Ends with "Thanks,".
   const text =
-    (followUpsSent ?? 0) >= 1
-      ? `Hi${first ? ` ${first}` : ''},\n\nCircling back on ${deal.company_name}. Is this something you'd like to pursue? If it's not a fit, no problem, just let me know so I can update the client.`
-      : `Hi${first ? ` ${first}` : ''},\n\nWanted to follow up on ${deal.company_name}. Any initial thoughts? Happy to jump on a quick call or send anything else you need.`
+    (await writeFollowUpEmail(supabase, {
+      dealId,
+      lenderId,
+      dealName: deal.company_name,
+      lenderName: lender.name,
+      greeting,
+      followUpsSent: followUpsSent ?? 0,
+    })) ??
+    ((followUpsSent ?? 0) >= 1
+      ? `${greeting}\n\nCircling back on ${deal.company_name}. Is this something you'd like to pursue? If it's not a fit, no problem, just let me know so I can update the client.\n\nThanks,`
+      : `${greeting}\n\nWanted to follow up on ${deal.company_name}. Any initial thoughts? Happy to jump on a quick call or send anything else you need.\n\nThanks,`)
 
   try {
     const { accessToken, accountEmail } = await getValidAccessToken(supabase, mine?.id ?? null)
@@ -69,7 +83,7 @@ export async function POST(request: Request) {
     if (inMyMailbox) {
       const draft = await graphFetch(`/me/messages/${inMyMailbox.graph_message_id}/createReplyAll`, accessToken, {
         method: 'POST',
-        body: JSON.stringify({ comment: `${text}\n\nThanks,\n${sender}` }),
+        body: JSON.stringify({ comment: `${text}\n${sender}` }),
       })
       return NextResponse.json({ ok: true, webLink: draft.webLink ?? null, mailbox: accountEmail, threaded: true })
     }
@@ -81,7 +95,7 @@ export async function POST(request: Request) {
       accessToken,
       to: { name: person, email: theirEmail },
       subject,
-      body: signatureHtml ? `${text}\n\nThanks,` : `${text}\n\nThanks,\n${sender}`,
+      body: signatureHtml ? text : `${text}\n${sender}`,
       attachments: [],
       signatureHtml,
     })
