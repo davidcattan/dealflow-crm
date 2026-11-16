@@ -25,6 +25,12 @@ export const CallNotesSchema = z.object({
           .enum([...SUBMISSION_STATUSES, 'no_change'])
           .describe('Where the deal now stands with this lender, only if the call made it clear; otherwise no_change.'),
         note: z.string().describe('One line: what this lender said or wants.'),
+        criteria: z
+          .string()
+          .nullable()
+          .describe(
+            "What this lender said about what it finances IN GENERAL, beyond this deal: loan sizes, collateral and advance rates, industries, geography, structure (sweep, guarantees, term), pricing range. One or two lines, only what the lender itself said. Null if it said nothing general. Never the broker's own figures about the deal."
+          ),
       })
     )
     .describe('One entry per lender discussed on the call. Empty if no lender came up.'),

@@ -228,7 +228,7 @@ async function summarizeCall(
 ) {
   const [{ data: deal }, { data: subs }, { data: updates }, { data: lender }] = await Promise.all([
     supabase.from('deals').select('company_name, contact_name, loan_type, deal_type, notes, status').eq('id', dealId).single(),
-    supabase.from('deal_submissions').select('status, lenders(name)').eq('deal_id', dealId),
+    supabase.from('deal_submissions').select('status, lender_id, lenders(name)').eq('deal_id', dealId),
     supabase.from('deal_updates').select('entry_date, note').eq('deal_id', dealId).order('created_at', { ascending: false }).limit(10),
     who.lenderId ? supabase.from('lenders').select('name').eq('id', who.lenderId).maybeSingle() : Promise.resolve({ data: null }),
   ])
@@ -279,8 +279,37 @@ Write the call notes. Stick to what was actually said — never invent numbers, 
 
   await supabase.from('deal_calls').update({ status: 'done', result: notes, updated_at: new Date().toISOString() }).eq('id', callId)
 
-  // The summary goes on the deal right away (nothing to approve there).
+  // What a lender said about what it finances in general goes into its
+  // lender notes right away, so matching learns from calls the same way it
+  // learns from lender emails.
   const today = new Date().toISOString().slice(0, 10)
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+  for (const u of notes.lender_updates ?? []) {
+    const criteria = u.criteria?.trim()
+    if (!criteria) continue
+    const byName = (subs ?? []).filter((s) => {
+      const n = norm(lenderName(s.lenders))
+      const said = norm(u.lender_name)
+      return n.length >= 4 && said.length >= 4 && (n.includes(said) || said.includes(n))
+    })
+    const lenderId =
+      who.callWith === 'lender' && who.lenderId && (notes.lender_updates.length === 1 || byName.length === 0)
+        ? who.lenderId
+        : byName.length === 1
+          ? (byName[0].lender_id as string)
+          : null
+    if (!lenderId) continue
+    const { data: row } = await supabase.from('lenders').select('mandate_notes').eq('id', lenderId).single()
+    if (!row) continue
+    const line = `[${today} from call] ${criteria}`
+    if ((row.mandate_notes ?? '').includes(criteria)) continue
+    await supabase
+      .from('lenders')
+      .update({ mandate_notes: row.mandate_notes ? `${row.mandate_notes}\n${line}` : line })
+      .eq('id', lenderId)
+  }
+
+  // The summary goes on the deal right away (nothing to approve there).
   await insertCallUpdate(supabase, callId, {
     deal_id: dealId,
     entry_date: today,
