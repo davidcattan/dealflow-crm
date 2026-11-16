@@ -403,6 +403,30 @@ function rememberLender(ctx: Context, lender: Lender, emails: string[]) {
   }
 }
 
+// Lenders already in the CRM at this email domain. Big banks often have
+// several records (one per group), so a domain can match more than one.
+function lendersAtDomain(ctx: Context, domain: string) {
+  const ids = new Set<string>()
+  for (const l of ctx.lenders) {
+    if (emailDomain(l.contact_email) === domain || domainOf(l.website) === domain) ids.add(l.id)
+  }
+  for (const c of ctx.contacts) if (emailDomain(c.email) === domain) ids.add(c.lender_id)
+  return [...ids]
+}
+
+// Someone new at a domain we already know: which existing lender they
+// belong to. Never a new lender. When the bank has several records, the one
+// already working this deal wins; otherwise we can't tell, so nobody.
+async function knownLenderForNewPerson(supabase: SupabaseClient, ctx: Context, domain: string, dealId: string | null) {
+  const known = lendersAtDomain(ctx, domain)
+  if (known.length === 0) return { known: false as const, lenderId: null }
+  if (known.length === 1) return { known: true as const, lenderId: known[0] }
+  if (!dealId) return { known: true as const, lenderId: null }
+  const { data } = await supabase.from('deal_submissions').select('lender_id').eq('deal_id', dealId).in('lender_id', known)
+  const onDeal = [...new Set((data ?? []).map((r) => r.lender_id as string))]
+  return { known: true as const, lenderId: onDeal.length === 1 ? onDeal[0] : null }
+}
+
 // A borrower contact email, or null if it's really a partner's or the team's.
 function borrowerEmail(email: string | null | undefined) {
   return email && !isNotBorrowerEmail(email) ? email : null
@@ -484,7 +508,16 @@ async function processMessage(
     const replyDealId = threadDealId ?? (classification.lender_reply?.deal_ref ? (ctx.dealByRef.get(classification.lender_reply.deal_ref)?.id ?? null) : null)
     const firmInEmail =
       (classification.people ?? []).find((p) => p.email?.toLowerCase() === message.from && p.firm)?.firm?.trim() || null
-    if (
+    const existingAtDomain =
+      !senderLenderId && !internalDomain ? await knownLenderForNewPerson(supabase, ctx, emailDomain(message.from), replyDealId) : null
+    if (existingAtDomain?.known && existingAtDomain.lenderId) {
+      // New person at a bank we already have (e.g. a second contact at a
+      // group that's working this deal).
+      await supabase.from('lender_contacts').insert({ lender_id: existingAtDomain.lenderId, email: message.from, name: message.fromName || null })
+      rememberLender(ctx, ctx.lenderById.get(existingAtDomain.lenderId) as Lender, [message.from])
+      senderLenderId = existingAtDomain.lenderId
+    } else if (
+      !existingAtDomain?.known &&
       !senderLenderId &&
       !internalDomain &&
       !thread &&
@@ -865,6 +898,18 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
     for (const r of external) {
       if (ctx.lenderByEmail.has(r.email) || !couldBeNewLender(r.email, ctx.nonLenderDomains, deal.company_name)) continue
       const d = emailDomain(r.email)
+      // A domain the CRM already knows is never a new lender: file the
+      // person under the existing one when it's clear which, else leave it.
+      const existing = await knownLenderForNewPerson(supabase, ctx, d, dealId)
+      if (existing.known) {
+        if (existing.lenderId) {
+          await supabase.from('lender_contacts').insert({ lender_id: existing.lenderId, email: r.email, name: r.name || null })
+          ctx.lenderByEmail.set(r.email, existing.lenderId)
+          ctx.contacts.push({ lender_id: existing.lenderId, email: r.email })
+          if (!lenderIds.includes(existing.lenderId)) lenderIds.push(existing.lenderId)
+        }
+        continue
+      }
       byDomain.set(d, [...(byDomain.get(d) ?? []), { email: r.email, name: r.name || null }])
     }
     for (const [domain, people] of byDomain) {
