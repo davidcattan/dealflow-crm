@@ -64,7 +64,19 @@ export async function GET(request: Request) {
     }
     out.push({ ...deal, possible_duplicates, duplicate_details, updates: updates ?? [], emails, documents, lender_search_prompt })
   }
-  return NextResponse.json({ queued: out })
+  return NextResponse.json({ queued: out, lenders_to_research: await lendersToResearch(supabase) })
+}
+
+// New lenders waiting for web research (added automatically from email).
+// Empty until migration 052 is run.
+async function lendersToResearch(supabase: SupabaseClient) {
+  const { data, error } = await supabase
+    .from('lenders')
+    .select('id, name, website, contact_name, contact_email, lending_type, mandate_notes, research_requested_at, lender_contacts(name, title, email)')
+    .not('research_requested_at', 'is', null)
+    .order('research_requested_at', { ascending: true })
+    .limit(25)
+  return error ? [] : (data ?? [])
 }
 
 async function signedDocs(supabase: SupabaseClient, dealId: string) {

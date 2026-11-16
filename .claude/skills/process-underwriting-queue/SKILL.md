@@ -23,7 +23,7 @@ curl -s -X POST -H 'Content-Type: application/json' --data @snapshot.json $BASE/
 - Run `npm ci --ignore-scripts` once first so `mupdf` and `exceljs` are available, then read files with `node scripts/read-doc.mjs <file> [from] [to]` (text) or `node scripts/read-doc.mjs <file> --render <page> page.png` (scans — then Read the PNG).
 - Each queue entry's `duplicate_details` holds the possible duplicates' documents and emails, so you don't need to open deal pages.
 - Download documents with `curl -s -o <name> "<url>"` into a scratch folder outside the repo. Never commit or push anything.
-- If the queue is empty, stop and say only "Queue empty".
+- If `queued` and `lenders_to_research` are both empty, stop and say only "Queue empty".
 
 ## Requirements (on the Mac)
 
@@ -36,7 +36,7 @@ curl -s -X POST -H 'Content-Type: application/json' --data @snapshot.json $BASE/
    ```js
    await (await fetch('/api/queue')).json()
    ```
-   Each entry has the deal fields, `underwriting_requested_kind` (`'snapshot'` — the default — or `'report'`), recent `updates`, `emails` (full text of emails the inbox filed on the deal — read these: borrowers often put values, budgets and plans in the email body rather than an attachment), and `documents` with a signed download `url` (valid ~1 hour) and any AI `triage` (doc type, important page ranges, summary). If the queue is empty, say so and stop.
+   Each entry has the deal fields, `underwriting_requested_kind` (`'snapshot'` — the default — or `'report'`), recent `updates`, `emails` (full text of emails the inbox filed on the deal — read these: borrowers often put values, budgets and plans in the email body rather than an attachment), and `documents` with a signed download `url` (valid ~1 hour) and any AI `triage` (doc type, important page ranges, summary). If `queued` is empty, skip to "New lenders to research"; if that is empty too, say so and stop.
 
 2. **Check for duplicate deals first.** Each entry has `possible_duplicates` (other deals with the same contact email, phone, name or property address). The inbox sometimes files a borrower's emails under a second deal named after their trust or company — and that deal can hold the most important files (appraisals, deeds, the budget email). For each possible duplicate, open `/deals/{id}` from the logged-in page and read its documents and emails too. Include what's relevant in the snapshot, and tell the user plainly which deal is the duplicate and that they can combine them with **Merge** on the deal page. Also look for one yourself if names in the documents (trusts, LLCs, property addresses) match another deal's name.
 
@@ -74,4 +74,15 @@ A queue entry with a non-null `lender_search_prompt` also wants a lender search 
 - 10–15 lenders, best fit first. Only facts the lender's site states; unknowns are `null`.
 - Build JSON matching `src/lib/lender-search/schema.ts` (`LenderSearchSchema`: `needed`, `results[]` with name, website, lending_type, loan_size, geographies, why_fit, watch_out, contact, source_url, confidence, and `note`) and POST it from the logged-in page to `/api/deals/{id}/save-lender-search`. This clears the lender search from the queue.
 - Report the top few to the user in plain language and remind them they can click **Add to my lenders** on each card.
+
+## New lenders to research (`lenders_to_research`)
+
+`/api/queue` also returns `lenders_to_research`: lenders the inbox added on its own because the team pitched them a deal or they replied about one. Look each up online so lender matching knows what they do. The queue only counts as empty when `queued` AND `lenders_to_research` are both empty.
+
+For each lender:
+
+- **Find the right firm.** Start from its `website` (the email domain) and the contacts' titles. WebFetch the firm's own site (lending / products / "what we do" pages). Confirm it's the same firm (same domain or name and city). If the domain belongs to a big bank, research the group the contacts work in (e.g. "Healthcare Banking", "ABL") rather than the whole bank.
+- **Only what a source states.** Products, loan sizes, minimum revenue/EBITDA, collateral, industries they specialize in, geography. No guesses; unknowns are `null` / empty. Industries only when they specialize (leave empty for generalists). The existing `mandate_notes` (what they told us by email) always win; don't contradict them.
+- **POST** JSON matching `src/lib/lenders/research.ts` (`LenderResearchSchema`: `found`, `summary`, `lending_type`, `min_loan_amount`, `max_loan_amount`, `min_revenue`, `min_ebitda`, `asset_types`, `industries`, `geographies`, `website`, `sources`) to `/api/lenders/{id}/save-research` (same auth as the other saves). It fills only empty fields, adds the summary with sources to the lender notes, and takes the lender off the queue. Nothing reliable found → `found: false` (still clears it).
+- In the report back, list each lender researched with one line on what they do.
 

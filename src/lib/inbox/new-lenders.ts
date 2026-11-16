@@ -118,20 +118,25 @@ export async function autoAddLender(
   const first = input.people[0]
   if (!lender) {
     const stamp = new Date().toISOString().slice(0, 10)
-    const { data, error } = await supabase
+    const row = {
+      name,
+      website: input.domain,
+      contact_name: first?.name || null,
+      contact_email: first?.email ?? null,
+      status: 'active',
+      is_lender: true,
+      match_excluded: false,
+      mandate_notes: `[${stamp}] Added automatically from email: ${input.note}${input.firm ? '' : ` ${AUTO_NAME_MARK}`}`,
+    }
+    const columns = 'id, name, contact_email, mandate_notes, website'
+    // Queued for web research by the Claude Code queue job (migration 052);
+    // saved without it if that column isn't there yet.
+    let { data, error } = await supabase
       .from('lenders')
-      .insert({
-        name,
-        website: input.domain,
-        contact_name: first?.name || null,
-        contact_email: first?.email ?? null,
-        status: 'active',
-        is_lender: true,
-        match_excluded: false,
-        mandate_notes: `[${stamp}] Added automatically from email: ${input.note}${input.firm ? '' : ` ${AUTO_NAME_MARK}`}`,
-      })
-      .select('id, name, contact_email, mandate_notes, website')
+      .insert({ ...row, research_requested_at: new Date().toISOString() })
+      .select(columns)
       .single()
+    if (error) ({ data, error } = await supabase.from('lenders').insert(row).select(columns).single())
     if (error || !data) return null
     lender = data as LenderLike
     created = true
