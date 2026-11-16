@@ -29,6 +29,7 @@ import type { Snapshot } from '@/lib/snapshot/schema'
 import type { SubmissionStatus } from '@/lib/deals/submission-status'
 import { lenderMaterialNames, saveLenderMaterials } from '@/lib/lenders/lender-materials'
 import { fileFindings, learnFromSignature } from './findings'
+import { AUTO_NAME_MARK, autoAddLender, baseSubject, buildNonLenderDomains, couldBeNewLender, emailDomain, isLenderPitch } from './new-lenders'
 
 // Deal-worthy attachment types; everything else (calendar invites, vCards,
 // signature images that aren't marked inline) is ignored.
@@ -148,7 +149,11 @@ export function findLenderBySender(
   }
   for (const c of contacts) if (domainOf(c.email) === domain) byDomain.add(c.lender_id)
   if (byDomain.size === 1) return [...byDomain][0]
-  if (byDomain.size > 1) return null
+  if (byDomain.size > 1) {
+    // A merged duplicate keeps its old address; the surviving record wins.
+    const live = [...byDomain].filter((id) => !lenders.find((l) => l.id === id)?.name.startsWith('(Duplicate'))
+    return live.length === 1 ? live[0] : null
+  }
   const core = lenderCore(domain.split('.')[0])
   if (core.length < 4) return null
   // "fairviewcommercial" ↔ "Fairview" is a match; "bridgewayalliance" ↔
@@ -192,6 +197,11 @@ type Context = {
   // Outreach prospects (empty until migration 043 is run).
   prospectByEmail: Map<string, Prospect>
   prospectsByDomain: Map<string, Prospect[]>
+  // For adding new lenders on their own (see new-lenders.ts): subjects
+  // already pitched to known lenders, per deal, and domains that are never
+  // a lender (borrowers, partners, prospects, "not a lender" firms).
+  pitchedSubjectsByDeal: Map<string, Set<string>>
+  nonLenderDomains: Set<string>
 }
 
 function isBillingError(err: unknown) {
@@ -309,6 +319,35 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
   for (const l of lenders ?? []) if (l.contact_email) lenderByEmail.set(l.contact_email.toLowerCase(), l.id)
   for (const c of contacts ?? []) if (c.email) lenderByEmail.set(c.email.toLowerCase(), c.lender_id)
 
+  // Subjects already pitched to known lenders on each deal.
+  const { data: pitchRows } = await supabase
+    .from('inbox_messages')
+    .select('deal_id, subject')
+    .eq('classification', 'sent')
+    .not('deal_id', 'is', null)
+    .not('lender_id', 'is', null)
+    .order('received_at', { ascending: false })
+    .limit(3000)
+  const pitchedSubjectsByDeal = new Map<string, Set<string>>()
+  for (const r of pitchRows ?? []) {
+    const base = baseSubject(r.subject as string | null)
+    if (!base) continue
+    const set = pitchedSubjectsByDeal.get(r.deal_id as string) ?? new Set<string>()
+    set.add(base)
+    pitchedSubjectsByDeal.set(r.deal_id as string, set)
+  }
+  const notLenderIds = new Set((lenderRows ?? []).filter((l) => l.is_lender === false).map((l) => l.id as string))
+  const nonLenderDomains = buildNonLenderDomains({
+    firmDomain: emailDomain(accountEmail),
+    dealContactEmails: [
+      ...(deals ?? []).map((d) => (isNotBorrowerEmail(d.contact_email as string | null) ? null : (d.contact_email as string | null))),
+      ...(dealContacts ?? []).map((c) => (isNotBorrowerEmail(c.email as string) ? null : (c.email as string))),
+    ],
+    notLenderRows: (lenderRows ?? []).filter((l) => l.is_lender === false) as { contact_email?: string | null; website?: string | null }[],
+    notLenderContactEmails: (contactRows ?? []).filter((c) => notLenderIds.has(c.lender_id)).map((c) => c.email),
+    prospectDomains: prospectsByDomain.keys(),
+  })
+
   return {
     accessToken,
     accountEmail: accountEmail.toLowerCase(),
@@ -325,6 +364,8 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
     dealByConversation: new Map((filedThreads ?? []).map((t) => [t.conversation_id as string, t.deal_id as string])),
     prospectByEmail,
     prospectsByDomain,
+    pitchedSubjectsByDeal,
+    nonLenderDomains,
     dealByContactEmail: new Map([
       ...(deals ?? [])
         .filter((d) => !INACTIVE.includes(d.status))
@@ -344,6 +385,19 @@ function realLenders(
   const lenders = (lenderRows ?? []).filter((l) => l.is_lender !== false) as Lender[]
   const ids = new Set(lenders.map((l) => l.id))
   return { lenders, contacts: (contactRows ?? []).filter((c) => ids.has(c.lender_id)) }
+}
+
+// Adds a lender (new, or found by name) to this run's lookups so the rest
+// of the run — and the findings step — treat it like any known lender.
+function rememberLender(ctx: Context, lender: Lender, emails: string[]) {
+  if (!ctx.lenderById.has(lender.id)) {
+    ctx.lenders.push(lender)
+    ctx.lenderById.set(lender.id, lender)
+  }
+  for (const email of emails) {
+    ctx.lenderByEmail.set(email, lender.id)
+    ctx.contacts.push({ lender_id: lender.id, email })
+  }
 }
 
 // A borrower contact email, or null if it's really a partner's or the team's.
@@ -421,6 +475,40 @@ async function processMessage(
       },
       supabase
     )
+
+    // Someone at a firm the CRM doesn't know answering about a deal: the
+    // firm is a lender — add it, named from the email's signature.
+    const replyDealId = threadDealId ?? (classification.lender_reply?.deal_ref ? (ctx.dealByRef.get(classification.lender_reply.deal_ref)?.id ?? null) : null)
+    const firmInEmail =
+      (classification.people ?? []).find((p) => p.email?.toLowerCase() === message.from && p.firm)?.firm?.trim() || null
+    if (
+      !senderLenderId &&
+      !internalDomain &&
+      !thread &&
+      replyDealId &&
+      classification.kind === 'lender_reply' &&
+      !classification.lender_reply?.handoff_only &&
+      couldBeNewLender(message.from, ctx.nonLenderDomains, ctx.dealById.get(replyDealId)?.company_name)
+    ) {
+      const added = await autoAddLender(supabase, ctx.lenders, {
+        domain: emailDomain(message.from),
+        firm: firmInEmail,
+        people: [{ email: message.from, name: message.fromName || null }],
+        note: `${message.fromName || message.from} replied about ${ctx.dealById.get(replyDealId)?.company_name ?? 'a deal'} on ${today()}.`,
+      }).catch(() => null)
+      if (added) {
+        rememberLender(ctx, added.lender, [message.from])
+        senderLenderId = added.lender.id
+      }
+    }
+    // A lender named from its email domain gets its real name from the
+    // first reply's signature ("CNOB" → "ConnectOne Bank").
+    const senderLender = senderLenderId ? ctx.lenderById.get(senderLenderId) : undefined
+    if (senderLender && firmInEmail && senderLender.mandate_notes?.includes(AUTO_NAME_MARK)) {
+      senderLender.name = firmInEmail
+      senderLender.mandate_notes = senderLender.mandate_notes.replace(` ${AUTO_NAME_MARK}`, '')
+      await supabase.from('lenders').update({ name: firmInEmail, mandate_notes: senderLender.mandate_notes }).eq('id', senderLender.id)
+    }
 
     const result = await act({ supabase, ctx, message, classification, attachments, thread, threadDealId, senderLenderId, internal: Boolean(internalDomain) })
 
@@ -764,9 +852,34 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
   if (!dealId && lenderIds.length === 0) return
 
   const deal = dealId ? ctx.dealById.get(dealId) : undefined
+  const actions: string[] = []
+
+  // A deal pitch to people at a firm the CRM doesn't know: that firm is a
+  // new lender. Add it (one per email domain) so it shows on the deal's
+  // Lenders tab, gets follow-up reminders, and its replies are understood.
+  if (dealId && deal && isLenderPitch(m.subject, deal.company_name, ctx.pitchedSubjectsByDeal.get(dealId))) {
+    const byDomain = new Map<string, { email: string; name: string | null }[]>()
+    for (const r of external) {
+      if (ctx.lenderByEmail.has(r.email) || !couldBeNewLender(r.email, ctx.nonLenderDomains, deal.company_name)) continue
+      const d = emailDomain(r.email)
+      byDomain.set(d, [...(byDomain.get(d) ?? []), { email: r.email, name: r.name || null }])
+    }
+    for (const [domain, people] of byDomain) {
+      const sender = mailboxOwner(mailbox) ?? 'The team'
+      const added = await autoAddLender(supabase, ctx.lenders, {
+        domain,
+        people,
+        note: `${sender} sent them ${deal.company_name} ("${m.subject}") on ${m.sentDateTime.slice(0, 10)}.`,
+      }).catch(() => null)
+      if (!added) continue
+      rememberLender(ctx, added.lender, people.map((p) => p.email))
+      if (!lenderIds.includes(added.lender.id)) lenderIds.push(added.lender.id)
+      actions.push(`${added.created ? 'added new lender' : 'linked lender'} ${added.lender.name}`)
+    }
+  }
+
   const names = external.map((r) => r.name || r.email).join(', ')
   const preview = ownText(m.bodyText).replace(/\s+/g, ' ').slice(0, 220)
-  const actions: string[] = []
   const { data: recorded, error: recordError } = await supabase.from('inbox_messages').insert({
     graph_message_id: m.id,
     internet_message_id: m.internetMessageId,
@@ -827,7 +940,10 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
           lenderId,
         })
       }
-      actions.push(`Logged on deal; ${lenderIds.length} lender${lenderIds.length === 1 ? '' : 's'} on "Lenders sent to"`)
+      actions.unshift(`Logged on deal; ${lenderIds.length} lender${lenderIds.length === 1 ? '' : 's'} on "Lenders sent to"`)
+      const pitched = ctx.pitchedSubjectsByDeal.get(dealId) ?? new Set<string>()
+      if (baseSubject(m.subject)) pitched.add(baseSubject(m.subject))
+      ctx.pitchedSubjectsByDeal.set(dealId, pitched)
       // A fresh submission just went out: every other lender's draft now
       // copies it word for word (the newest version wins).
       const latest = await loadLatestPitch(supabase, dealId)
