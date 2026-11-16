@@ -9,6 +9,9 @@ export const REFERRAL_PARTNERS: { name: string; domains: string[]; alsoLender?: 
   { name: 'Venture Nationals', domains: ['venturenationals.com', 'bridgewayalliance.com'] },
   { name: 'Simply Capital', domains: ['simplycapitalsource.com'], alsoLender: true },
   { name: 'Essex Capital Group', domains: ['essexcg.com'] },
+  { name: 'Direct Cash Group', domains: ['directcashgroup.com'] },
+  { name: 'USBC Capital', domains: ['usbcfunds.com'] },
+  { name: 'KNW Capital', domains: ['knwcap.com'] },
 ]
 
 // The team itself — an intro email often names Eli or David as the loan

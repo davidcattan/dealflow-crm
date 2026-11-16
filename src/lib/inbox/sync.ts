@@ -82,7 +82,10 @@ function dealHints(d: {
   const text = [d.description, d.notes, d.deal_type, ...(snap?.entities ?? []).map((e) => e.name)].join(' ')
   // A referral partner's address would match every deal they send — skip it.
   const contactHint = d.contact_email && !isNotBorrowerEmail(d.contact_email) ? d.contact_email : ''
-  const hints = [...addresses(text), ...entityNames, contactHint].filter(Boolean)
+  // Code names the team pitches a deal under ("Project Air" for APD), noted
+  // on the deal so lender emails that only use the code name still file here.
+  const codeNames = text.match(/\bProject [A-Z][A-Za-z0-9]+(?: [A-Z][A-Za-z0-9]+)?/g) ?? []
+  const hints = [...codeNames, ...addresses(text), ...entityNames, contactHint].filter(Boolean)
   return [...new Set(hints)].slice(0, 6)
 }
 
