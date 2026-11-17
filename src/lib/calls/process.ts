@@ -299,14 +299,7 @@ Write the call notes. Stick to what was actually said — never invent numbers, 
           ? (byName[0].lender_id as string)
           : null
     if (!lenderId) continue
-    const { data: row } = await supabase.from('lenders').select('mandate_notes').eq('id', lenderId).single()
-    if (!row) continue
-    const line = `[${today} from call] ${criteria}`
-    if ((row.mandate_notes ?? '').includes(criteria)) continue
-    await supabase
-      .from('lenders')
-      .update({ mandate_notes: row.mandate_notes ? `${row.mandate_notes}\n${line}` : line })
-      .eq('id', lenderId)
+    await addLenderCriteria(supabase, lenderId, criteria, today)
   }
 
   // The summary goes on the deal right away (nothing to approve there).
@@ -322,6 +315,17 @@ Write the call notes. Stick to what was actually said — never invent numbers, 
     body: notes.title,
     dealId,
   })
+}
+
+// Appends what a lender said it finances to its lender notes (once).
+async function addLenderCriteria(supabase: SupabaseClient, lenderId: string, criteria: string, day: string) {
+  const { data: row } = await supabase.from('lenders').select('mandate_notes').eq('id', lenderId).single()
+  if (!row || (row.mandate_notes ?? '').includes(criteria)) return
+  const line = `[${day} from call] ${criteria}`
+  await supabase
+    .from('lenders')
+    .update({ mandate_notes: row.mandate_notes ? `${row.mandate_notes}\n${line}` : line })
+    .eq('id', lenderId)
 }
 
 // An update a call adds to the deal, tagged with the call so deleting the
@@ -378,10 +382,26 @@ export async function editCallNotes(supabase: SupabaseClient, callId: string, ed
     next_steps: edit.next_steps.map((x) => ({ ...x, text: x.text.trim() })).filter((x) => x.text),
   }
   const validDate = Boolean(edit.createdAt && !Number.isNaN(Date.parse(edit.createdAt)) && /^\d{4}-\d{2}-\d{2}$/.test(edit.day ?? ''))
+
+  // The lender was picked after the notes were written (e.g. a call imported
+  // from the phone, where the lender's name never comes up): the notes'
+  // lender becomes that lender, and what it said it finances reaches its
+  // lender notes, the same as if it had been picked before recording.
+  let lenderUpdates = before.lender_updates
+  const newLenderId = call.deal_id && edit.who?.callWith === 'lender' ? edit.who.lenderId : null
+  if (newLenderId && newLenderId !== call.lender_id && lenderUpdates?.length === 1) {
+    const { data: lender } = await supabase.from('lenders').select('name').eq('id', newLenderId).maybeSingle()
+    if (lender?.name) {
+      lenderUpdates = [{ ...lenderUpdates[0], lender_name: lender.name }]
+      const criteria = lenderUpdates[0].criteria?.trim()
+      if (criteria) await addLenderCriteria(supabase, newLenderId, criteria, String(call.created_at).slice(0, 10))
+    }
+  }
+
   await supabase
     .from('deal_calls')
     .update({
-      result: { ...before, ...clean },
+      result: { ...before, ...clean, lender_updates: lenderUpdates },
       ...(call.deal_id && edit.who
         ? { call_with: edit.who.callWith, lender_id: edit.who.callWith === 'lender' ? edit.who.lenderId : null }
         : {}),
