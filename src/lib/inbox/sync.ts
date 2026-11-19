@@ -1056,7 +1056,10 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
     }
     ctx.dealByConversation.set(m.conversationId, dealId)
   } else {
-    actions.push("Sent to a lender — couldn't tell which deal; add it to a deal if it belongs to one")
+    // Plain back-and-forth with a lender (intros, "what do you do", thanks):
+    // it lives on the lender's page, under the person, not on a deal.
+    const who = lenderIds.map((id) => ctx.lenderById.get(id)?.name).filter(Boolean).join(', ') || 'the lender'
+    actions.push(`Not about a deal — kept on ${who}'s page (add it to a deal if it belongs to one)`)
   }
 
 
@@ -1433,10 +1436,13 @@ async function act({
           classification: 'lender_reply',
         body_text: message.bodyText,
           lender_id: lenderId,
-          summary: `${outcomeLabel}: ${summaryText}`,
+          // No deal, so no "Declined"/"Interested" — that's about deals.
+          summary: summaryText,
           action_taken: learned.length
-            ? `Not about a deal — ${learned.join(', ')}`
-            : "Couldn't tell which deal this is about — review manually",
+            ? `Not about a deal — kept on ${lender?.name ?? 'the lender'}'s page, ${learned.join(', ')}`
+            : lender && !reply?.deal_ref
+              ? `Not about a deal — kept on ${lender.name}'s page`
+              : "Couldn't tell which deal this is about — review manually",
         },
       }
     }
