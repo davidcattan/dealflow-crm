@@ -7,7 +7,7 @@ import { logUsage } from '@/lib/usage'
 import { getDocText } from '@/lib/chat/doc-text'
 import { snapshotToText } from '@/lib/snapshot/text'
 import type { Snapshot } from '@/lib/snapshot/schema'
-import { ownText } from '@/lib/outlook/own-text'
+import { readableText } from '@/lib/outlook/own-text'
 import type { DocumentRecord } from '@/lib/types'
 import { LOAN_TYPE_CATEGORIES } from '@/lib/deals/categories'
 
@@ -84,6 +84,7 @@ const GUIDE = `Pick the facts a commercial loan broker needs at a glance for THI
 - Anyone who owns property (personal financial statement, Schedule E, mortgage statements): one fact per property — label = the street address, value like "$1.3M, owes $450K at 4%, rental": value, mortgage balance, rate, and whether it's the primary residence or rented. If sources disagree on which one is the home (e.g. the PFS front page vs its real estate schedule), say so in the note.
 - ABL / working capital / factoring: legal entity name, location, what they do, revenue (latest periods), EBITDA, AR, inventory, current lender and facility (size, maturity), total debt, the ask, use of funds, timing.
 - Equipment / term / SBA / M&A: the asset or target, cost, revenue / EBITDA, collateral, current debt, the ask, timing.
+- Always, for any deal: a hard rule from the borrower or broker about the financing ("no SBA", "no personal guarantee", "no UCC filing", "non-recourse only") — label "Restrictions". It outranks other facts.
 Rules: only facts actually stated in the material below — never guess or calculate new numbers (except LTV when both value and loan are stated). When sources disagree, use the newest and put the conflict in the note. Pick only the 8 most important; values must be glanceable — round money ($4.6M, $910K), no sentences.`
 
 export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): Promise<KeyFacts> {
@@ -145,7 +146,7 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
   }
   for (const [i, e] of (emails ?? []).entries()) {
     refs.set(`E${i + 1}`, { kind: 'email', id: e.id as string })
-    const text = e.body_text ? ownText(String(e.body_text)).slice(0, 2500) : (e.summary ?? '')
+    const text = e.body_text ? readableText(String(e.body_text), e.subject as string | null, 6000) : (e.summary ?? '')
     // Date and time (ET), so a reply sent later the same day reads as later.
     const when = new Date(String(e.received_at)).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
     parts.push(`\n--- [E${i + 1}] Email ${e.classification === 'sent' ? 'we sent' : `from ${e.from_email}`} (${when}): ${e.subject ?? ''} ---\n${text}`)

@@ -14,6 +14,12 @@ const MAX_NEW_LENDERS = 6
 // Lenders per financing solution, so one solution (e.g. cash-flow lenders the
 // team knows) can't crowd the specialists for the main one off the list.
 const MAX_PER_SOLUTION = 4
+// SBA is the team's last resort: a few at most, always at the bottom.
+const MAX_SBA = 3
+// The solution label leads the reasoning ("SBA 7(a) acquisition loan — …").
+function isSbaMatch(reasoning: string) {
+  return /^(new lender — no relationship yet\. )?[^—]*\bSBA\b[^—]*—/i.test(reasoning)
+}
 const YES_STATUSES = ['interested', 'needs_more_info', 'term_sheet', 'funded']
 
 const MATCH_INSTRUCTIONS = `You are helping a commercial debt broker (asset-based lending, cash-flow lending, acquisition financing and real estate) match a borrower deal to the lenders most likely to fund it. Most lenders here describe their mandate in free-text notes, not clean structured fields — read those notes carefully rather than relying only on the loan-size numbers.
@@ -23,6 +29,10 @@ The deal's "Loan type" is the broker's starting guess, not a filter. Match every
 - Real, recurring profit supports cash-flow lenders (senior cash-flow term loans, unitranche, private credit, mezzanine/junior capital). As a rough guide, about $2-3M+ of EBITDA (or the lender's stated minimum) makes a company a cash-flow candidate; at $5M+ EBITDA cash-flow lenders are usually as relevant as ABL.
 - Most deals have more than one way to get done, and the team pursues all of them. First work out the 2-4 financing solutions this deal could realistically use (e.g. ABL refinance, cash-flow term loan, junior/growth capital, equipment term loan, real estate loan, SBA, factoring) — only ones its collateral, profit and ask actually support. Then return the strongest 2-${MAX_PER_SOLUTION} lenders for each solution, labeled with that solution — never more than ${MAX_PER_SOLUTION} for one solution, and give the solution the deal most clearly supports its full ${MAX_PER_SOLUTION}.
 - Size each solution from what the deal can actually support, not only from the stated ask. Rough guides: ABL ≈ 80-90% of eligible receivables (about 85% for receivables paid by government programs or insurers) plus 40-60% of inventory; factoring ≈ 80-90% of invoices; cash-flow term loans ≈ 2-3.5x EBITDA (toward the low end for small companies). When the deal supports a materially bigger or cheaper facility than the ask (e.g. a full refinance of the current lender instead of a small bridge), or the ask has a condition lenders won't meet (e.g. "no UCC filing" on a receivables loan), match lenders for that better structure too and say so in your overall notes — the broker's job is to bring the borrower the best option, not only the one they asked for. Don't rule a lender out just because its minimum is above the ask if the deal can support that size.
+
+Hard rules first: if the deal material says the borrower or broker won't take a kind of financing ("no SBA", "no personal guarantee", "no UCC filing", "non-recourse only"), that solution is off the table — never propose it, and never match a lender only for it (e.g. an SBA-only lender on a "no SBA" deal). A personal financial statement on an SBA form (Form 413) is just a form; it does not mean the deal is SBA.
+
+SBA is the last resort. The team prefers conventional bank, private credit and asset-based options. Only use an SBA solution when the deal clearly fits SBA and nothing says otherwise, and then return at most 3 SBA lenders: the best ones for THIS deal, and say in each reasoning why it is the best SBA fit. Label that solution starting with "SBA". Many banks with an SBA desk also lend conventionally (a full commercial bank like Huntington has middle-market, ABL and specialty groups) — match such a bank for a conventional solution when its notes or people show that group, and name the right person; don't treat it as SBA-only because its SBA contact is the one we know.
 
 Consider, in rough priority order:
 1. Loan size fit (the lender's min/max against what the deal appears to need, if known).
@@ -216,6 +226,7 @@ export async function runMatching(dealId: string) {
   }
 
   let newKept = 0
+  let sbaKept = 0
   const perSolution = new Map<string, number>()
   const resolvedMatches = structured.parsed_output.matches
     .filter((m) => {
@@ -230,9 +241,17 @@ export async function runMatching(dealId: string) {
       reasoning: [m.solution ? `${m.solution} — ` : '', m.contact?.trim() ? `Send to ${m.contact.trim()}. ` : '', m.reasoning].join(''),
     }))
     .filter((m): m is { lenderId: string; score: number; reasoning: string } => m.lenderId !== null)
+    // SBA last: at most 3, always listed below every conventional option.
+    .filter((m) => !isSbaMatch(m.reasoning) || ++sbaKept <= MAX_SBA)
     // Lenders the team has never worked with: capped, and labeled as such.
     .filter((m) => !newLenderIds.has(m.lenderId) || ++newKept <= MAX_NEW_LENDERS)
     .map((m) => (newLenderIds.has(m.lenderId) ? { ...m, reasoning: `New lender — no relationship yet. ${m.reasoning}` } : m))
 
-  return { matches: resolvedMatches, notes: structured.parsed_output.notes }
+  const lowestConventional = Math.min(...resolvedMatches.filter((m) => !isSbaMatch(m.reasoning)).map((m) => m.score), 101)
+  let sbaRank = 0
+  const ranked = resolvedMatches.map((m) =>
+    isSbaMatch(m.reasoning) && lowestConventional <= 100 ? { ...m, score: Math.max(1, Math.min(m.score, lowestConventional - 1 - sbaRank++)) } : m
+  )
+
+  return { matches: ranked, notes: structured.parsed_output.notes }
 }

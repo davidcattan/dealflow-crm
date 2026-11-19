@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { headAndTail } from '@/lib/outlook/own-text'
 
 export type DealEmail = {
   id: string
@@ -37,14 +38,16 @@ export async function loadDealEmails(supabase: SupabaseClient, dealId: string, l
 // Uses the full email when stored, otherwise the AI summary.
 export function emailsToText(emails: DealEmail[], maxChars = 30000): string | null {
   if (emails.length === 0) return null
+  // Newest first until the budget runs out (one long email can't crowd out
+  // the rest), then printed oldest first.
   const parts: string[] = []
   let used = 0
-  for (const e of [...emails].reverse()) {
+  for (const e of emails) {
     const date = e.received_at ? e.received_at.slice(0, 10) : 'undated'
-    const body = e.body_text?.trim() || (e.summary ? `[summary] ${e.summary}` : '')
+    const body = e.body_text?.trim() ? headAndTail(e.body_text.trim(), 12000) : e.summary ? `[summary] ${e.summary}` : ''
     const block = `--- Email ${date} from ${e.from_email ?? 'unknown'}: "${e.subject ?? ''}"\n${body}`
-    if (used + block.length > maxChars) break
-    parts.push(block)
+    if (used + block.length > maxChars) continue
+    parts.unshift(block)
     used += block.length
   }
   return `Emails about this deal (from the inbox, oldest first). Treat facts in them like document facts and cite "email" as the source:\n${parts.join('\n\n')}`

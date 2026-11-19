@@ -4,6 +4,7 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { logUsage } from '@/lib/usage'
 import type { InboxMessage } from '@/lib/outlook/graph'
+import { headAndTail } from '@/lib/outlook/own-text'
 import { EmailClassificationSchema, TriageSchema, type EmailClassification } from './classify-schema'
 
 // Two-stage reading, agreed with David to keep inbox cost down:
@@ -129,7 +130,7 @@ export async function classifyEmail(
     `Subject: ${message.subject}`,
     attachmentNames.length > 0 ? `Attachments: ${attachmentNames.join(', ')}` : 'Attachments: none',
     '',
-    message.bodyText.slice(0, 6000),
+    headAndTail(message.bodyText, 8000),
   ].join('\n')
 
   // Replies inside a thread the CRM started always get the full read. For

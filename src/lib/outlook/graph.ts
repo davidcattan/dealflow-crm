@@ -241,7 +241,9 @@ function toInboxMessage(m: Record<string, unknown>): InboxMessage {
     receivedDateTime: m.receivedDateTime as string,
     hasAttachments: Boolean(m.hasAttachments),
     bodyPreview: (m.bodyPreview as string) ?? '',
-    bodyText: text.slice(0, 8000),
+    // Long enough to keep the bottom of a forwarded thread — that's where the
+    // original ask (and rules like "no SBA") usually sits.
+    bodyText: text.slice(0, 30000),
     to: recipients(m),
   }
 }
