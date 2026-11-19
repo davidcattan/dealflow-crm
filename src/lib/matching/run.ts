@@ -52,7 +52,7 @@ Most real deals here are small private companies with thin or incomplete documen
 
 People: some lenders list "people" — who at that lender covers what (e.g. healthcare cash flow vs ABL), where we stand with them on LinkedIn, and what they told us. For each match, name the one person to send this deal to when the list makes it clear (the right group for this deal's industry and structure; someone we're connected with beats a cold name). A person's notes count as the lender's own words: "cash flow tough under $10M EBITDA" is a real constraint.
 
-Return only lenders that are genuinely plausible — for a niche or thin deal it is fine to return just a few, even if that leaves a solution with only one lender. Reference lenders by their L# from the list, not by name.`
+Return only lenders that could plausibly do the deal — but aim for the full 12-15; a solution may end up with only one lender. Reference lenders by their L# from the list, not by name.`
 
 function truncate(text: string | null | undefined, max: number): string {
   if (!text) return ''
