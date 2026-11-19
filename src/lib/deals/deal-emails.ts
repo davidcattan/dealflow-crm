@@ -9,13 +9,16 @@ export type DealEmail = {
   summary: string | null
   body_text: string | null
   mailbox?: string | null
+  // Who it was with: the lender it was filed under, and (for sent) who it went to.
+  lender_id?: string | null
+  to_emails?: string | null
 }
 
 // Emails the inbox reader filed on this deal, newest first.
 export async function loadDealEmails(supabase: SupabaseClient, dealId: string, limit = 20): Promise<DealEmail[]> {
   const { data, error } = await supabase
     .from('inbox_messages')
-    .select('id, from_email, subject, received_at, classification, summary, body_text, mailbox')
+    .select('id, from_email, subject, received_at, classification, summary, body_text, mailbox, lender_id, to_emails')
     .eq('deal_id', dealId)
     .order('received_at', { ascending: false })
     .limit(limit)
@@ -23,7 +26,7 @@ export async function loadDealEmails(supabase: SupabaseClient, dealId: string, l
   // body_text missing (migration 019 not run yet): fall back to summaries.
   const { data: fallback } = await supabase
     .from('inbox_messages')
-    .select('id, from_email, subject, received_at, classification, summary')
+    .select('id, from_email, subject, received_at, classification, summary, lender_id, to_emails')
     .eq('deal_id', dealId)
     .order('received_at', { ascending: false })
     .limit(limit)

@@ -105,7 +105,13 @@ export function ActivityTimeline({
             item.kind === 'call' ? (
               <CallItem key={`call-${item.call.id}`} call={item.call} whoOptions={whoOptions} />
             ) : item.kind === 'email' ? (
-              <EmailItem key={`email-${item.email.id}`} email={item.email} dealId={dealId} deals={deals} />
+              <EmailItem
+                key={`email-${item.email.id}`}
+                email={item.email}
+                lenderName={item.email.lender_id ? (lenderNames[item.email.lender_id] ?? null) : null}
+                dealId={dealId}
+                deals={deals}
+              />
             ) : (
               <li key={`note-${item.update.id}`} className="rounded-lg border border-slate-100 px-3">
                 <ul>
@@ -129,9 +135,12 @@ export function ActivityTimeline({
   )
 }
 
-function EmailItem({ email: e, dealId, deals }: { email: DealEmail; dealId: string; deals: DealChoice[] }) {
+function EmailItem({ email: e, lenderName, dealId, deals }: { email: DealEmail; lenderName: string | null; dealId: string; deals: DealChoice[] }) {
   const sent = e.classification === 'sent'
   const where = mailboxLabel(e.mailbox, sent)
+  // Who it was with, so a lender's thread can be spotted at a glance.
+  const firstTo = (e.to_emails ?? '').split(',')[0]?.trim() || null
+  const withWho = sent ? (lenderName ?? firstTo) : lenderName ? `${lenderName} (${e.from_email})` : e.from_email
   return (
     <li className="rounded-lg border border-slate-100 px-3 py-2.5 text-sm hover:bg-slate-50">
       <details className="group">
@@ -141,7 +150,13 @@ function EmailItem({ email: e, dealId, deals }: { email: DealEmail; dealId: stri
           </span>
           <span className="mr-2 text-xs text-slate-400">{e.received_at ? new Date(e.received_at).toLocaleDateString() : ''}</span>
           <span className="font-medium text-slate-800">{e.subject || '(no subject)'}</span>
-          {!sent && <span className="text-slate-500 max-sm:hidden"> — {e.from_email}</span>}
+          {withWho && (
+            <span className="text-slate-500">
+              {' '}
+              {sent ? '→ to ' : '— from '}
+              <span className={lenderName ? 'font-medium text-slate-700' : ''}>{withWho}</span>
+            </span>
+          )}
           {where && <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">{where}</span>}
           {e.summary && <p className="mt-0.5 truncate text-xs text-slate-500 group-open:whitespace-normal group-open:text-sm group-open:text-slate-600">{e.summary}</p>}
         </summary>
