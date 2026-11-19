@@ -284,6 +284,29 @@ async function fileEarlierSentInThread(supabase: SupabaseClient, conversationId:
 
 const FREE_MAIL_DOMAINS = new Set(['gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'yahoo.com', 'icloud.com', 'me.com', 'aol.com', 'protonmail.com', 'proton.me', 'msn.com'])
 
+// Firms on deals' "Referred by …" lines that aren't also real lenders. A
+// lender someone added by hand (VFI, which also passes deals along) stays a
+// lender; one the inbox added automatically from a referrer's email doesn't.
+function referrerOnlyDomains(
+  deals: { notes?: unknown }[],
+  lenders: Lender[],
+  contacts: { lender_id: string; email: string | null }[]
+) {
+  const byHand = new Set(lenders.filter((l) => !(l.mandate_notes ?? '').includes('Added automatically')).map((l) => l.id))
+  const lenderDomains = new Set(
+    [
+      ...lenders.filter((l) => byHand.has(l.id)).map((l) => emailDomain(l.contact_email)),
+      ...contacts.filter((c) => byHand.has(c.lender_id)).map((c) => emailDomain(c.email)),
+    ].filter(Boolean)
+  )
+  return new Set(
+    deals
+      .flatMap((d) => referrerEmails(d.notes as string | null))
+      .map((e) => emailDomain(e))
+      .filter((d) => d && !FREE_MAIL_DOMAINS.has(d) && !lenderDomains.has(d))
+  )
+}
+
 // Email addresses on a deal's "Referred by …" note lines.
 function referrerEmails(notes: string | null) {
   return (notes ?? '')
@@ -416,12 +439,7 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
     prospectsByDomain,
     pitchedSubjectsByDeal,
     nonLenderDomains,
-    referrerDomains: new Set(
-      (deals ?? [])
-        .flatMap((d) => referrerEmails(d.notes as string | null))
-        .map((e) => emailDomain(e))
-        .filter((d) => d && !FREE_MAIL_DOMAINS.has(d))
-    ),
+    referrerDomains: referrerOnlyDomains(deals ?? [], lenders, contacts),
     dealByContactEmail: new Map([
       ...(deals ?? [])
         .filter((d) => !INACTIVE.includes(d.status))
