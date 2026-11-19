@@ -205,6 +205,9 @@ type Context = {
   // a lender (borrowers, partners, prospects, "not a lender" firms).
   pitchedSubjectsByDeal: Map<string, Set<string>>
   nonLenderDomains: Set<string>
+  // Firms that referred a deal to us (from "Referred by …" notes): never a
+  // lender, even if one was added as a lender by mistake before.
+  referrerDomains: Set<string>
 }
 
 function isBillingError(err: unknown) {
@@ -278,6 +281,8 @@ async function fileEarlierSentInThread(supabase: SupabaseClient, conversationId:
   }
   return rows?.length ?? 0
 }
+
+const FREE_MAIL_DOMAINS = new Set(['gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'yahoo.com', 'icloud.com', 'me.com', 'aol.com', 'protonmail.com', 'proton.me', 'msn.com'])
 
 // Email addresses on a deal's "Referred by …" note lines.
 function referrerEmails(notes: string | null) {
@@ -411,6 +416,12 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
     prospectsByDomain,
     pitchedSubjectsByDeal,
     nonLenderDomains,
+    referrerDomains: new Set(
+      (deals ?? [])
+        .flatMap((d) => referrerEmails(d.notes as string | null))
+        .map((e) => emailDomain(e))
+        .filter((d) => d && !FREE_MAIL_DOMAINS.has(d))
+    ),
     dealByContactEmail: new Map([
       ...(deals ?? [])
         .filter((d) => !INACTIVE.includes(d.status))
@@ -506,8 +517,9 @@ async function processMessage(
     if (prospect && !(prospect.deal_id && ctx.dealById.has(prospect.deal_id))) {
       return await handleProspectReply(supabase, ctx, message, prospect)
     }
-    let senderLenderId = ctx.lenderByEmail.get(message.from) ?? null
-    if (!senderLenderId && !internalDomain && !referralOnlyPartnerFor(message.from)) {
+    const fromReferrer = ctx.referrerDomains.has(emailDomain(message.from))
+    let senderLenderId = fromReferrer ? null : (ctx.lenderByEmail.get(message.from) ?? null)
+    if (!senderLenderId && !internalDomain && !fromReferrer && !referralOnlyPartnerFor(message.from)) {
       // New person at a known lender: recognize the lender and save them
       // as a contact so their next email matches instantly.
       senderLenderId = findLenderBySender(ctx.lenders, ctx.contacts, message.from)
@@ -551,7 +563,7 @@ async function processMessage(
     const firmInEmail =
       (classification.people ?? []).find((p) => p.email?.toLowerCase() === message.from && p.firm)?.firm?.trim() || null
     const existingAtDomain =
-      !senderLenderId && !internalDomain ? await knownLenderForNewPerson(supabase, ctx, emailDomain(message.from), replyDealId) : null
+      !senderLenderId && !internalDomain && !fromReferrer ? await knownLenderForNewPerson(supabase, ctx, emailDomain(message.from), replyDealId) : null
     if (existingAtDomain?.known && existingAtDomain.lenderId) {
       // New person at a bank we already have (e.g. a second contact at a
       // group that's working this deal).
@@ -905,7 +917,7 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
   const lenderIds: string[] = []
   for (const r of external) {
     // Referral partners on the email aren't lenders.
-    if (referralOnlyPartnerFor(r.email)) continue
+    if (referralOnlyPartnerFor(r.email) || ctx.referrerDomains.has(emailDomain(r.email))) continue
     let id = ctx.lenderByEmail.get(r.email) ?? null
     if (!id) {
       id = findLenderBySender(ctx.lenders, ctx.contacts, r.email)
