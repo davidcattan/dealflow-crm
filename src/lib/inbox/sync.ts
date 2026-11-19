@@ -1055,6 +1055,13 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
       actions.push('Logged on deal')
     }
     ctx.dealByConversation.set(m.conversationId, dealId)
+    // Files we send out (e.g. documents the borrower gave us over WhatsApp
+    // that we forward to a lender) are deal documents too — save any the
+    // deal doesn't have yet (same name and size are skipped).
+    if (m.hasAttachments) {
+      const saved = await saveAttachments(supabase, dealId, await getMessageAttachments(ctx.accessToken, m.id)).catch(() => 0)
+      if (saved) actions.push(`saved ${saved} new document${saved === 1 ? '' : 's'} from the attachments`)
+    }
   } else {
     // Plain back-and-forth with a lender (intros, "what do you do", thanks):
     // it lives on the lender's page, under the person, not on a deal.
