@@ -256,6 +256,14 @@ function isTeamOnly(message: InboxMessage, accountEmail: string) {
   return Boolean(firm) && message.to.every((r) => r.email.endsWith(`@${firm}`)) && !isForward(message)
 }
 
+// Email addresses on a deal's "Referred by …" note lines.
+function referrerEmails(notes: string | null) {
+  return (notes ?? '')
+    .split('\n')
+    .filter((line) => /referred by/i.test(line))
+    .flatMap((line) => line.match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g) ?? [])
+}
+
 // Outlook often shows a recipient's address as their name ("Ryan.Vilnius@53.com"):
 // that's not a name.
 function personName(name: string | null | undefined) {
@@ -352,6 +360,10 @@ async function loadContext(supabase: SupabaseClient, connectionId?: string | nul
     dealContactEmails: [
       ...(deals ?? []).map((d) => (isNotBorrowerEmail(d.contact_email as string | null) ? null : (d.contact_email as string | null))),
       ...(dealContacts ?? []).map((c) => (isNotBorrowerEmail(c.email as string) ? null : (c.email as string))),
+      // Whoever referred a deal ("Referred by Michael Helmreich, Fortune
+      // Capital Group — mhelmreich@fortunecgr.com") is a referral source,
+      // not a lender — even when the team later writes to them about it.
+      ...(deals ?? []).flatMap((d) => referrerEmails(d.notes as string | null)),
     ],
     notLenderRows: (lenderRows ?? []).filter((l) => l.is_lender === false) as { contact_email?: string | null; website?: string | null }[],
     notLenderContactEmails: (contactRows ?? []).filter((c) => notLenderIds.has(c.lender_id)).map((c) => c.email),
