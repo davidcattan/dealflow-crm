@@ -15,6 +15,9 @@ export const MatchSchema = z.object({
         solution: z
           .string()
           .describe('Which of the deal\'s financing solutions this lender is for, in a few words, e.g. "ABL refinance", "Cash-flow term loan", "Junior capital", "Equipment term loan", "Real estate bridge".'),
+        contact: z
+          .string()
+          .describe('The one person at this lender to send this deal to, by name, from its "people" list (the right group for this deal). Empty string when the list has no clear choice.'),
         reasoning: z
           .string()
           .describe(

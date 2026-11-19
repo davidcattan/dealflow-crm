@@ -77,6 +77,13 @@ export type LenderContact = {
   title?: string | null
   phone?: string | null
   cc_on_emails?: boolean
+  // What this person is the right contact for, e.g. "Healthcare cash flow".
+  covers?: string | null
+  linkedin_url?: string | null
+  linkedin_status?: string | null
+  // What they've told us, newest last.
+  notes?: string | null
+  last_touch?: string | null
   created_at: string
 }
 

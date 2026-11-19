@@ -38,6 +38,8 @@ Lenders under "New lenders" have no relationship with the team yet (no deals sen
 
 Most real deals here are small private companies with thin or incomplete documentation — that is normal. If the deal has no underwriting or financials yet, match on industry/asset-type/loan-size signals from its notes and flag in your overall notes that financials would sharpen the match. Do not invent numbers that were not given to you.
 
+People: some lenders list "people" — who at that lender covers what (e.g. healthcare cash flow vs ABL), where we stand with them on LinkedIn, and what they told us. For each match, name the one person to send this deal to when the list makes it clear (the right group for this deal's industry and structure; someone we're connected with beats a cold name). A person's notes count as the lender's own words: "cash flow tough under $10M EBITDA" is a real constraint.
+
 Return only lenders that are genuinely plausible — for a niche or thin deal it is fine to return just a few, even if that leaves a solution with only one lender. Reference lenders by their L# from the list, not by name.`
 
 function truncate(text: string | null | undefined, max: number): string {
@@ -48,7 +50,7 @@ function truncate(text: string | null | undefined, max: number): string {
 export async function runMatching(dealId: string) {
   const supabase = await createClient()
 
-  const [{ data: deal, error: dealError }, { data: allLenders }, { data: updates }, { data: submissions }, { data: dealNames }, { data: emailed }] =
+  const [{ data: deal, error: dealError }, { data: allLenders }, { data: updates }, { data: submissions }, { data: dealNames }, { data: emailed }, { data: people }] =
     await Promise.all([
       supabase.from('deals').select('*').eq('id', dealId).single(),
       // Everything, so match_excluded / research_lead are read when present
@@ -63,6 +65,9 @@ export async function runMatching(dealId: string) {
       supabase.from('deal_submissions').select('lender_id, deal_id, status, sent_on').order('sent_on', { ascending: false }).limit(5000),
       supabase.from('deals').select('id, company_name, loan_type, industry, deal_type'),
       supabase.from('inbox_messages').select('lender_id').not('lender_id', 'is', null).limit(20000),
+      // Everything, so the focus/LinkedIn columns are read when present
+      // (migration 053) and ignored before it.
+      supabase.from('lender_contacts').select('*').limit(5000),
     ])
   const lenders = (allLenders ?? []).filter((l) => !l.match_excluded && l.is_lender !== false)
 
@@ -107,6 +112,31 @@ export async function runMatching(dealId: string) {
   }
 
 
+  // The people at each lender worth naming: anyone we know a focus for, have
+  // notes on, or have reached on LinkedIn — so a match says who to send it to.
+  const peopleByLender = new Map<string, string[]>()
+  for (const c of (people ?? []) as {
+    lender_id: string
+    name: string | null
+    title: string | null
+    email: string | null
+    covers?: string | null
+    linkedin_status?: string | null
+    notes?: string | null
+  }[]) {
+    if (!c.name || c.name.includes('@') || !(c.covers || c.notes || c.linkedin_status)) continue
+    const line = [
+      c.name,
+      c.title ? `(${truncate(c.title, 60)})` : null,
+      c.covers ? `right person for: ${c.covers}` : null,
+      c.linkedin_status ? `LinkedIn ${c.linkedin_status.replace(/_/g, ' ')}` : null,
+      c.notes ? `said: ${truncate(c.notes.replace(/\s+/g, ' '), 200)}` : null,
+    ]
+      .filter(Boolean)
+      .join(' ')
+    peopleByLender.set(c.lender_id, [...(peopleByLender.get(c.lender_id) ?? []), line])
+  }
+
   const lenderRefs = new Map<string, string>() // L# -> lender uuid
   const newLenderIds = new Set<string>()
   const ordered = [...lenders.filter((l) => !isNew(l)), ...lenders.filter((l) => isNew(l))]
@@ -130,6 +160,7 @@ export async function runMatching(dealId: string) {
       l.geographies.length > 0 ? `geographies: ${l.geographies.join(', ')}` : null,
       isNew(l) ? null : trackRecord(l.id),
       l.mandate_notes ? `notes: ${truncate(l.mandate_notes, 3000)}` : null,
+      peopleByLender.has(l.id) ? `people: ${peopleByLender.get(l.id)!.slice(0, 6).join('; ')}` : null,
     ].filter(Boolean)
 
     return parts.join(' | ')
@@ -196,7 +227,7 @@ export async function runMatching(dealId: string) {
       lenderId: lenderRefs.get(m.lender_ref) ?? null,
       score: m.score,
       // "Cash-flow term loan — …": the solution leads, so the list reads by option.
-      reasoning: m.solution ? `${m.solution} — ${m.reasoning}` : m.reasoning,
+      reasoning: [m.solution ? `${m.solution} — ` : '', m.contact?.trim() ? `Send to ${m.contact.trim()}. ` : '', m.reasoning].join(''),
     }))
     .filter((m): m is { lenderId: string; score: number; reasoning: string } => m.lenderId !== null)
     // Lenders the team has never worked with: capped, and labeled as such.

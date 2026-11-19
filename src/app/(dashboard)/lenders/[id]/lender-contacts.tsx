@@ -13,6 +13,30 @@ type Row = {
   phone: string | null
   cc: boolean
   primary: boolean
+  covers: string | null
+  linkedin_url: string | null
+  linkedin_status: string | null
+  notes: string | null
+}
+
+export const LINKEDIN_STATUSES: Record<string, { label: string; tone: string }> = {
+  request_sent: { label: 'LinkedIn: request sent', tone: 'bg-slate-100 text-slate-600' },
+  connected: { label: 'LinkedIn: connected', tone: 'bg-sky-100 text-sky-800' },
+  messaged: { label: 'LinkedIn: messaged', tone: 'bg-indigo-100 text-indigo-800' },
+  replied: { label: 'LinkedIn: replied', tone: 'bg-emerald-100 text-emerald-800' },
+  not_accepted: { label: 'LinkedIn: not accepted', tone: 'bg-amber-100 text-amber-800' },
+}
+
+type FormValues = {
+  name: string
+  title: string
+  email: string
+  phone: string
+  cc: boolean
+  covers: string
+  linkedin_url: string
+  linkedin_status: string
+  notes: string
 }
 
 function buildRows(lender: Lender, contacts: LenderContact[]): Row[] {
@@ -25,6 +49,10 @@ function buildRows(lender: Lender, contacts: LenderContact[]): Row[] {
     phone: c.phone ?? null,
     cc: Boolean(c.cc_on_emails),
     primary: Boolean(primaryEmail && c.email?.toLowerCase() === primaryEmail),
+    covers: c.covers ?? null,
+    linkedin_url: c.linkedin_url ?? null,
+    linkedin_status: c.linkedin_status ?? null,
+    notes: c.notes ?? null,
   }))
   if (!rows.some((r) => r.primary) && (lender.contact_email || lender.contact_phone || lender.contact_name)) {
     rows.unshift({
@@ -35,6 +63,10 @@ function buildRows(lender: Lender, contacts: LenderContact[]): Row[] {
       phone: lender.contact_phone,
       cc: false,
       primary: true,
+      covers: null,
+      linkedin_url: null,
+      linkedin_status: null,
+      notes: null,
     })
   }
   // Primary first; drop exact duplicates the import sometimes created.
@@ -56,18 +88,22 @@ function ContactForm({
   saving,
 }: {
   initial?: Partial<Row>
-  onSave: (v: { name: string; title: string; email: string; phone: string; cc: boolean }) => void
+  onSave: (v: FormValues) => void
   onCancel: () => void
   saving: boolean
 }) {
-  const [v, setV] = useState({
+  const [v, setV] = useState<FormValues>({
     name: initial?.name ?? '',
     title: initial?.title ?? '',
     email: initial?.email ?? '',
     phone: initial?.phone ?? '',
     cc: initial?.cc ?? false,
+    covers: initial?.covers ?? '',
+    linkedin_url: initial?.linkedin_url ?? '',
+    linkedin_status: initial?.linkedin_status ?? '',
+    notes: initial?.notes ?? '',
   })
-  const field = (key: 'name' | 'title' | 'email' | 'phone', placeholder: string) => (
+  const field = (key: 'name' | 'title' | 'email' | 'phone' | 'covers' | 'linkedin_url', placeholder: string) => (
     <input
       value={v[key]}
       onChange={(e) => setV({ ...v, [key]: e.target.value })}
@@ -82,7 +118,28 @@ function ContactForm({
         {field('title', 'Role, e.g. "General inbox", "VP Originations"')}
         {field('email', 'Email')}
         {field('phone', 'Phone')}
+        {field('covers', 'Right person for, e.g. "Healthcare cash flow, $5-10M EBITDA"')}
+        {field('linkedin_url', 'LinkedIn URL')}
+        <select
+          value={v.linkedin_status}
+          onChange={(e) => setV({ ...v, linkedin_status: e.target.value })}
+          className="min-w-0 rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+        >
+          <option value="">LinkedIn: —</option>
+          {Object.entries(LINKEDIN_STATUSES).map(([k, s]) => (
+            <option key={k} value={k}>
+              {s.label}
+            </option>
+          ))}
+        </select>
       </div>
+      <textarea
+        value={v.notes}
+        onChange={(e) => setV({ ...v, notes: e.target.value })}
+        placeholder="What they've told us, e.g. 11/19: likes post-acute; cash flow tough under $10M EBITDA"
+        rows={2}
+        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+      />
       {!initial?.primary && (
         <label className="flex items-center gap-2 text-xs text-slate-600">
           <input type="checkbox" checked={v.cc} onChange={(e) => setV({ ...v, cc: e.target.checked })} className="rounded border-slate-300" />
@@ -259,6 +316,20 @@ export function LenderContacts({ lender, contacts }: { lender: Lender; contacts:
                     {!r.primary && r.cc && <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] text-sky-800">CC</span>}
                   </p>
                   {r.name && r.title && <p className="text-xs text-slate-500">{r.title}</p>}
+                  {(r.covers || r.linkedin_status || r.linkedin_url) && (
+                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs">
+                      {r.covers && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-800">For: {r.covers}</span>}
+                      {r.linkedin_status && LINKEDIN_STATUSES[r.linkedin_status] && (
+                        <span className={`rounded px-1.5 py-0.5 ${LINKEDIN_STATUSES[r.linkedin_status].tone}`}>{LINKEDIN_STATUSES[r.linkedin_status].label}</span>
+                      )}
+                      {r.linkedin_url && (
+                        <a href={r.linkedin_url} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline">
+                          LinkedIn
+                        </a>
+                      )}
+                    </p>
+                  )}
+                  {r.notes && <p className="mt-0.5 whitespace-pre-wrap text-xs text-slate-600">{r.notes}</p>}
                   <p className="text-xs text-slate-600 [overflow-wrap:anywhere]">
                     {r.email && (
                       <a href={`mailto:${r.email}`} className="hover:underline">

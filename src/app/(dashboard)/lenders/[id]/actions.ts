@@ -57,11 +57,46 @@ export async function deleteLender(formData: FormData) {
   redirect('/lenders')
 }
 
-type ContactInput = { name: string; title: string; email: string; phone: string; cc: boolean }
+type ContactInput = {
+  name: string
+  title: string
+  email: string
+  phone: string
+  cc: boolean
+  covers?: string
+  linkedin_url?: string
+  linkedin_status?: string
+  notes?: string
+}
 
 function clean(c: ContactInput) {
-  const t = (v: string) => v.trim() || null
-  return { name: t(c.name), title: t(c.title), email: t(c.email)?.toLowerCase() ?? null, phone: t(c.phone), cc_on_emails: c.cc }
+  const t = (v: string | undefined) => v?.trim() || null
+  return {
+    name: t(c.name),
+    title: t(c.title),
+    email: t(c.email)?.toLowerCase() ?? null,
+    phone: t(c.phone),
+    cc_on_emails: c.cc,
+    covers: t(c.covers),
+    linkedin_url: t(c.linkedin_url),
+    linkedin_status: t(c.linkedin_status),
+    notes: t(c.notes),
+  }
+}
+
+// Before migration 053 the LinkedIn/focus columns don't exist: save the rest.
+const PEOPLE_COLUMNS = ['covers', 'linkedin_url', 'linkedin_status', 'notes'] as const
+function withoutPeopleColumns<T extends Record<string, unknown>>(row: T) {
+  const copy: Record<string, unknown> = { ...row }
+  for (const k of PEOPLE_COLUMNS) delete copy[k]
+  return copy
+}
+async function writeContact(
+  run: (row: Record<string, unknown>) => PromiseLike<{ error: { message: string } | null }>,
+  row: Record<string, unknown>
+) {
+  const { error } = await run(row)
+  if (error && PEOPLE_COLUMNS.some((k) => error.message.includes(k))) await run(withoutPeopleColumns(row))
 }
 
 // The lender's main contact lives on the lender row (used as "To" on
@@ -75,7 +110,7 @@ export async function addLenderContact(lenderId: string, input: ContactInput) {
   if (lender && !lender.contact_email && !lender.contact_phone && !lender.contact_name) {
     await supabase.from('lenders').update({ contact_name: c.name, contact_email: c.email, contact_phone: c.phone }).eq('id', lenderId)
   }
-  await supabase.from('lender_contacts').insert({ lender_id: lenderId, ...c })
+  await writeContact((row) => supabase.from('lender_contacts').insert(row), { lender_id: lenderId, ...c })
   revalidatePath(`/lenders/${lenderId}`)
   return { ok: true }
 }
@@ -87,7 +122,7 @@ export async function updateLenderContact(lenderId: string, contactId: string, i
     await supabase.from('lenders').update({ contact_name: c.name, contact_email: c.email, contact_phone: c.phone }).eq('id', lenderId)
   } else {
     const { data: before } = await supabase.from('lender_contacts').select('email').eq('id', contactId).single()
-    await supabase.from('lender_contacts').update(c).eq('id', contactId)
+    await writeContact((row) => supabase.from('lender_contacts').update(row).eq('id', contactId), c)
     // Keep the lender's primary in step if this contact is the primary.
     const { data: lender } = await supabase.from('lenders').select('contact_email').eq('id', lenderId).single()
     if (before?.email && lender?.contact_email && before.email.toLowerCase() === lender.contact_email.toLowerCase()) {

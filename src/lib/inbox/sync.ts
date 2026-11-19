@@ -256,6 +256,13 @@ function isTeamOnly(message: InboxMessage, accountEmail: string) {
   return Boolean(firm) && message.to.every((r) => r.email.endsWith(`@${firm}`)) && !isForward(message)
 }
 
+// Outlook often shows a recipient's address as their name ("Ryan.Vilnius@53.com"):
+// that's not a name.
+function personName(name: string | null | undefined) {
+  const n = name?.trim()
+  return n && !n.includes('@') ? n : null
+}
+
 function today() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -868,7 +875,7 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
     if (!id) {
       id = findLenderBySender(ctx.lenders, ctx.contacts, r.email)
       if (id) {
-        await supabase.from('lender_contacts').insert({ lender_id: id, email: r.email, name: r.name || null })
+        await supabase.from('lender_contacts').insert({ lender_id: id, email: r.email, name: personName(r.name) })
         ctx.lenderByEmail.set(r.email, id)
         ctx.contacts.push({ lender_id: id, email: r.email })
       }
@@ -907,7 +914,7 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
       const existing = await knownLenderForNewPerson(supabase, ctx, d, dealId)
       if (existing.known) {
         if (existing.lenderId) {
-          await supabase.from('lender_contacts').insert({ lender_id: existing.lenderId, email: r.email, name: r.name || null })
+          await supabase.from('lender_contacts').insert({ lender_id: existing.lenderId, email: r.email, name: personName(r.name) })
           ctx.lenderByEmail.set(r.email, existing.lenderId)
           ctx.contacts.push({ lender_id: existing.lenderId, email: r.email })
           if (!lenderIds.includes(existing.lenderId)) lenderIds.push(existing.lenderId)
