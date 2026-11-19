@@ -629,6 +629,7 @@ export default async function DealDetailPage({
                 what: ai?.what ?? null,
                 category,
                 lender: lenderId ? { id: lenderId, name: lenderNameById.get(lenderId) ?? 'Lender' } : null,
+                replaced: Boolean(doc.replaced_by),
               }
             })}
             lenders={termSheetLenders}

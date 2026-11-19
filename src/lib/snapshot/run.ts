@@ -21,7 +21,8 @@ export async function runSnapshot(dealId: string, signal?: AbortSignal): Promise
   ])
   if (error || !deal) throw new Error('Deal not found')
 
-  const { blocks, skipped } = await buildDocumentContent(supabase, (documents ?? []) as DocumentRecord[])
+  // Older versions of a file that is on the deal again, updated, are left out.
+  const { blocks, skipped } = await buildDocumentContent(supabase, ((documents ?? []) as DocumentRecord[]).filter((d) => !d.replaced_by))
   const header = [
     `Company / deal: ${deal.company_name}`,
     deal.industry ? `Industry: ${deal.industry}` : null,

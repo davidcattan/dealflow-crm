@@ -23,6 +23,8 @@ export type GroupedDoc = {
   lender: { id: string; name: string } | null
   // Same name and size as an earlier upload.
   duplicate?: boolean
+  // An updated version of this file is on the deal.
+  replaced?: boolean
 }
 
 const TERM_SHEETS = 'Term sheets & offers'
@@ -69,7 +71,7 @@ function DocRow({
   return (
     <li
       onPointerEnter={select.onPointerEnter}
-      className={`flex flex-col gap-1.5 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${select.selected ? 'bg-sky-50' : ''}`}
+      className={`flex flex-col gap-1.5 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${select.selected ? 'bg-sky-50' : ''} ${doc.replaced ? 'opacity-60' : ''}`}
     >
       <div className="flex min-w-0 items-start gap-2">
       {/* Press here and drag over other rows to select several. */}
@@ -92,6 +94,11 @@ function DocRow({
           {doc.duplicate && (
             <span className="mr-1.5 rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800" title="Same file as another upload — safe to delete">
               Duplicate
+            </span>
+          )}
+          {doc.replaced && (
+            <span className="mr-1.5 rounded bg-slate-200 px-1.5 py-0.5 font-medium text-slate-700" title="A newer version of this file is on the deal; the AI reads the newer one">
+              Older version — replaced
             </span>
           )}
           {doc.lender && <span className="mr-1.5 rounded bg-violet-50 px-1.5 py-0.5 font-medium text-violet-700">{doc.lender.name}</span>}

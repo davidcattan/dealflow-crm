@@ -101,6 +101,8 @@ export type DocumentRecord = {
   // A group someone picked (migration 035); otherwise guessed from the name.
   category?: string | null
   lender_id?: string | null
+  // A newer version of this file is on the deal (migration 054).
+  replaced_by?: string | null
 }
 
 export type DocTriage = {

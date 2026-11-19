@@ -159,6 +159,8 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
   let docNo = 0
   for (const d of (docs ?? []) as DocumentRecord[]) {
     if (budget <= 0) break
+    // An older version of a file that's on the deal again, updated.
+    if (d.replaced_by) continue
     try {
       const t = await getDocText(supabase, d)
       if (!t) continue

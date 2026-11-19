@@ -7,6 +7,7 @@ import { advancePendingCalls } from '@/lib/calls/process'
 import { refreshStaleKeyFacts } from '@/lib/deals/key-facts'
 import { readPendingLenderDocuments } from '@/lib/lenders/tear-sheet'
 import { removeDuplicateDocuments } from '@/lib/deals/duplicate-documents'
+import { markReplacedVersions } from '@/lib/documents/versions'
 import { notifyFollowUpsOnce } from '@/lib/deals/follow-ups'
 
 // Needs Fluid Compute on Vercel Pro (max 800s).
@@ -33,6 +34,8 @@ export async function GET(request: Request) {
   await readPendingLenderDocuments(supabase).catch((err) => console.error('Lender documents failed', err))
   // The same file saved twice on a deal (email + Mac folder + drag and drop).
   await removeDuplicateDocuments(supabase, { sinceHours: 24 }).catch((err) => console.error('Duplicate documents failed', err))
+  // Same name, different file: an updated version marks the older one replaced.
+  await markReplacedVersions(supabase, { sinceHours: 48 }).catch((err) => console.error('Document versions failed', err))
 
   // Paused overnight; the first run after 7am catches up.
   if (isQuietHours()) {
