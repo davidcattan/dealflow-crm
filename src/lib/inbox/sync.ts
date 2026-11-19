@@ -881,7 +881,11 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
     ctx.dealByConversation.get(m.conversationId) ??
     external.map((r) => ctx.dealByContactEmail.get(r.email)).find(Boolean) ??
     findDealByText(ctx.deals, `${m.subject}\n${m.bodyText}`)?.id ??
-    (lenderIds.length === 1 ? await onlyLiveDealFor(supabase, ctx, lenderIds[0]) : null) ??
+    // "The one live deal with this lender" only for replies: a fresh pitch
+    // (new subject) to a lender is often a different deal — e.g. a $25M
+    // teaser to Live Oak landed on Silver Lining just because Live Oak was
+    // on it.
+    (lenderIds.length === 1 && /^\s*(re|aw)\s*:/i.test(m.subject) ? await onlyLiveDealFor(supabase, ctx, lenderIds[0]) : null) ??
     null
 
   // Nothing to do with a deal or a lender — e.g. personal mail.
@@ -1114,6 +1118,39 @@ async function saveAttachments(
   return saved
 }
 
+// Adds what a lender said about what it finances to its notes (skipping a
+// line it already has), so matching reads it.
+async function addLenderNote(supabase: SupabaseClient, lender: Lender, note: string) {
+  const text = note.trim()
+  if (!text || (lender.mandate_notes ?? '').includes(text)) return false
+  const stamped = `[${today()} from email] ${text}`
+  lender.mandate_notes = lender.mandate_notes ? `${lender.mandate_notes}\n${stamped}` : stamped
+  await supabase.from('lenders').update({ mandate_notes: lender.mandate_notes }).eq('id', lender.id)
+  return true
+}
+
+// A lender's email that isn't about any deal (an intro, "here's what we do",
+// their tear sheet): their own materials go on their profile, where they're
+// read to fill in what the lender does, and what they said goes in their notes.
+async function learnFromLender(supabase: SupabaseClient, ctx: Context, lender: Lender, note: string | null, message: InboxMessage) {
+  const done: string[] = []
+  if (note && (await addLenderNote(supabase, lender, note))) done.push('added to lender mandate notes')
+  if (message.hasAttachments) {
+    const files = (await getMessageAttachments(ctx.accessToken, message.id).catch(() => [])).filter(
+      (a) => KEEP_EXT.test(a.name) && a.size <= MAX_ATTACHMENT_BYTES && !(/\.(png|jpe?g)$/i.test(a.name) && a.size < 30 * 1024)
+    )
+    const materials = files.length
+      ? await lenderMaterialNames(supabase, { lenderName: lender.name, subject: message.subject, body: message.bodyText, names: files.map((a) => a.name) }).catch(
+          () => new Set<string>()
+        )
+      : new Set<string>()
+    const toLender = files.filter((a) => materials.has(a.name))
+    const saved = toLender.length ? await saveLenderMaterials(supabase, lender.id, toLender).catch(() => 0) : 0
+    if (saved) done.push(`${saved} of ${lender.name}'s own materials (tear sheet etc.) added to their profile`)
+  }
+  return done
+}
+
 // A lender reply's files: the lender's own materials (tear sheet, program
 // guides, rate sheet) go on the lender's profile, where they're read to
 // learn what the lender does; everything else (term sheets, the borrower's
@@ -1333,7 +1370,9 @@ async function act({
       threadDealId ??
       (reply?.deal_ref ? ctx.dealByRef.get(reply.deal_ref)?.id : undefined) ??
       findDealByText(ctx.deals, `${message.subject}\n${message.bodyText}`)?.id ??
-      (lenderId ? await onlyLiveDealFor(supabase, ctx, lenderId) : null) ??
+      // Only a reply can fall back to "the one live deal with this lender":
+      // a lender's intro or tear sheet (new subject) isn't about any deal.
+      (lenderId && /^\s*(re|aw)\s*:/i.test(message.subject) ? await onlyLiveDealFor(supabase, ctx, lenderId) : null) ??
       null
     const lender = lenderId ? ctx.lenderById.get(lenderId) : undefined
     // A lender passing the deal to another firm isn't interested itself.
@@ -1342,6 +1381,10 @@ async function act({
     const summaryText = reply?.summary ?? classification.reason
 
     if (!dealId) {
+      // Not about a deal (an intro, their tear sheet, what they lend on) —
+      // still learn what the lender does: its files go on its profile and
+      // what it said goes in its notes, so matching knows.
+      const learned = lender ? await learnFromLender(supabase, ctx, lender, reply?.mandate_notes ?? null, message) : []
       return {
         counter: 'lenderReplies',
         record: {
@@ -1349,7 +1392,9 @@ async function act({
         body_text: message.bodyText,
           lender_id: lenderId,
           summary: `${outcomeLabel}: ${summaryText}`,
-          action_taken: "Couldn't tell which deal this is about — review manually",
+          action_taken: learned.length
+            ? `Not about a deal — ${learned.join(', ')}`
+            : "Couldn't tell which deal this is about — review manually",
         },
       }
     }
@@ -1396,12 +1441,7 @@ async function act({
       if (saved) actions.push(saved)
     }
 
-    if (reply?.mandate_notes && lender) {
-      const stamped = `[${today()} from email] ${reply.mandate_notes}`
-      lender.mandate_notes = lender.mandate_notes ? `${lender.mandate_notes}\n${stamped}` : stamped
-      await supabase.from('lenders').update({ mandate_notes: lender.mandate_notes }).eq('id', lender.id)
-      actions.push('added to lender mandate notes')
-    }
+    if (reply?.mandate_notes && lender && (await addLenderNote(supabase, lender, reply.mandate_notes))) actions.push('added to lender mandate notes')
 
     return {
       counter: 'lenderReplies',

@@ -36,6 +36,7 @@ export const LOAN_TYPE_CATEGORIES = [
   'Working Capital / Line of Credit',
   'SBA Loan',
   'Term Loan',
+  'Cash Flow Loan',
   'M&A / Acquisition Financing',
   'Other',
 ] as const

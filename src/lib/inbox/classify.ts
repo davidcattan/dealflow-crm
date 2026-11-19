@@ -20,7 +20,7 @@ const TRIAGE_INSTRUCTIONS = `You are doing a quick first-pass sort of a debt bro
 - lender_reply: a lender or funder responding about a deal submitted to them
 - other: clearly neither (newsletters, marketing, notifications, scheduling, personal mail)
 
-Never choose other for an email that introduces or refers someone, lists contacts at a bank or lender, asks the broker for a document or information, or tells the broker to follow up later. Those need the careful read even when no deal is named: choose lender_reply if a lender sent it, otherwise new_deal.
+Never choose other for an email that introduces or refers someone, lists contacts at a bank or lender, asks the broker for a document or information, or tells the broker to follow up later. A lender writing to the broker directly about what it finances (its programs, sizes, who covers which industry, its tear sheet or one-pager attached) is lender_reply even with no deal named — only a mass marketing blast is other. Those need the careful read even when no deal is named: choose lender_reply if a lender sent it, otherwise new_deal.
 
 When in doubt between other and one of the first two, choose the first two — a second, more careful reader checks everything you flag. Only choose other when you are confident.`
 
@@ -50,7 +50,7 @@ const INSTRUCTIONS = `You are sorting the inbox of an asset-based lending debt b
 
 - new_deal: a borrower, another broker, or a referral partner presenting a financing request for a specific business (often with financials, tax returns or a loan package attached), or sending more information about one. If the company is already in the deal list (any status, including old), set existing_deal_ref to its D#.
   The deal's contact fields are always the BORROWER (the business owner/officer), never the person who sent the email if they are a broker or referral partner. Brokers often list the borrower's name and phone in the body — use those. Put the broker's own name, firm, email and phone in referred_by instead.
-- lender_reply: a lender or funder responding about a deal that was submitted to them (interest, questions, document requests, term sheet, or a pass).
+- lender_reply: a lender or funder responding about a deal that was submitted to them (interest, questions, document requests, term sheet, or a pass). Also a lender writing to the broker directly — not a mass blast — about what it finances: an intro, its programs and sizes, who covers which industry, its tear sheet or one-pager. Then leave deal_ref null unless a deal is named, use outcome other, and put what it finances in mandate_notes.
 - other: anything else — newsletters, a lender's marketing blast about its own programs, notifications, scheduling, internal or personal mail.
 
 Only use facts stated in the email. Never invent a company, amount or contact. If it is ambiguous whether this is a real deal, choose other.
@@ -136,7 +136,9 @@ export async function classifyEmail(
   // everything else the cheap pass decides first. If that pass fails for
   // any reason other than billing, fall through to the full read rather
   // than risk dropping a real deal.
-  if (!context.threadDealCompany) {
+  // A known lender writing directly with files attached (a tear sheet, a
+  // program sheet) always gets the full read too, so the files aren't lost.
+  if (!context.threadDealCompany && !(context.senderLenderName && attachmentNames.length > 0)) {
     const hint = context.senderLenderName ? `The sender is a known lender: ${context.senderLenderName}.` : ''
     try {
       const triage = await triageEmail(emailText, hint, supabase)

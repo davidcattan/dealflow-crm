@@ -44,7 +44,13 @@ const Schema = z.object({
         ),
     })
     .describe(
-      'Read the latest emails, calls and notes: what was promised, asked or agreed most recently decides it. Newer beats older (emails show date and time). Before suggesting anything, check the team’s later emails ("we sent") and notes: if the team already did it — sent the signed NDA, the documents, the reply — it is done, so never suggest it again; pick the next open item instead. Use WHO WROTE LAST: when we wrote last, never say to reply to them — the step is waiting on them (or follow_up_lender / borrower once 5+ days pass with no answer).'
+      'Read the latest emails, calls and notes: what was promised, asked or agreed most recently decides it. If most lenders passed for the same structural reason and the team has not changed course yet, the step is to propose the structure that avoids it (category everyone_passed), e.g. "Lenders need a Medicaid sweep — pitch a cash flow term loan + revolver instead". Newer beats older (emails show date and time). Before suggesting anything, check the team’s later emails ("we sent") and notes: if the team already did it — sent the signed NDA, the documents, the reply — it is done, so never suggest it again; pick the next open item instead. Use WHO WROTE LAST: when we wrote last, never say to reply to them — the step is waiting on them (or follow_up_lender / borrower once 5+ days pass with no answer).'
+    ),
+  ask_changed: z
+    .string()
+    .nullable()
+    .describe(
+      'Only when the TEAM (JED: David/Eli — their sent emails, notes or calls) has clearly moved the deal to a different ask or structure than the "Ask" on file — e.g. they told lenders "we are switching to a cash flow term loan + revolver" while the file still says ABL: the new ask in at most 20 words, e.g. "$10-12M cash flow facility: ~$6-7M term loan + ~$4-5M revolver". Null when the ask on file is still current, or when only a lender suggested something the team has not taken up.'
     ),
   recommendation: z
     .object({
@@ -54,7 +60,7 @@ const Schema = z.object({
         .describe('At most 30 words, grounded in the facts: what collateral/cash flow supports it, which property if real estate, and why not the obvious alternative. e.g. "AR $910K + inventory $558K support a ~$400K line; EBITDA too thin for a cash-flow term loan."'),
     })
     .describe(
-      "A broker's recommendation of the best-fit loan type for this deal, from the facts found. When the borrower owns property, look past the ask to the strongest collateral: a second-lien HELOC/home-equity loan on the property with the most equity and a low-rate first mortgage (keep that first); a cash-out refinance where the first mortgage rate is high; a DSCR / investment-property loan where a property is rented (qualifies on the rent, not thin business income) — and say which property. Paying off MCAs or other expensive debt from the proceeds is a strong use of funds."
+      "A broker's recommendation of the best-fit loan type for this deal, from the facts found. Read the lender replies: when several lenders passed for the same reason about the STRUCTURE (e.g. Medicaid receivables need a daily sweep the borrower refuses; AR is not financeable), recommend the product that avoids that problem if the deal supports it (e.g. a cash flow term loan + revolver off EBITDA), and say so in why. When the team has already moved to a new structure (ask_changed), recommend that one. When the borrower owns property, look past the ask to the strongest collateral: a second-lien HELOC/home-equity loan on the property with the most equity and a low-rate first mortgage (keep that first); a cash-out refinance where the first mortgage rate is high; a DSCR / investment-property loan where a property is rented (qualifies on the rent, not thin business income) — and say which property. Paying off MCAs or other expensive debt from the proceeds is a strong use of funds."
     ),
   facts: z
     .array(
@@ -84,13 +90,14 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
   // Stamped with when the material was read, so anything that lands while
   // the AI is working still counts as newer.
   const readAt = new Date().toISOString()
-  const [{ data: deal }, { data: updates }, { data: calls }, { data: emails }, { data: docs }, { data: contacts }] = await Promise.all([
+  const [{ data: deal }, { data: updates }, { data: calls }, { data: emails }, { data: docs }, { data: contacts }, { data: subs }] = await Promise.all([
     supabase.from('deals').select('*').eq('id', dealId).single(),
     supabase.from('deal_updates').select('entry_date, note').eq('deal_id', dealId).order('created_at', { ascending: false }).limit(25),
     supabase.from('deal_calls').select('id, created_at, transcript, result, call_with').eq('deal_id', dealId).order('created_at', { ascending: false }).limit(6),
     supabase.from('inbox_messages').select('id, received_at, from_email, subject, summary, body_text, classification').eq('deal_id', dealId).order('received_at', { ascending: false }).limit(15),
     supabase.from('documents').select('*').eq('deal_id', dealId).order('uploaded_at', { ascending: false }),
     supabase.from('deal_contacts').select('name, title, email, phone').eq('deal_id', dealId),
+    supabase.from('deal_submissions').select('status, lenders(name)').eq('deal_id', dealId),
   ])
   if (!deal) throw new Error('Deal not found')
   // Nowhere to save them yet: don't spend anything.
@@ -104,6 +111,18 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
     deal.description ? `Description: ${deal.description}` : '',
     deal.notes ? `Deal notes: ${deal.notes}` : '',
   ]
+  // Where the lenders stand, so a pattern of passes is visible at a glance
+  // (the reasons are in the notes and emails below).
+  if ((subs ?? []).length) {
+    const by = new Map<string, string[]>()
+    for (const r of subs ?? []) {
+      const name = (r.lenders as { name?: string } | null)?.name ?? '?'
+      by.set(r.status as string, [...(by.get(r.status as string) ?? []), name])
+    }
+    parts.push(`\nLENDERS THIS DEAL WENT TO (${(subs ?? []).length}): ${[...by].map(([st, names]) => `${st.replace(/_/g, ' ')}: ${names.join(', ')}`).join(' | ')}`)
+  }
+  const pinnedNow = ((deal.key_facts as KeyFacts | null)?.facts ?? []).filter((f) => f.pinned)
+  if (pinnedNow.length) parts.push(`Facts entered by hand earlier (may be outdated if the team changed course since): ${pinnedNow.map((f) => `${f.label}: ${f.value}`).join(' | ')}`)
   if ((updates ?? []).length) parts.push(`\n--- [NOTES] Notes / updates (newest first) ---\n${(updates ?? []).map((u) => `[${u.entry_date ?? ''}] ${u.note}`).join('\n')}`)
   const refs = new Map<string, FactLink>([['NOTES', { kind: 'notes' }], ['SNAPSHOT', { kind: 'snapshot' }]])
   for (const [i, c] of (calls ?? []).entries()) {
@@ -176,9 +195,29 @@ export async function buildKeyFacts(supabase: SupabaseClient, dealId: string): P
   await logUsage({ feature: 'key-facts', model: MODEL, dealId, usage: res.usage, supabase })
   if (!res.parsed_output) throw new Error('Could not read the key facts')
 
-  // Keep anything edited by hand; it wins over the AI's version.
+  // The team changed the deal's ask/structure (e.g. ABL → cash flow): bring
+  // the deal's own fields along, so matching, drafts and summaries stop
+  // working from the old ask.
+  const newAsk = res.parsed_output.ask_changed?.trim() || null
+  const askMoved = Boolean(newAsk && newAsk !== (deal.deal_type ?? '').trim())
+  if (askMoved) {
+    const newType = res.parsed_output.recommendation?.loan_type ?? null
+    await supabase
+      .from('deals')
+      .update({ deal_type: newAsk, ...(newType ? { loan_type: newType } : {}) })
+      .eq('id', dealId)
+    await supabase.from('deal_updates').insert({
+      deal_id: dealId,
+      entry_date: readAt.slice(0, 10),
+      note: `Ask updated from the team's emails/notes: "${deal.deal_type ?? '—'}" → "${newAsk}"${newType && newType !== deal.loan_type ? `; loan type ${deal.loan_type ?? '—'} → ${newType}` : ''}. Re-run matching for the new structure.`,
+      source: 'ai',
+    })
+  }
+
+  // Keep anything edited by hand; it wins over the AI's version — except a
+  // hand-entered ask the team has since moved on from.
   const old = (deal.key_facts as KeyFacts | null)?.facts ?? []
-  const pinned = old.filter((f) => f.pinned)
+  const pinned = old.filter((f) => f.pinned && !(askMoved && /^ask\b/i.test(f.label)))
   const pinnedLabels = new Set(pinned.map((f) => f.label.toLowerCase()))
   const ai = res.parsed_output.facts.map(({ ref, page, ...f }) => {
     const base = refs.get(ref.trim().replace(/^\[|\]$/g, '').toUpperCase())

@@ -69,7 +69,7 @@ export const EmailClassificationSchema = z.object({
       mandate_notes: z
         .string()
         .nullable()
-        .describe('New facts the lender stated about what it does or does not finance (size, industries, collateral, geography). Null if none.'),
+        .describe('New facts the lender stated about what it does or does not finance (size, industries, collateral, geography, EBITDA/revenue minimums, structure it requires such as a cash sweep or lockbox, who at the lender covers which industry or size). When it passes, include WHY if the reason is about the kind of deal rather than this one borrower (e.g. "Cash-flow loans only for $10MM+ EBITDA", "Won\'t lend on NY Medicaid AR without a daily sweep"). Null if none.'),
       handoff_only: z
         .boolean()
         .describe('True when the sender is only passing the deal to someone at a DIFFERENT firm (e.g. "please meet Eddie from Valley Bank, he is interested"). The interest belongs to that other person, not to the sender. False otherwise.'),
