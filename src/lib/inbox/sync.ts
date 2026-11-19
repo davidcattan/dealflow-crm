@@ -256,6 +256,29 @@ function isTeamOnly(message: InboxMessage, accountEmail: string) {
   return Boolean(firm) && message.to.every((r) => r.email.endsWith(`@${firm}`)) && !isForward(message)
 }
 
+// Sent emails in a thread that were saved before the thread was tied to a
+// deal: file them on it, with the usual "Email sent to …" line.
+async function fileEarlierSentInThread(supabase: SupabaseClient, conversationId: string, dealId: string, lenderId: string, lenderName: string) {
+  if (!conversationId) return 0
+  const { data: rows } = await supabase
+    .from('inbox_messages')
+    .select('id, subject, received_at')
+    .eq('conversation_id', conversationId)
+    .eq('classification', 'sent')
+    .is('deal_id', null)
+  for (const r of rows ?? []) {
+    await supabase.from('inbox_messages').update({ deal_id: dealId, lender_id: lenderId, action_taken: 'Logged on deal (filed once the thread was matched)' }).eq('id', r.id)
+    await supabase.from('deal_updates').insert({
+      deal_id: dealId,
+      lender_id: lenderId,
+      entry_date: String(r.received_at).slice(0, 10),
+      note: `Email sent to ${lenderName}: "${r.subject ?? ''}".`,
+      source: 'email',
+    })
+  }
+  return rows?.length ?? 0
+}
+
 // Email addresses on a deal's "Referred by …" note lines.
 function referrerEmails(notes: string | null) {
   return (notes ?? '')
@@ -1440,6 +1463,11 @@ async function act({
         conversationId: message.conversationId,
       })
       ctx.threadByConversation.set(message.conversationId, { dealId, lenderId })
+      // Our replies in this thread that were read before the CRM knew which
+      // deal it was (e.g. a late-night answer synced ahead of the lender's
+      // question) get filed on the deal now.
+      const filedLate = await fileEarlierSentInThread(supabase, message.conversationId, dealId, lenderId, lender?.name ?? sender)
+      if (filedLate) actions.push(`filed ${filedLate} earlier sent email${filedLate === 1 ? '' : 's'} in this thread`)
       actions.push(`lender status updated${outcome && OUTCOME_TO_SUBMISSION[outcome] ? ` to ${outcomeLabel}` : ''}`)
       if (movedFrom && deal) {
         actions.push(movedFrom === 'old' ? 'moved from Old back to Submitted' : 'moved to Submitted')
