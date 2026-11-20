@@ -44,17 +44,22 @@ export async function POST(
       return NextResponse.json({ count: 0, notes })
     }
 
-    const { data: saved, error } = await supabase
-      .from('deal_matches')
-      .insert(
-        matches.map((m) => ({
-          deal_id: id,
-          lender_id: m.lenderId,
-          score: Math.round(m.score),
-          reasoning: m.reasoning,
-        }))
-      )
-      .select('id, lender_id, score, reasoning')
+    const rows = matches.map((m) => ({
+      deal_id: id,
+      lender_id: m.lenderId,
+      score: Math.round(m.score),
+      reasoning: m.reasoning,
+      tier: m.tier,
+      summary: m.summary || null,
+    }))
+    let { data: saved, error } = await supabase.from('deal_matches').insert(rows).select('id, lender_id, score, reasoning')
+    // Before migration 055 (tier / summary columns): save without them.
+    if (error && /tier|summary/.test(error.message)) {
+      ;({ data: saved, error } = await supabase
+        .from('deal_matches')
+        .insert(rows.map((r) => ({ deal_id: r.deal_id, lender_id: r.lender_id, score: r.score, reasoning: r.reasoning })))
+        .select('id, lender_id, score, reasoning'))
+    }
 
     if (error || !saved) {
       console.error('Match save failed', { id, error })

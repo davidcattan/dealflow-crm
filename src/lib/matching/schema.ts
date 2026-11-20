@@ -15,6 +15,12 @@ export const MatchSchema = z.object({
         solution: z
           .string()
           .describe('Which of the deal\'s financing solutions this lender is for, in a few words, e.g. "ABL refinance", "Cash-flow term loan", "Junior capital", "Equipment term loan", "Real estate bridge".'),
+        tier: z
+          .enum(['best', 'good', 'long_shot'])
+          .describe('"best": a lender the team should send this deal to first — clearly in its box on size, EBITDA, structure and industry. "good": a real fit with one open question. "long_shot": possible but a stretch, or would only cover part of the deal.'),
+        summary: z
+          .string()
+          .describe('One plain line, under 20 words, for the deal page: what this lender does and why it fits, e.g. "Cash flow loans $1-7MM at 3-4x EBITDA; this deal is right in range." Mention a past term sheet or LinkedIn connection when it matters.'),
         contact: z
           .string()
           .describe('The one person at this lender to send this deal to, by name, from its "people" list (the right group for this deal). Empty string when the list has no clear choice.'),
@@ -26,7 +32,7 @@ export const MatchSchema = z.object({
       })
     )
     .describe(
-      'Up to 18 realistic candidate lenders across the deal\'s solutions, ranked best-fit first — at most 4 for each solution. Do not pad the list with weak fits; return fewer if fewer are genuinely plausible.'
+      'The top 12-15 lenders for this deal across its solutions, ranked best-fit first. Return fewer only when fewer could plausibly do the deal.'
     ),
   notes: z
     .string()

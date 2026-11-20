@@ -15,6 +15,7 @@ import { estimateUnderwriting } from '@/lib/underwriting/estimate'
 import { buildManualPrompt } from '@/lib/underwriting/prompt'
 import { copiedSubject, loadLatestPitch } from '@/lib/matching/copy-sent'
 import { StatusToggle } from './status-toggle'
+import { sendToName } from '@/lib/matching/tiers'
 import { MatchingPanel, type MatchWithLender, type LoanTypeRecommendation, type SentEmail } from './matching-panel'
 import { ownText } from '@/lib/outlook/own-text'
 import { DocumentUploader } from './document-uploader'
@@ -81,7 +82,8 @@ export default async function DealDetailPage({
       supabase
         .from('deal_matches')
         .select(
-          'id, lender_id, score, reasoning, selected, created_at, draft_subject, draft_body, draft_status, draft_generated_at, outlook_draft_created_at, lenders(name, contact_name, contact_email)'
+          // * so tier / summary (migration 055) are read when present.
+          '*, lenders(name, contact_name, contact_email)'
         )
         .eq('deal_id', id)
         .order('score', { ascending: false }),
@@ -322,23 +324,40 @@ export default async function DealDetailPage({
     ? `${pitch.senderName ? `${pitch.senderName}'s` : 'Your'} email to ${pitch.lenderName ?? 'a lender'} (${new Date(pitch.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`
     : null
 
-  // Who each draft goes to: the lender's primary contact, else its first
-  // contact with an email (same rule as "Create draft in Outlook").
+  // Who each draft goes to: the person the matcher picked ("Send to X."),
+  // else the lender's primary contact, else its first contact with an email.
   const lenderOf = (m: NonNullable<typeof matches>[number]) => (Array.isArray(m.lenders) ? m.lenders[0] : m.lenders)
-  const noPrimary = (matches ?? []).filter((m) => !lenderOf(m)?.contact_email).map((m) => m.lender_id as string)
-  const { data: lenderContacts } = noPrimary.length
-    ? await supabase.from('lender_contacts').select('lender_id, name, email').in('lender_id', noPrimary).not('email', 'is', null)
+  const { data: lenderContacts } = (matches ?? []).length
+    ? await supabase
+        .from('lender_contacts')
+        .select('*')
+        .in('lender_id', (matches ?? []).map((m) => m.lender_id as string))
     : { data: [] }
+  const contactsOf = (lenderId: string) =>
+    ((lenderContacts ?? []) as { lender_id: string; name: string | null; email: string | null; linkedin_status?: string | null }[]).filter(
+      (c) => c.lender_id === lenderId
+    )
 
   const matchesWithLender: MatchWithLender[] = (matches ?? []).map((m) => {
     const lender = lenderOf(m)
-    const fallback = (lenderContacts ?? []).find((c) => c.lender_id === m.lender_id)
-    return {
-      recipient: lender?.contact_email
+    const people = contactsOf(m.lender_id as string)
+    const picked = sendToName(String(m.reasoning ?? ''))
+    const named = picked ? people.find((c) => c.name && c.name.toLowerCase() === picked.toLowerCase()) : undefined
+    const fallback = people.find((c) => c.email)
+    const recipient = named?.email
+      ? { name: named.name, email: named.email }
+      : lender?.contact_email
         ? { name: (lender.contact_name as string | null) ?? null, email: lender.contact_email as string }
-        : fallback
-          ? { name: (fallback.name as string | null) ?? null, email: fallback.email as string }
-          : null,
+        : fallback?.email
+          ? { name: fallback.name, email: fallback.email }
+          : null
+    const person = named ?? people.find((c) => c.email && c.email === recipient?.email)
+    return {
+      recipient,
+      sendTo: named?.name ?? picked ?? recipient?.name ?? null,
+      sendToLinkedIn: person?.linkedin_status ?? null,
+      tier: (m.tier as MatchWithLender['tier']) ?? null,
+      summary: (m.summary as string | null) ?? null,
       copiedFrom:
         pitch &&
         m.lender_id !== pitch.lenderId &&

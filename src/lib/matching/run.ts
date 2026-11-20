@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { createClient } from '@/lib/supabase/server'
 import { logUsage } from '@/lib/usage'
+import { isSbaMatch } from './tiers'
 import { MatchSchema } from './schema'
 import { buildDealProfile } from './deal-profile'
 import type { Deal, DealUpdate } from '@/lib/types'
@@ -18,10 +19,6 @@ const MAX_PER_SOLUTION = 15
 const MAX_SIDE_SOLUTION = 4
 // SBA is the team's last resort: a few at most, always at the bottom.
 const MAX_SBA = 3
-// The solution label leads the reasoning ("SBA 7(a) acquisition loan — …").
-function isSbaMatch(reasoning: string) {
-  return /^(new lender — no relationship yet\. )?[^—]*\bSBA\b[^—]*—/i.test(reasoning)
-}
 const YES_STATUSES = ['interested', 'needs_more_info', 'term_sheet', 'funded']
 
 const MATCH_INSTRUCTIONS = `You are helping a commercial debt broker (asset-based lending, cash-flow lending, acquisition financing and real estate) match a borrower deal to the lenders most likely to fund it. Most lenders here describe their mandate in free-text notes, not clean structured fields — read those notes carefully rather than relying only on the loan-size numbers.
@@ -239,10 +236,12 @@ export async function runMatching(dealId: string) {
     .map((m) => ({
       lenderId: lenderRefs.get(m.lender_ref) ?? null,
       score: m.score,
+      tier: m.tier,
+      summary: m.summary.trim(),
       // "Cash-flow term loan — …": the solution leads, so the list reads by option.
       reasoning: [m.solution ? `${m.solution} — ` : '', m.contact?.trim() ? `Send to ${m.contact.trim()}. ` : '', m.reasoning].join(''),
     }))
-    .filter((m): m is { lenderId: string; score: number; reasoning: string } => m.lenderId !== null)
+    .filter((m): m is typeof m & { lenderId: string } => m.lenderId !== null)
     // SBA last: at most 3, always listed below every conventional option.
     .filter((m) => !isSbaMatch(m.reasoning) || ++sbaKept <= MAX_SBA)
     // Lenders the team has never worked with: capped, and labeled as such.

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { matchScoreColor } from '@/lib/types'
+import { isSbaMatch, TIER_LABEL, type MatchTier } from '@/lib/matching/tiers'
 import { toggleMatchSelected } from './actions'
 import { addSubmissions } from './submission-actions'
 import { readJsonResponse } from '@/lib/fetch-json'
@@ -26,8 +27,14 @@ export type MatchWithLender = {
   copiedFrom?: string | null
   // Emails you actually sent this lender about the deal (newest first).
   sent?: SentEmail[]
-  // Who the draft goes to (the lender's primary contact).
+  // Who the draft goes to (the person the matcher picked, else the primary contact).
   recipient?: { name: string | null; email: string } | null
+  // The person to send to, and where we stand with them on LinkedIn.
+  sendTo?: string | null
+  sendToLinkedIn?: string | null
+  // Grouping (migration 055): best fits / also good / worth a shot.
+  tier?: MatchTier | null
+  summary?: string | null
 }
 
 export type SentEmail = { subject: string; body: string; at: string; to: string }
@@ -755,8 +762,16 @@ export function MatchingPanel({
       )}
 
       {matches.length > 0 && (
-        <ul className="mt-5 space-y-3">
-          {matches.map((m) => (
+        <div className="mt-5 space-y-5">
+          {matchGroups(matches).map((g) => (
+            <div key={g.key}>
+              {g.label && (
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {g.label} <span className="font-normal text-slate-400">({g.items.length})</span>
+                </h3>
+              )}
+        <ul className="space-y-3">
+          {g.items.map((m) => (
             <li
               key={m.id}
               className={`rounded-lg border p-4 max-sm:p-0 ${
@@ -850,7 +865,29 @@ export function MatchingPanel({
                 </form>
                 </div>
               </div>
-              <p className="mt-2 text-sm text-slate-600">{m.reasoning}</p>
+              {m.summary ? (
+                <>
+                  <p className="mt-2 text-sm text-slate-800">{m.summary}</p>
+                  <details className="mt-1 text-sm text-slate-600">
+                    <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-700">Why</summary>
+                    <p className="mt-1">{m.reasoning}</p>
+                  </details>
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-slate-600">{m.reasoning}</p>
+              )}
+              {m.sendTo && (
+                <p className="mt-1.5 text-xs text-slate-600">
+                  Send to <span className="font-medium text-slate-800">{m.sendTo}</span>
+                  {m.recipient?.email && m.recipient.name === m.sendTo ? (
+                    <>
+                      {' · '}
+                      <a href={`mailto:${m.recipient.email}`} className="text-blue-700 hover:underline">{m.recipient.email}</a>
+                    </>
+                  ) : null}
+                  {m.sendToLinkedIn ? ` · LinkedIn: ${m.sendToLinkedIn.replace(/_/g, ' ')}` : ''}
+                </p>
+              )}
               {m.sent && m.sent.length > 0 && <SentEmails sent={m.sent} />}
               {!m.sent?.length && m.draftStatus === 'drafted' && m.draftSubject && m.draftBody && (
                 <DraftEmail
@@ -922,7 +959,20 @@ export function MatchingPanel({
             </li>
           ))}
         </ul>
+            </div>
+          ))}
+        </div>
       )}
     </section>
   )
+}
+
+// Best fits / also good / worth a shot, with SBA (only when the matcher
+// thought it relevant) last. Matches from before tiers existed stay one list.
+function matchGroups(matches: MatchWithLender[]) {
+  if (!matches.some((m) => m.tier)) return [{ key: 'all', label: null as string | null, items: matches }]
+  const keyOf = (m: MatchWithLender) => (isSbaMatch(m.reasoning) ? 'sba' : (m.tier ?? 'good'))
+  return (['best', 'good', 'long_shot', 'sba'] as const)
+    .map((key) => ({ key, label: TIER_LABEL[key] as string | null, items: matches.filter((m) => keyOf(m) === key) }))
+    .filter((g) => g.items.length > 0)
 }
