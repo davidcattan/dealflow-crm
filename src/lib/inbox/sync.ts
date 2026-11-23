@@ -17,6 +17,7 @@ import {
 import { classifyEmail, isAutomatedSender } from './classify'
 import { OUTCOME_LABELS, type EmailClassification } from './classify-schema'
 import { recordSubmission } from '@/lib/deals/submissions'
+import { judgeLenderStandingSafe } from '@/lib/deals/lender-standing'
 import { detectSentDrafts } from '@/lib/outlook/sent-tracking'
 import { notify } from '@/lib/notifications'
 import { addresses } from '@/lib/deals/duplicates'
@@ -27,7 +28,7 @@ import { isNotBorrowerEmail, isNotBorrowerPhone, isOutreachEmail, isTeamName, re
 import { companyDomain, type Prospect } from '@/lib/prospects/types'
 import { readProspectReply } from '@/lib/prospects/reply'
 import type { Snapshot } from '@/lib/snapshot/schema'
-import type { SubmissionStatus } from '@/lib/deals/submission-status'
+import { SUBMISSION_LABELS, type SubmissionStatus } from '@/lib/deals/submission-status'
 import { lenderMaterialNames, saveLenderMaterials } from '@/lib/lenders/lender-materials'
 import { fileFindings, learnFromSignature } from './findings'
 import { AUTO_NAME_MARK, autoAddLender, baseSubject, buildNonLenderDomains, couldBeNewLender, emailDomain, isLenderPitch } from './new-lenders'
@@ -1116,6 +1117,17 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
           dealId,
           lenderId,
         })
+        // Our reply can change where they stand ("we couldn't get him to
+        // move on the sweep"). Fresh pitches have nothing to re-read yet.
+        if (current && current.status !== 'sent')
+          await judgeLenderStandingSafe(supabase, dealId, lenderId, {
+            receivedAt: m.sentDateTime,
+            sent: true,
+            from: mailbox,
+            to: external.map((r) => r.email).join(', '),
+            subject: m.subject,
+            body: m.bodyText,
+          })
       }
       actions.unshift(`Logged on deal; ${lenderIds.length} lender${lenderIds.length === 1 ? '' : 's'} on "Lenders sent to"`)
       // The other deals this email pitched (the thread stays with the first).
@@ -1598,7 +1610,21 @@ async function act({
       // question) get filed on the deal now.
       const filedLate = await fileEarlierSentInThread(supabase, message.conversationId, dealId, lenderId, lender?.name ?? sender)
       if (filedLate) actions.push(`filed ${filedLate} earlier sent email${filedLate === 1 ? '' : 's'} in this thread`)
-      actions.push(`lender status updated${outcome && OUTCOME_TO_SUBMISSION[outcome] ? ` to ${outcomeLabel}` : ''}`)
+      // The status comes from the whole conversation with this lender, not
+      // this one email (a "can't move forward if…" may already be a pass).
+      const standing = await judgeLenderStandingSafe(supabase, dealId, lenderId, {
+        receivedAt: message.receivedDateTime,
+        sent: false,
+        from: message.from,
+        to: null,
+        subject: message.subject,
+        body: message.bodyText,
+      })
+      actions.push(
+        standing
+          ? `lender status: ${SUBMISSION_LABELS[standing.to]}`
+          : `lender status updated${outcome && OUTCOME_TO_SUBMISSION[outcome] ? ` to ${outcomeLabel}` : ''}`
+      )
       if (movedFrom && deal) {
         actions.push(movedFrom === 'old' ? 'moved from Old back to Submitted' : 'moved to Submitted')
         deal.status = 'submitted'
@@ -1806,6 +1832,14 @@ export async function assignInboxMessageToDeal(
         lenderId: lender.id,
         ...(isSent ? { sentOn } : { status: statusFromReplySummary(row.summary) }),
       })
+    if ((isLenderReply || isSent) && lender) await judgeLenderStandingSafe(supabase, dealId, lender.id, {
+      receivedAt: String(row.received_at ?? new Date().toISOString()),
+      sent: isSent,
+      from: row.from_email,
+      to: row.to_emails,
+      subject: row.subject,
+      body: row.body_text,
+    })
     const note = `also logged on ${deal.company_name}${lender && (isLenderReply || isSent) ? ` (${lender.name} on "Lenders sent to")` : ''}`
     const { data: current } = await supabase.from('inbox_messages').select('action_taken').eq('id', row.id).single()
     await supabase
@@ -1838,6 +1872,15 @@ export async function assignInboxMessageToDeal(
       status: isSent ? undefined : statusFromReplySummary(row.summary),
     })
     actions.push(`${lender.name} added to "Lenders sent to"`)
+    const standing = await judgeLenderStandingSafe(supabase, dealId, lender.id, {
+      receivedAt: String(row.received_at ?? new Date().toISOString()),
+      sent: isSent,
+      from: row.from_email,
+      to: row.to_emails,
+      subject: row.subject,
+      body: row.body_text,
+    })
+    if (standing?.changed) actions.push(`status: ${SUBMISSION_LABELS[standing.to]}`)
   }
 
   // Attachments and full text from Outlook (free) — best effort.
