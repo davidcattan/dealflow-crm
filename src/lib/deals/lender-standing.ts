@@ -36,7 +36,8 @@ How to judge:
 - Read the whole conversation in order; the newest relevant message usually decides, but read it in light of what came before and of what JED wrote back.
 - They are OUT (declined) when they pass in any wording ("not a fit", "would not work", "not a space we're in", "too small", "can't do NY Medicaid") — and also when they said they can only proceed with something this deal can't give (a cash sweep, dominion, a guarantee, a size or EBITDA minimum, a structure) and the deal facts or JED's replies show the borrower won't or can't (e.g. JED says "we couldn't get him to move on the sweep"). A conditional "can't move forward if X" plus X being true is a pass.
 - A lender that passed and later re-engaged on this same deal (asked for more, sent terms) is back in.
-- When someone only introduces the deal to a person at a DIFFERENT firm, that interest belongs to the other firm, not to this lender.
+- When someone only introduces the deal to a person at a DIFFERENT firm, that interest belongs to the other firm, not to this lender. Emails marked as from a different firm never make this lender interested; if this lender's own people passed and only handed the deal to another firm, this lender is out.
+- A pass by one group or person at the lender (e.g. its ABL head on LinkedIn or a call) counts as this lender passing unless someone else at the same lender is still actively working the deal.
 - Team notes (typed by David or Eli, and call notes) count as much as emails and are often the newest word — e.g. "spoke to him, they're out" or "Status changed to Declined." A status the team set by hand stands unless something newer clearly changes it.
 - If nothing meaningful came back yet, it's sent.`
 
@@ -82,6 +83,11 @@ async function gather(supabase: SupabaseClient, dealId: string, lenderId: string
       .limit(25),
     supabase.from('deals').select('id, company_name'),
   ])
+  // The lender's own email domains — an email from any other domain that
+  // got filed under this lender (e.g. a firm they introduced) is not them.
+  const { data: contactRows } = await supabase.from('lender_contacts').select('email').eq('lender_id', lenderId)
+  const domainOf = (e: string | null | undefined) => (e ?? '').split('@')[1]?.trim().toLowerCase() ?? ''
+  const ownDomains = new Set((contactRows ?? []).map((c) => domainOf(c.email)).filter(Boolean))
   if (!deal || !lender || !sub) return null
   const dealName = new Map((deals ?? []).map((d) => [d.id as string, d.company_name as string]))
 
@@ -100,7 +106,14 @@ async function gather(supabase: SupabaseClient, dealId: string, lenderId: string
     })
   for (const e of rows) {
     const filed = e.deal_id === dealId ? 'filed on THIS deal' : e.deal_id ? `filed on another deal: ${dealName.get(e.deal_id) ?? 'unknown'}` : 'not filed on a deal'
-    const who = e.classification === 'sent' ? `JED → ${e.to_emails ?? lender.name}` : `${e.from_email} (${lender.name}) → JED`
+    const fromDomain = domainOf(e.from_email)
+    const otherFirm = e.classification !== 'sent' && fromDomain && ownDomains.size > 0 && !ownDomains.has(fromDomain)
+    const who =
+      e.classification === 'sent'
+        ? `JED → ${e.to_emails ?? lender.name}`
+        : otherFirm
+          ? `${e.from_email} (a DIFFERENT firm, not ${lender.name} — their interest or pass is not ${lender.name}'s) → JED`
+          : `${e.from_email} (${lender.name}) → JED`
     lines.push({
       at: String(e.received_at),
       text: `[${String(e.received_at).slice(0, 10)}] EMAIL ${who} — "${e.subject ?? ''}" (${filed})\n${clip(e.body_text ?? e.summary, 1800)}`,
