@@ -5,8 +5,9 @@
 // Bridgeway Alliance: Venture's loan officers (e.g. Isaac Chehebar) write from it.
 // alsoLender: the partner also lends on small deals (Simply Capital / Tom,
 // $300–500K) — so a reply about a deal we sent them is a lender reply.
-export const REFERRAL_PARTNERS: { name: string; domains: string[]; alsoLender?: boolean }[] = [
-  { name: 'Venture Nationals', domains: ['venturenationals.com', 'bridgewayalliance.com'] },
+export const REFERRAL_PARTNERS: { name: string; domains: string[]; emails?: string[]; phones?: string[]; alsoLender?: boolean }[] = [
+  // Their intake form puts their own front desk on every file.
+  { name: 'Venture Nationals', domains: ['venturenationals.com', 'bridgewayalliance.com'], emails: ['frontdesk1052@gmail.com'], phones: ['4053496580'] },
   { name: 'Simply Capital', domains: ['simplycapitalsource.com'], alsoLender: true },
   { name: 'Essex Capital Group', domains: ['essexcg.com'] },
   { name: 'Direct Cash Group', domains: ['directcashgroup.com'] },
@@ -29,7 +30,14 @@ export function referralOnlyPartnerFor(email: string | null | undefined) {
 
 export function referralPartnerFor(email: string | null | undefined) {
   const d = domain(email)
-  return d ? (REFERRAL_PARTNERS.find((p) => p.domains.includes(d)) ?? null) : null
+  const e = (email ?? '').trim().toLowerCase()
+  return d ? (REFERRAL_PARTNERS.find((p) => p.domains.includes(d) || (p.emails ?? []).includes(e)) ?? null) : null
+}
+
+// A phone number that belongs to a partner, not a borrower.
+export function isNotBorrowerPhone(phone: string | null | undefined) {
+  const digits = (phone ?? '').replace(/\D/g, '').slice(-10)
+  return digits.length === 10 && REFERRAL_PARTNERS.some((p) => (p.phones ?? []).includes(digits))
 }
 
 // An address that can't be a borrower's own: a partner's or the team's.

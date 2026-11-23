@@ -22,7 +22,7 @@ import { addresses } from '@/lib/deals/duplicates'
 import { loadLatestPitch, refreshDraftsFromLatestPitch } from '@/lib/matching/copy-sent'
 import { ownText } from '@/lib/outlook/own-text'
 import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
-import { isNotBorrowerEmail, isTeamName, referralOnlyPartnerFor, referralPartnerFor } from './partners'
+import { isNotBorrowerEmail, isNotBorrowerPhone, isTeamName, referralOnlyPartnerFor, referralPartnerFor } from './partners'
 import { companyDomain, type Prospect } from '@/lib/prospects/types'
 import { readProspectReply } from '@/lib/prospects/reply'
 import type { Snapshot } from '@/lib/snapshot/schema'
@@ -85,7 +85,9 @@ function dealHints(d: {
   // Code names the team pitches a deal under ("Project Air" for APD), noted
   // on the deal so lender emails that only use the code name still file here.
   const codeNames = text.match(/\bProject [A-Z][A-Za-z0-9]+(?: [A-Z][A-Za-z0-9]+)?/g) ?? []
-  const hints = [...codeNames, ...addresses(text), ...entityNames, contactHint].filter(Boolean)
+  // Other names written in the notes: "Also called: Silverline Homecare."
+  const aliases = [...text.matchAll(/\b(?:also called|also known as|aka|a\.k\.a\.)[:\s]+([A-Z][A-Za-z0-9&' -]{3,40}?)(?=[.,;\n]|$)/gi)].map((m) => m[1].trim())
+  const hints = [...codeNames, ...aliases, ...addresses(text), ...entityNames, contactHint].filter(Boolean)
   return [...new Set(hints)].slice(0, 6)
 }
 
@@ -105,6 +107,11 @@ function nameTokens(name: string) {
 // email. Only a single clear match counts.
 function findDealByText(deals: (Deal & { ref: string })[], text: string): (Deal & { ref: string }) | null {
   const lower = text.toLowerCase()
+  // The subject is the first line: a deal named there counts even when it's
+  // written differently ("Aldo Ray" for AldoRay, "APD:" for APD (…), "Orbit").
+  const subject = text.split('\n')[0] ?? ''
+  const subjectCompact = subject.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const subjectWords = new Set(subject.split(/[^A-Za-z0-9]+/).filter(Boolean))
   const words = new Set(lower.split(/[^a-z0-9]+/).filter(Boolean))
   const emailAddresses = addresses(text)
   const hits = deals.filter((d) => {
@@ -116,7 +123,13 @@ function findDealByText(deals: (Deal & { ref: string })[], text: string): (Deal 
     if (byHint) return true
     if (INACTIVE.includes(d.status)) return false
     const tokens = nameTokens(d.company_name)
-    return tokens.length >= 2 ? tokens.every((t) => words.has(t)) : tokens.length === 1 && tokens[0].length >= 7 && words.has(tokens[0])
+    if (tokens.length >= 2 ? tokens.every((t) => words.has(t)) : tokens.length === 1 && tokens[0].length >= 7 && words.has(tokens[0])) return true
+    // Subject only: the deal's first name word, run together or as written.
+    const first = d.company_name.split(/[^A-Za-z0-9]+/).filter(Boolean)[0] ?? ''
+    if (first.length >= 7 && subjectCompact.includes(first.toLowerCase())) return true
+    if (first.length >= 5 && !NAME_FILLER.has(first.toLowerCase()) && [...subjectWords].some((w) => w.toLowerCase() === first.toLowerCase())) return true
+    // An acronym name ("APD (Aircraft Parts Distribution)") in capitals.
+    return /^[A-Z0-9]{3,6}$/.test(first) && subjectWords.has(first)
   })
   return hits.length === 1 ? hits[0] : null
 }
@@ -1575,7 +1588,7 @@ async function act({
           // Only fall back to the sender when the sender IS the borrower —
           // a broker's email/phone must never become the deal contact.
           contact_email: borrowerEmail(d.contact_email ?? (d.sender_role === 'borrower' ? message.from : null)),
-          contact_phone: d.contact_phone,
+          contact_phone: isNotBorrowerPhone(d.contact_phone) ? null : d.contact_phone,
           notes: d.referred_by
             ? `Referred by ${d.referred_by}`
             : referralPartnerFor(message.from)
@@ -1656,7 +1669,7 @@ async function act({
 // saves its attachments, and for a lender reply puts the lender on the
 // deal's "Lenders sent to" list and remembers the thread so later replies
 // match on their own.
-export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMessageId: string, dealId: string) {
+export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMessageId: string, dealId: string, how = 'Filed on deal by hand') {
   const { data: row } = await supabase
     .from('inbox_messages')
     .select('id, graph_message_id, mailbox, classification, from_email, to_emails, subject, summary, lender_id, conversation_id, body_text, deal_id')
@@ -1709,7 +1722,7 @@ export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMe
     })
   }
 
-  const actions = [`Filed on deal by hand`]
+  const actions = [how]
   if ((isLenderReply || isSent) && lender) {
     await recordSubmission(supabase, {
       dealId,
@@ -1777,4 +1790,55 @@ export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMe
     lenderId: lender?.id ?? null,
   })
   return actions.join(', ')
+}
+
+// Calendar replies ("Accepted: APD call") aren't deal emails.
+export function isCalendarReply(subject: string | null | undefined) {
+  return /^\s*(accepted|declined|tentative|tentatively accepted|canceled|cancelled|updated invitation|invitation)\s*:/i.test(subject ?? '')
+}
+
+// Free (no AI) second look at deal emails the CRM couldn't place: deals pick
+// up new names over time (a code name, an alias in the notes), so an email
+// that didn't match when it arrived often does a day later. Files every
+// sent email / lender reply from the last month that now matches exactly
+// one deal, the same way filing by hand does.
+export async function refileUnmatched(supabase: SupabaseClient, days = 30) {
+  const ctx = await loadContext(supabase)
+  const since = new Date(Date.now() - days * 86400000).toISOString()
+  const { data: rows } = await supabase
+    .from('inbox_messages')
+    .select('id, subject, body_text, summary, classification, action_taken')
+    .is('deal_id', null)
+    .in('classification', ['sent', 'lender_reply'])
+    .gte('received_at', since)
+    .limit(300)
+  let filed = 0
+  for (const r of rows ?? []) {
+    if (isCalendarReply(r.subject as string)) continue
+    // The AI already decided it's about the lender in general, not a deal.
+    if (/Not about a deal/.test(String(r.action_taken ?? ''))) continue
+    const text = `${r.subject ?? ''}\n${r.body_text ? ownText(String(r.body_text)) : (r.summary ?? '')}`
+    const deal = findDealByText(ctx.deals, text)
+    if (!deal) continue
+    try {
+      await assignInboxMessageToDeal(supabase, r.id as string, deal.id, 'Filed automatically on a second look (matched the deal name)')
+      filed++
+    } catch {
+      // Leave it for the Inbox page.
+    }
+  }
+  return filed
+}
+
+// How many deal-looking emails from the last two weeks still need filing.
+export async function countUnfiled(supabase: SupabaseClient, days = 14) {
+  const since = new Date(Date.now() - days * 86400000).toISOString()
+  const { data } = await supabase
+    .from('inbox_messages')
+    .select('subject, action_taken')
+    .is('deal_id', null)
+    .in('classification', ['sent', 'lender_reply'])
+    .gte('received_at', since)
+    .limit(1000)
+  return (data ?? []).filter((r) => !isCalendarReply(r.subject as string) && !/Not about a deal/.test(String(r.action_taken ?? ''))).length
 }

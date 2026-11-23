@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { isCalendarReply } from '@/lib/inbox/sync'
 import { mailboxLabel } from '@/lib/outlook/mailbox-label'
 import { createClient } from '@/lib/supabase/server'
 import { InboxControls } from '../settings/inbox-controls'
@@ -23,8 +24,11 @@ const KIND_LABELS: Record<string, string> = {
   sent: 'Sent',
 }
 
-export default async function InboxPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const { q: rawQuery } = await searchParams
+// Outside the component so the lint's render-purity rule is happy.
+const monthAgo = () => new Date(Date.now() - 30 * 86400000).toISOString()
+
+export default async function InboxPage({ searchParams }: { searchParams: Promise<{ q?: string; unfiled?: string }> }) {
+  const { q: rawQuery, unfiled } = await searchParams
   // Search subject, sender, recipients and summary; quotes would break the filter.
   const q = (rawQuery ?? '').replace(/["\\]/g, '').trim()
   const supabase = await createClient()
@@ -32,11 +36,18 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
     .from('inbox_messages')
     .select('id, from_email, to_emails, subject, received_at, classification, deal_id, lender_id, summary, action_taken, mailbox, deals(company_name)')
     .order('received_at', { ascending: false })
+  // ?unfiled=1: deal emails from the last month the CRM couldn't place.
+  if (unfiled) {
+    emailQuery = emailQuery
+      .is('deal_id', null)
+      .in('classification', ['sent', 'lender_reply'])
+      .gte('received_at', monthAgo())
+  }
   if (q) {
     const like = `"%${q}%"`
     emailQuery = emailQuery.or(`subject.ilike.${like},from_email.ilike.${like},to_emails.ilike.${like},summary.ilike.${like}`)
   }
-  const [{ data: connections }, { data: syncState }, { data: recent }, health, { data: runs }, { data: dealRows }] = await Promise.all([
+  const [{ data: connections }, { data: syncState }, { data: fetched }, health, { data: runs }, { data: dealRows }] = await Promise.all([
     supabase
       .from('outlook_connections')
       .select('id, account_email, connected_by, created_at, updated_at, email_intro, email_signature')
@@ -51,6 +62,11 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       .limit(12),
     supabase.from('deals').select('id, company_name, status, updated_at').order('updated_at', { ascending: false }),
   ])
+  // "Needs filing" hides calendar replies and emails the CRM already judged
+  // to be about a lender in general (not a deal).
+  const recent = unfiled
+    ? (fetched ?? []).filter((m) => !isCalendarReply(m.subject as string) && !/Not about a deal/.test(String(m.action_taken ?? '')))
+    : fetched
   // Active deals first, then the rest — for "Add to deal".
   const dealOptions = [...(dealRows ?? [])]
     .sort((a, b) => Number(['dead', 'old', 'closed'].includes(a.status)) - Number(['dead', 'old', 'closed'].includes(b.status)))
@@ -175,12 +191,18 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-slate-900">Email log</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-semibold text-slate-900">{unfiled ? 'Deal emails that need filing (last 30 days)' : 'Email log'}</h2>
+            <Link href={unfiled ? '/inbox' : '/inbox?unfiled=1'} className="text-xs text-blue-700 hover:underline">
+              {unfiled ? 'Show all emails' : 'Show only emails that need filing'}
+            </Link>
+          </div>
           <div className="w-full sm:w-80">
             <SearchBar placeholder="Search emails (company, sender, subject)…" />
           </div>
         </div>
         {q && (!recent || recent.length === 0) && <p className="text-sm text-slate-500">No emails match “{q}”.</p>}
+        {unfiled && !q && (!recent || recent.length === 0) && <p className="text-sm text-slate-500">Nothing to file - every deal email is on a deal.</p>}
       </section>
 
       {recent && recent.length > 0 && (

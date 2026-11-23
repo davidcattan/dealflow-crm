@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { countUnfiled } from '@/lib/inbox/sync'
 import { createClient } from '@/lib/supabase/server'
 import {
   PIPELINE_STATUSES,
@@ -107,7 +108,7 @@ export default async function DashboardHome() {
   monthStart.setDate(1)
   monthStart.setHours(0, 0, 0, 0)
 
-  const [{ data: raw }, { data: usage }] = await Promise.all([
+  const [{ data: raw }, { data: usage }, unfiledEmails] = await Promise.all([
     supabase
       .from('deals')
       .select(
@@ -115,6 +116,7 @@ export default async function DashboardHome() {
       )
       .in('status', PIPELINE_QUERY_STATUSES),
     supabase.from('ai_usage').select('cost_usd').gte('created_at', monthStart.toISOString()),
+    countUnfiled(supabase).catch(() => 0),
   ])
 
   // "Updated" = the last activity of any kind (emails, lender replies, calls,
@@ -161,6 +163,16 @@ export default async function DashboardHome() {
           AI spend this month: ${monthSpend.toFixed(2)}
         </Link>
       </div>
+
+      {unfiledEmails >= 3 && (
+        <Link
+          href="/inbox?unfiled=1"
+          className="block rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 hover:bg-amber-100"
+        >
+          <span className="font-semibold">{unfiledEmails} deal emails need filing.</span> The CRM couldn&apos;t tell which deal they&apos;re
+          about - open the list and use &quot;Add to deal&quot; on each.
+        </Link>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {PIPELINE_STATUSES.map((status) => (

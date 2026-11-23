@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { runInboxSync, type SyncSummary } from '@/lib/inbox/sync'
+import { runInboxSync, refileUnmatched, type SyncSummary } from '@/lib/inbox/sync'
 import { startRun, finishRun } from '@/lib/inbox/run-log'
 import { isQuietHours } from '@/lib/inbox/quiet-hours'
 import { advancePendingCalls } from '@/lib/calls/process'
@@ -75,6 +75,8 @@ export async function GET(request: Request) {
       total.moreWaiting = batch.moreWaiting
     } while (batch.moreWaiting && Date.now() - startedAt < 6 * 60 * 1000)
     await finishRun(supabase, runId, { summary: total })
+    // Second look at last month's unplaced deal emails (free, no AI).
+    await refileUnmatched(supabase).catch((err) => console.error('Refile failed', err))
     // Then bring a few deals' key facts and next steps up to date with what
     // just came in (a few cents each).
     const refreshed = await refreshStaleKeyFacts(supabase, 8).catch(() => 0)
