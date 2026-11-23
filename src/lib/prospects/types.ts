@@ -47,6 +47,8 @@ export type Prospect = {
   reply_summary: string | null
   deal_id: string | null
   notes: string | null
+  // Researched first line for the cold email (migration 056).
+  personal_line?: string | null
 }
 
 const GENERIC = new Set(['gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'yahoo.com', 'icloud.com', 'me.com', 'aol.com', 'protonmail.com', 'proton.me', 'msn.com', 'comcast.net'])

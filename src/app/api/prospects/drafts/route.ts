@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getValidAccessToken, createOutlookDraft } from '@/lib/outlook/graph'
 import { jedSignatureHtml } from '@/lib/outlook/jed-signature'
-import { prospectEmail } from '@/lib/prospects/email'
+import { prospectEmail, OUTREACH_CC } from '@/lib/prospects/email'
 import type { Prospect } from '@/lib/prospects/types'
 
 export const maxDuration = 120
@@ -49,6 +49,8 @@ export async function POST(request: Request) {
       await createOutlookDraft({
         accessToken,
         to: { name: [p.first_name, p.last_name].filter(Boolean).join(' ') || null, email: p.email },
+        // Eli is copied on all outreach (never copy the sender to themselves).
+        cc: OUTREACH_CC.filter((c) => c.email.toLowerCase() !== accountEmail.toLowerCase()),
         subject,
         body: signatureHtml ? body : `${body}\n${senderName}\nJED Capital Group`,
         attachments: [],

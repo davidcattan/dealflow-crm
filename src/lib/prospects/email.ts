@@ -21,16 +21,45 @@ export const DEFAULT_PROSPECT_BODY = [
   'Best regards,',
 ].join('\n')
 
+// Independent sponsors / small PE (Nov 23, 2026): acquisition debt, not a
+// renewal. {personal} is a researched line about them; dropped when empty.
+export const SPONSOR_PROSPECT_SUBJECT = 'Acquisition financing'
+export const SPONSOR_PROSPECT_BODY = [
+  'Hi {first_name}, hope all is well.',
+  '',
+  '{personal}',
+  '',
+  'JED Capital Group arranges debt for lower middle market acquisitions: asset-based lines, cash flow term loans and unitranche, typically $2-25MM.',
+  '',
+  'If you have a deal under LOI or coming up, we’d be glad to take a look and get you lender feedback quickly.',
+  '',
+  'Regards,',
+].join('\n')
+
+// Everyone on the team is copied on outreach (Eli, Nov 23, 2026).
+export const OUTREACH_CC = [{ name: 'Eli Cattan', email: 'eli@jed-capitalgroup.com' }]
+
+export function isSponsorProspect(p: Prospect) {
+  return /sponsor|private equity|\bpe\b|search fund/i.test(p.source ?? '')
+}
+
 export type ProspectTemplate = { subject?: string | null; body?: string | null }
 
-// {first_name} / {First Name} / {company}, any spacing or case.
+// {first_name} / {First Name} / {company} / {personal}, any spacing or case.
 function fill(text: string, p: Prospect) {
   const company = p.company_display || p.company
   const first = p.first_name?.trim() || 'there'
-  return text.replace(/\{\s*first[\s_]*name\s*\}/gi, first).replace(/\{\s*company\s*\}/gi, company)
+  const personal = p.personal_line?.trim() ?? ''
+  let out = text.replace(/\{\s*first[\s_]*name\s*\}/gi, first).replace(/\{\s*company\s*\}/gi, company)
+  // No researched line: drop the placeholder and the blank line after it.
+  out = personal ? out.replace(/\{\s*personal\s*\}/gi, personal) : out.replace(/\{\s*personal\s*\}\n*/gi, '')
+  return out
 }
 
+// Sponsors always get the sponsor email; everyone else the mailbox's own
+// template, else the standard one.
 export function prospectEmail(p: Prospect, template?: ProspectTemplate | null) {
+  if (isSponsorProspect(p)) return { subject: fill(SPONSOR_PROSPECT_SUBJECT, p), body: fill(SPONSOR_PROSPECT_BODY, p) }
   return {
     subject: fill(template?.subject?.trim() || DEFAULT_PROSPECT_SUBJECT, p),
     body: fill(template?.body?.trim() || DEFAULT_PROSPECT_BODY, p),
