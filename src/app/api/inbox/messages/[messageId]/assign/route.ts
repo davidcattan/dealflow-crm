@@ -4,7 +4,8 @@ import { assignInboxMessageToDeal } from '@/lib/inbox/sync'
 
 export const maxDuration = 120
 
-// Files an email on a deal chosen by hand (no AI, free).
+// Files an email on a deal chosen by hand (no AI, free). `also`: keep it
+// where it is and log it on this deal too (one email about two deals).
 export async function POST(request: Request, ctx: RouteContext<'/api/inbox/messages/[messageId]/assign'>) {
   const supabase = await createClient()
   const {
@@ -13,10 +14,10 @@ export async function POST(request: Request, ctx: RouteContext<'/api/inbox/messa
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { messageId } = await ctx.params
-  const { dealId } = (await request.json().catch(() => ({}))) as { dealId?: string }
+  const { dealId, also } = (await request.json().catch(() => ({}))) as { dealId?: string; also?: boolean }
   if (!dealId) return NextResponse.json({ error: 'Pick a deal' }, { status: 400 })
   try {
-    return NextResponse.json({ ok: true, action: await assignInboxMessageToDeal(supabase, messageId, dealId) })
+    return NextResponse.json({ ok: true, action: await assignInboxMessageToDeal(supabase, messageId, dealId, undefined, { also: Boolean(also) }) })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Could not file the email' }, { status: 500 })
   }

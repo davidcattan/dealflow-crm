@@ -232,9 +232,14 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                   {m.summary && <p className="mt-0.5 line-clamp-3 text-xs text-slate-600">{m.summary}</p>}
                   <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-slate-100 pt-2 text-sm">
                     {m.deal_id ? (
-                      <Link href={`/deals/${m.deal_id}`} className="font-medium text-slate-800 underline">
-                        {deal?.company_name ?? 'Open deal'} →
-                      </Link>
+                      <>
+                        <Link href={`/deals/${m.deal_id}`} className="font-medium text-slate-800 underline">
+                          {deal?.company_name ?? 'Open deal'} →
+                        </Link>
+                        {(m.classification === 'sent' || m.classification === 'lender_reply') && (
+                          <AssignToDeal messageId={m.id} deals={dealOptions.filter((d) => d.id !== m.deal_id)} also />
+                        )}
+                      </>
                     ) : (
                       <AssignToDeal messageId={m.id} deals={dealOptions} />
                     )}
@@ -281,11 +286,16 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                         {m.summary && <p className="mt-0.5 line-clamp-2">{m.summary}</p>}
                         {emailActions(m)}
                       </td>
-                      <td className={`px-3 py-2 ${m.deal_id ? 'truncate' : ''}`}>
+                      <td className="px-3 py-2">
                         {m.deal_id ? (
-                          <Link href={`/deals/${m.deal_id}`} className="text-slate-800 hover:underline">
-                            {deal?.company_name ?? 'Open deal'}
-                          </Link>
+                          <>
+                            <Link href={`/deals/${m.deal_id}`} className="block truncate text-slate-800 hover:underline">
+                              {deal?.company_name ?? 'Open deal'}
+                            </Link>
+                            {(m.classification === 'sent' || m.classification === 'lender_reply') && (
+                              <AssignToDeal messageId={m.id} deals={dealOptions.filter((d) => d.id !== m.deal_id)} also />
+                            )}
+                          </>
                         ) : (
                           <AssignToDeal messageId={m.id} deals={dealOptions} />
                         )}

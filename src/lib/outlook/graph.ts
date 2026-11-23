@@ -186,6 +186,16 @@ export async function createOutlookDraft({
   }
 }
 
+// Just the file names of a message's real attachments (no file contents) —
+// cheap enough to read on every sent email.
+export async function getAttachmentNames(accessToken: string, messageId: string): Promise<string[]> {
+  const json = await graphFetch(`/me/messages/${messageId}/attachments?$select=name,isInline`, accessToken)
+  return (json.value as Array<Record<string, unknown>>)
+    .filter((a) => a['@odata.type'] === '#microsoft.graph.fileAttachment' && !a.isInline)
+    .map((a) => String(a.name ?? ''))
+    .filter(Boolean)
+}
+
 export type MessageAttachment = { name: string; contentType: string; size: number; contentBytes: string }
 
 // Real file attachments on a message (inline images like signature logos

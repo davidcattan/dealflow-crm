@@ -4,8 +4,17 @@ import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { readJsonResponse } from '@/lib/fetch-json'
 
-// "Add to deal" for an email the inbox couldn't place (free).
-export function AssignToDeal({ messageId, deals }: { messageId: string; deals: { id: string; name: string }[] }) {
+// "Add to deal" for an email the inbox couldn't place (free). With `also`,
+// "+ Another deal" logs an already-filed email on a second deal too.
+export function AssignToDeal({
+  messageId,
+  deals,
+  also = false,
+}: {
+  messageId: string
+  deals: { id: string; name: string }[]
+  also?: boolean
+}) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -23,7 +32,7 @@ export function AssignToDeal({ messageId, deals }: { messageId: string; deals: {
       const res = await fetch(`/api/inbox/messages/${messageId}/assign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dealId }),
+        body: JSON.stringify({ dealId, also }),
       })
       const parsed = await readJsonResponse(res)
       if (!parsed.ok) throw new Error(parsed.message)
@@ -41,9 +50,14 @@ export function AssignToDeal({ messageId, deals }: { messageId: string; deals: {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-50"
+        className={
+          also
+            ? 'text-xs text-slate-500 hover:text-slate-800 hover:underline'
+            : 'rounded border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-50'
+        }
+        title={also ? 'This email is about another deal too — log it there as well' : undefined}
       >
-        Add to deal
+        {also ? '+ Another deal' : 'Add to deal'}
       </button>
     )
   }

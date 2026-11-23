@@ -11,6 +11,7 @@ import {
   getInboxMessage,
   getInboxStatus,
   getMessageAttachments,
+  getAttachmentNames,
   type InboxMessage,
 } from '@/lib/outlook/graph'
 import { classifyEmail, isAutomatedSender } from './classify'
@@ -106,6 +107,12 @@ function nameTokens(name: string) {
 // order — "Alchemist Dealer" finds "Dealer Alchemist") appears in the
 // email. Only a single clear match counts.
 function findDealByText(deals: (Deal & { ref: string })[], text: string): (Deal & { ref: string }) | null {
+  const hits = findDealsByText(deals, text)
+  return hits.length === 1 ? hits[0] : null
+}
+
+// Every deal the email names (an email can pitch two deals at once).
+function findDealsByText(deals: (Deal & { ref: string })[], text: string): (Deal & { ref: string })[] {
   const lower = text.toLowerCase()
   // The subject is the first line: a deal named there counts even when it's
   // written differently ("Aldo Ray" for AldoRay, "APD:" for APD (…), "Orbit").
@@ -131,7 +138,7 @@ function findDealByText(deals: (Deal & { ref: string })[], text: string): (Deal 
     // An acronym name ("APD (Aircraft Parts Distribution)") in capitals.
     return /^[A-Z0-9]{3,6}$/.test(first) && subjectWords.has(first)
   })
-  return hits.length === 1 ? hits[0] : null
+  return hits
 }
 type Lender = { id: string; name: string; contact_email: string | null; mandate_notes: string | null; website?: string | null }
 
@@ -984,11 +991,20 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
     if (id && !lenderIds.includes(id)) lenderIds.push(id)
   }
 
+  // Attachment names often carry the deal ("Project Silver - Lender Teaser.pdf").
+  const fileNames = m.hasAttachments ? await getAttachmentNames(ctx.accessToken, m.id).catch(() => [] as string[]) : []
+  const textDeals = findDealsByText(ctx.deals, [m.subject, m.bodyText, ...fileNames].join('\n'))
+  // One email pitching two or three deals to a lender ("Two Opportunities"
+  // with both teasers attached) is logged on every deal it names — in what
+  // we wrote and attached, not in an older email quoted below it.
+  const pitched = findDealsByText(ctx.deals, [m.subject, ownText(m.bodyText), ...fileNames].join('\n'))
+  const multiDeal = lenderIds.length > 0 && pitched.length >= 2 && pitched.length <= 3
   const dealId =
     ctx.threadByConversation.get(m.conversationId)?.dealId ??
     ctx.dealByConversation.get(m.conversationId) ??
     external.map((r) => ctx.dealByContactEmail.get(r.email)).find(Boolean) ??
-    findDealByText(ctx.deals, `${m.subject}\n${m.bodyText}`)?.id ??
+    (textDeals.length === 1 ? textDeals[0].id : null) ??
+    (multiDeal ? pitched[0].id : null) ??
     // "The one live deal with this lender" only for replies: a fresh pitch
     // (new subject) to a lender is often a different deal — e.g. a $25M
     // teaser to Live Oak landed on Silver Lining just because Live Oak was
@@ -998,6 +1014,7 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
 
   // Nothing to do with a deal or a lender — e.g. personal mail.
   if (!dealId && lenderIds.length === 0) return
+  const extraDealIds = multiDeal && dealId && pitched.some((d) => d.id === dealId) ? pitched.map((d) => d.id).filter((id) => id !== dealId) : []
 
   const deal = dealId ? ctx.dealById.get(dealId) : undefined
   const actions: string[] = []
@@ -1101,6 +1118,29 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
         })
       }
       actions.unshift(`Logged on deal; ${lenderIds.length} lender${lenderIds.length === 1 ? '' : 's'} on "Lenders sent to"`)
+      // The other deals this email pitched (the thread stays with the first).
+      for (const extraId of extraDealIds) {
+        const extra = ctx.dealById.get(extraId)
+        for (const lenderId of lenderIds) {
+          const lender = ctx.lenderById.get(lenderId)
+          await recordSubmission(supabase, { dealId: extraId, lenderId, sentOn: m.sentDateTime.slice(0, 10) })
+          await supabase.from('deal_updates').insert({
+            deal_id: extraId,
+            lender_id: lenderId,
+            entry_date: m.sentDateTime.slice(0, 10),
+            note: `Email sent to ${lender?.name ?? 'lender'}: "${m.subject}" (the same email also pitched ${deal?.company_name ?? 'another deal'}).`,
+            source: 'email',
+          })
+          await notify(supabase, {
+            kind: 'sent',
+            title: `Sent: ${extra?.company_name ?? 'deal'} → ${lender?.name ?? 'lender'}`,
+            body: `"${m.subject}" — sent by ${mailboxOwner(mailbox) ?? 'your team'}, together with ${deal?.company_name ?? 'another deal'}.`,
+            dealId: extraId,
+            lenderId,
+          })
+        }
+        actions.push(`also logged on ${extra?.company_name ?? 'another deal'}`)
+      }
       const pitched = ctx.pitchedSubjectsByDeal.get(dealId) ?? new Set<string>()
       if (baseSubject(m.subject)) pitched.add(baseSubject(m.subject))
       ctx.pitchedSubjectsByDeal.set(dealId, pitched)
@@ -1125,7 +1165,18 @@ async function fileSentMessage(supabase: SupabaseClient, ctx: Context, mailbox: 
     // that we forward to a lender) are deal documents too — save any the
     // deal doesn't have yet (same name and size are skipped).
     if (m.hasAttachments) {
-      const saved = await saveAttachments(supabase, dealId, await getMessageAttachments(ctx.accessToken, m.id)).catch(() => 0)
+      const files = await getMessageAttachments(ctx.accessToken, m.id).catch(() => [])
+      // With two deals on one email, each file goes to the deal its name
+      // matches ("Project Silver - Teaser.pdf"); anything else to the first.
+      const candidates = ctx.deals.filter((d) => d.id === dealId || extraDealIds.includes(d.id))
+      const byDeal = new Map<string, typeof files>()
+      for (const f of files) {
+        const own = extraDealIds.length ? findDealsByText(candidates, f.name) : []
+        const target = own.length === 1 ? own[0].id : dealId
+        byDeal.set(target, [...(byDeal.get(target) ?? []), f])
+      }
+      let saved = 0
+      for (const [id, group] of byDeal) saved += await saveAttachments(supabase, id, group).catch(() => 0)
       if (saved) actions.push(`saved ${saved} new document${saved === 1 ? '' : 's'} from the attachments`)
     }
   } else {
@@ -1692,10 +1743,18 @@ async function act({
 // saves its attachments, and for a lender reply puts the lender on the
 // deal's "Lenders sent to" list and remembers the thread so later replies
 // match on their own.
-export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMessageId: string, dealId: string, how = 'Filed on deal by hand') {
+export async function assignInboxMessageToDeal(
+  supabase: SupabaseClient,
+  inboxMessageId: string,
+  dealId: string,
+  how = 'Filed on deal by hand',
+  // "Also add to deal": one email about two deals stays filed where it is
+  // and is logged on this deal too (lender on "Lenders sent to").
+  { also = false }: { also?: boolean } = {}
+) {
   const { data: row } = await supabase
     .from('inbox_messages')
-    .select('id, graph_message_id, mailbox, classification, from_email, to_emails, subject, summary, lender_id, conversation_id, body_text, deal_id')
+    .select('id, graph_message_id, mailbox, classification, from_email, to_emails, subject, summary, lender_id, conversation_id, body_text, deal_id, received_at')
     .eq('id', inboxMessageId)
     .single()
   if (!row) throw new Error('Email record not found')
@@ -1730,6 +1789,31 @@ export async function assignInboxMessageToDeal(supabase: SupabaseClient, inboxMe
     : { data: null }
   const who = lender?.name ?? row.from_email ?? 'someone'
   const summary = row.summary ? ` ${row.summary}` : ''
+
+  if (also && row.deal_id && row.deal_id !== dealId) {
+    const { data: first } = await supabase.from('deals').select('company_name').eq('id', row.deal_id).single()
+    const sentOn = row.received_at ? String(row.received_at).slice(0, 10) : today()
+    await supabase.from('deal_updates').insert({
+      deal_id: dealId,
+      lender_id: lender?.id ?? null,
+      entry_date: sentOn,
+      note: `${isSent ? `Email sent to ${lender?.name ?? row.to_emails ?? 'recipient'}` : isLenderReply ? `Lender reply — ${who}` : `Email from ${who}`}: "${row.subject ?? ''}" (same email as on ${first?.company_name ?? 'another deal'}).`,
+      source: 'email',
+    })
+    if ((isLenderReply || isSent) && lender)
+      await recordSubmission(supabase, {
+        dealId,
+        lenderId: lender.id,
+        ...(isSent ? { sentOn } : { status: statusFromReplySummary(row.summary) }),
+      })
+    const note = `also logged on ${deal.company_name}${lender && (isLenderReply || isSent) ? ` (${lender.name} on "Lenders sent to")` : ''}`
+    const { data: current } = await supabase.from('inbox_messages').select('action_taken').eq('id', row.id).single()
+    await supabase
+      .from('inbox_messages')
+      .update({ action_taken: [current?.action_taken, note].filter(Boolean).join(', ') })
+      .eq('id', row.id)
+    return note
+  }
 
   if (!alreadyHere) {
     await supabase.from('deal_updates').insert({
