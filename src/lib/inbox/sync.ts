@@ -1301,9 +1301,18 @@ async function saveAttachments(
 
 // Adds what a lender said about what it finances to its notes (skipping a
 // line it already has), so matching reads it.
-async function addLenderNote(supabase: SupabaseClient, lender: Lender, note: string) {
+type SizeLimits = { min_loan: number | null; max_loan: number | null; min_ebitda: number | null } | null | undefined
+
+async function addLenderNote(supabase: SupabaseClient, lender: Lender, note: string, size?: SizeLimits) {
+  // Size limits the lender stated go in the lender's size fields too, so a
+  // "$25-100M, $5M+ EBITDA" lender isn't suggested for a $3M deal.
+  const sizeUpdate: Record<string, number> = {}
+  if (size?.min_loan && size.min_loan > 0) sizeUpdate.min_loan_amount = size.min_loan
+  if (size?.max_loan && size.max_loan > 0) sizeUpdate.max_loan_amount = size.max_loan
+  if (size?.min_ebitda && size.min_ebitda > 0) sizeUpdate.min_ebitda = size.min_ebitda
+  if (Object.keys(sizeUpdate).length) await supabase.from('lenders').update(sizeUpdate).eq('id', lender.id)
   const text = note.trim()
-  if (!text || (lender.mandate_notes ?? '').includes(text)) return false
+  if (!text || (lender.mandate_notes ?? '').includes(text)) return Object.keys(sizeUpdate).length > 0
   const stamped = `[${today()} from email] ${text}`
   lender.mandate_notes = lender.mandate_notes ? `${lender.mandate_notes}\n${stamped}` : stamped
   await supabase.from('lenders').update({ mandate_notes: lender.mandate_notes }).eq('id', lender.id)
@@ -1313,9 +1322,9 @@ async function addLenderNote(supabase: SupabaseClient, lender: Lender, note: str
 // A lender's email that isn't about any deal (an intro, "here's what we do",
 // their tear sheet): their own materials go on their profile, where they're
 // read to fill in what the lender does, and what they said goes in their notes.
-async function learnFromLender(supabase: SupabaseClient, ctx: Context, lender: Lender, note: string | null, message: InboxMessage) {
+async function learnFromLender(supabase: SupabaseClient, ctx: Context, lender: Lender, note: string | null, message: InboxMessage, size?: SizeLimits) {
   const done: string[] = []
-  if (note && (await addLenderNote(supabase, lender, note))) done.push('added to lender mandate notes')
+  if ((note || size) && (await addLenderNote(supabase, lender, note ?? '', size))) done.push('added to lender mandate notes')
   if (message.hasAttachments) {
     const files = (await getMessageAttachments(ctx.accessToken, message.id).catch(() => [])).filter(
       (a) => KEEP_EXT.test(a.name) && a.size <= MAX_ATTACHMENT_BYTES && !(/\.(png|jpe?g)$/i.test(a.name) && a.size < 30 * 1024)
@@ -1565,7 +1574,7 @@ async function act({
       // Not about a deal (an intro, their tear sheet, what they lend on) —
       // still learn what the lender does: its files go on its profile and
       // what it said goes in its notes, so matching knows.
-      const learned = lender ? await learnFromLender(supabase, ctx, lender, reply?.mandate_notes ?? null, message) : []
+      const learned = lender ? await learnFromLender(supabase, ctx, lender, reply?.mandate_notes ?? null, message, reply?.size_limits) : []
       return {
         counter: 'lenderReplies',
         record: {
@@ -1644,7 +1653,7 @@ async function act({
       if (saved) actions.push(saved)
     }
 
-    if (reply?.mandate_notes && lender && (await addLenderNote(supabase, lender, reply.mandate_notes))) actions.push('added to lender mandate notes')
+    if ((reply?.mandate_notes || reply?.size_limits) && lender && (await addLenderNote(supabase, lender, reply?.mandate_notes ?? '', reply?.size_limits))) actions.push('added to lender mandate notes')
 
     return {
       counter: 'lenderReplies',

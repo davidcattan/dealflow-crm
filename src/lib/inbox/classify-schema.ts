@@ -70,6 +70,14 @@ export const EmailClassificationSchema = z.object({
         .string()
         .nullable()
         .describe('New facts the lender stated about what it does or does not finance (size, industries, collateral, geography, EBITDA/revenue minimums, structure it requires such as a cash sweep or lockbox, who at the lender covers which industry or size). When it passes, include WHY if the reason is about the kind of deal rather than this one borrower (e.g. "Cash-flow loans only for $10MM+ EBITDA", "Won\'t lend on NY Medicaid AR without a daily sweep"). Null if none.'),
+      size_limits: z
+        .object({
+          min_loan: z.number().nullable().describe('Smallest loan/deal size they do, in dollars (e.g. 25000000). Null if not stated.'),
+          max_loan: z.number().nullable().describe('Largest loan/deal size they do, in dollars. Null if not stated.'),
+          min_ebitda: z.number().nullable().describe('Minimum EBITDA they require, in dollars (e.g. 5000000). Null if not stated.'),
+        })
+        .nullable()
+        .describe('Only when the lender states its general size limits ("$25-100M deal size, $5-25M EBITDA"). Null otherwise.'),
       handoff_only: z
         .boolean()
         .describe('True when the sender is only passing the deal to someone at a DIFFERENT firm (e.g. "please meet Eddie from Valley Bank, he is interested"). The interest belongs to that other person, not to the sender. False otherwise.'),
