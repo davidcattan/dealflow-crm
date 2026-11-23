@@ -1,7 +1,7 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import { loadChat, type ChatMessage } from '@/lib/chat/actions'
 import { OPEN_ASK_AI_EVENT } from '@/components/mobile-nav'
 import { uploadDealDocuments } from '@/lib/upload-documents'
@@ -74,6 +74,71 @@ function EmailCard({ raw }: { raw: string }) {
   )
 }
 
+// The conversation a card belongs to (so "Do it" can mark it done there).
+const ChatIdContext = createContext<string | null>(null)
+
+// A change the AI proposed: nothing happens until someone clicks "Do it".
+function ChangeCard({ raw, done: doneAlready, working }: { raw: string; done: boolean; working: boolean }) {
+  const chatId = useContext(ChatIdContext)
+  const router = useRouter()
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'skipped'>(doneAlready ? 'done' : 'idle')
+  const [message, setMessage] = useState<string | null>(null)
+  let change: ({ id?: string; summary?: string; done?: string } & Record<string, unknown>) | null = null
+  try {
+    change = JSON.parse(raw.trim())
+  } catch {
+    change = null
+  }
+  if (!change) return working ? <p className="my-2 animate-pulse text-xs text-slate-400">Preparing a change…</p> : null
+  return (
+    <div className={`my-2 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${state === 'done' ? 'border-emerald-200 bg-emerald-50' : state === 'skipped' ? 'border-slate-200 bg-slate-50 text-slate-400' : 'border-amber-200 bg-amber-50'}`}>
+      <div className="min-w-0">
+        <p className={state === 'skipped' ? 'line-through' : 'font-medium text-slate-800'}>{change.summary}</p>
+        {state === 'done' && <p className="text-xs text-emerald-700">✓ {message ?? change.done ?? 'Done'}</p>}
+        {message && state === 'idle' && <p className="text-xs text-red-600">{message}</p>}
+      </div>
+      {(state === 'idle' || state === 'busy') && (
+        <div className="flex shrink-0 gap-1.5">
+          <button
+            type="button"
+            disabled={state === 'busy' || working}
+            onClick={async () => {
+              setState('busy')
+              setMessage(null)
+              try {
+                const res = await fetch('/api/chat/change', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ chatId, change }),
+                })
+                const json = (await res.json().catch(() => ({}))) as { done?: string; error?: string }
+                if (!res.ok) throw new Error(json.error || 'Could not make that change')
+                setMessage(json.done ?? 'Done')
+                setState('done')
+                router.refresh()
+              } catch (err) {
+                setMessage(err instanceof Error ? err.message : 'Could not make that change')
+                setState('idle')
+              }
+            }}
+            className="rounded bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+          >
+            {state === 'busy' ? 'Doing…' : 'Do it'}
+          </button>
+          <button
+            type="button"
+            disabled={state === 'busy'}
+            onClick={() => setState('skipped')}
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Skip
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function renderText(text: string, key: number) {
   const blocks = text.split(/\n\s*\n/)
   return blocks.map((block, bi) => {
@@ -129,17 +194,19 @@ function costLabel(usd: number) {
   return usd < 0.01 ? 'under 1¢' : usd < 1 ? `${Math.round(usd * 100)}¢` : `$${usd.toFixed(2)}`
 }
 
-function Formatted({ text }: { text: string }) {
+function Formatted({ text, working = false }: { text: string; working?: boolean }) {
   // Split out fenced blocks (```email … ``` or any ``` … ```), even if the
   // closing fence hasn't streamed in yet.
   const parts: ReactNode[] = []
-  const re = /```(\w*)\n?([\s\S]*?)(```|$)/g
+  const re = /```([\w-]*)\n?([\s\S]*?)(```|$)/g
   let last = 0
   let m: RegExpExecArray | null
   let k = 0
   while ((m = re.exec(text))) {
     if (m.index > last) parts.push(...renderText(text.slice(last, m.index), k++))
-    if (m[1].toLowerCase() === 'email') parts.push(<EmailCard key={`e${k++}`} raw={m[2]} />)
+    const lang = m[1].toLowerCase()
+    if (lang === 'email') parts.push(<EmailCard key={`e${k++}`} raw={m[2]} />)
+    else if (lang === 'change' || lang === 'change-done') parts.push(<ChangeCard key={`x${k++}`} raw={m[2]} done={lang === 'change-done'} working={working} />)
     else parts.push(<pre key={`c${k++}`} className="my-2 overflow-x-auto rounded bg-slate-100 p-2 text-xs">{m[2]}</pre>)
     last = re.lastIndex
     if (m[0].length === 0) break
@@ -166,7 +233,7 @@ function AssistantMessage({ raw, working }: { raw: string; working: boolean }) {
           )}
         </details>
       )}
-      {text ? <Formatted text={text} /> : working && !statuses.length ? <p className="animate-pulse text-slate-400">Thinking…</p> : null}
+      {text ? <Formatted text={text} working={working} /> : working && !statuses.length ? <p className="animate-pulse text-slate-400">Thinking…</p> : null}
       {text && !working && (
         <div className="mt-1 flex items-center gap-2">
           <CopyButton text={text} label="Copy answer" />
@@ -475,7 +542,8 @@ export function AskAiPanel() {
                 </div>
               </div>
             ) : (
-              messages.map((m) =>
+              <ChatIdContext.Provider value={chatId}>
+              {messages.map((m) =>
                 m.role === 'user' ? (
                   <div key={m.id} className="ml-8 rounded-lg bg-slate-900 px-3 py-2 text-white">
                     <p className="whitespace-pre-wrap">{m.content}</p>
@@ -484,7 +552,8 @@ export function AskAiPanel() {
                 ) : (
                   <AssistantMessage key={m.id} raw={m.content} working={busy && m === messages[messages.length - 1]} />
                 )
-              )
+              )}
+              </ChatIdContext.Provider>
             )}
           </div>
 

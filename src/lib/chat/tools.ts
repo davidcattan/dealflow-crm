@@ -5,9 +5,13 @@ import { z } from 'zod'
 import type { DocumentRecord } from '@/lib/types'
 import { buildDealContext } from './context'
 import { getDocText, renderPages } from './doc-text'
+import { CHANGE_KINDS } from './changes'
+import { headAndTail, ownText } from '@/lib/outlook/own-text'
 
 // Ask AI's tools: read the deal's documents itself (search, then open just
-// the pages it needs), and look things up anywhere in the CRM. Read-only.
+// the pages it needs), look things up anywhere in the CRM (including the
+// email threads with a lender), and PROPOSE changes — which only happen when
+// a person clicks "Do it" on the card (see changes.ts).
 // Built to be cheap: text first, page images only for scans and forms, and
 // hard caps on how much one question can read.
 
@@ -102,7 +106,67 @@ export const CHAT_TOOLS: Anthropic.Beta.BetaToolUnion[] = [
       additionalProperties: false,
     },
   },
-  { type: 'web_search_20260209', name: 'web_search', max_uses: 2 },
+  {
+    name: 'get_lender_emails',
+    description:
+      "The actual email conversation between JED and one lender — both sides, oldest first, with which deal each email is filed on. Use it to know what the lender really said (their size limits, industries, a pass, a question still open) before recommending them or judging where they stand. Optionally only the emails filed on one deal.",
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        lender_id: { type: 'string' },
+        deal_id: { type: ['string', 'null'], description: 'Only emails filed on this deal; null for all of them.' },
+      },
+      required: ['lender_id', 'deal_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'propose_change',
+    description: `Propose ONE change to the CRM. It is NOT done until the user clicks "Do it" on the card shown in the chat, so propose freely when they tell you something worth recording. Fill every field; use null for the ones this kind doesn't use. Kinds:
+- set_lender_status: deal_id, lender_id, status (sent|interested|needs_more_info|term_sheet|declined|funded), note = why ("passed on the call, needs a sweep").
+- log_lender_touch: a LinkedIn message/request, call, text or meeting with someone at a lender. lender_id, contact_name, channel, linkedin_status when it's LinkedIn (request_sent|connected|messaged|replied), note = what happened, deal_id if it was about a deal.
+- add_lender_contact: lender_id, contact_name, title, email, phone, linkedin_url, note.
+- save_lender_fact: something true about a lender in general — their size limits, industries, what they won't do, a correction ("too small for them: $25-100M, $5M+ EBITDA"). lender_id, note, and min_loan/max_loan/min_ebitda in dollars when stated.
+- add_lender_to_deal: the deal was sent to a lender outside email. deal_id, lender_id, status (usually sent), note.
+- add_deal_note: deal_id, note.
+- add_lender: a lender that isn't in the CRM yet. lender_name, lending_type, website, note (what they do, sizes).
+- merge_lenders: the same firm entered twice. lender_id = the one to keep, other_lender_id = the duplicate to fold into it.
+- save_team_rule: a standing instruction for how you should work from now on ("never suggest ABL lenders for cash-flow deals"). note = the rule.
+summary = the button label, short and specific ("Mark Valley Bank as Declined on Silver Lining").`,
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: [...CHANGE_KINDS] },
+        summary: { type: 'string' },
+        deal_id: { type: ['string', 'null'] },
+        lender_id: { type: ['string', 'null'] },
+        other_lender_id: { type: ['string', 'null'] },
+        status: { type: ['string', 'null'] },
+        contact_name: { type: ['string', 'null'] },
+        title: { type: ['string', 'null'] },
+        email: { type: ['string', 'null'] },
+        phone: { type: ['string', 'null'] },
+        linkedin_url: { type: ['string', 'null'] },
+        channel: { type: ['string', 'null'] },
+        linkedin_status: { type: ['string', 'null'] },
+        note: { type: ['string', 'null'] },
+        min_loan: { type: ['number', 'null'] },
+        max_loan: { type: ['number', 'null'] },
+        min_ebitda: { type: ['number', 'null'] },
+        lender_name: { type: ['string', 'null'] },
+        lending_type: { type: ['string', 'null'] },
+        website: { type: ['string', 'null'] },
+      },
+      required: [
+        'kind', 'summary', 'deal_id', 'lender_id', 'other_lender_id', 'status', 'contact_name', 'title', 'email', 'phone', 'linkedin_url',
+        'channel', 'linkedin_status', 'note', 'min_loan', 'max_loan', 'min_ebitda', 'lender_name', 'lending_type', 'website',
+      ],
+      additionalProperties: false,
+    },
+  },
+  { type: 'web_search_20260209', name: 'web_search', max_uses: 3 },
 ]
 
 const SearchInput = z.object({ query: z.string(), deal_id: z.string().nullable() })
@@ -110,6 +174,7 @@ const ReadInput = z.object({ document_id: z.string(), pages: z.string(), as_imag
 const FindDealsInput = z.object({ query: z.string(), include_closed: z.boolean() })
 const IdInput = (key: string) => z.object({ [key]: z.string().uuid() })
 const FindLendersInput = z.object({ query: z.string() })
+const LenderEmailsInput = z.object({ lender_id: z.string().uuid(), deal_id: z.string().uuid().nullable() })
 
 type Ctx = { supabase: SupabaseClient; dealId: string | null; budget: ToolBudget }
 type Result = { content: string | Anthropic.Beta.BetaToolResultBlockParam['content']; status: string; isError?: boolean }
@@ -246,11 +311,11 @@ async function findLenders(ctx: Ctx, query: string): Promise<Result> {
   const p = like(query)
   const { data } = await ctx.supabase
     .from('lenders')
-    .select('id, name, lending_type, min_loan_amount, max_loan_amount, geographies, asset_types, industries, contact_name, contact_email, status')
+    .select('id, name, lending_type, min_loan_amount, max_loan_amount, min_ebitda, geographies, asset_types, industries, contact_name, contact_email, status')
     .or(`name.ilike.${p},lending_type.ilike.${p},mandate_notes.ilike.${p},contact_name.ilike.${p}`)
     .limit(30)
   // Arrays (geography, assets, industries) are matched here.
-  const { data: all } = await ctx.supabase.from('lenders').select('id, name, lending_type, min_loan_amount, max_loan_amount, geographies, asset_types, industries, contact_name, contact_email, status').limit(1000)
+  const { data: all } = await ctx.supabase.from('lenders').select('id, name, lending_type, min_loan_amount, max_loan_amount, min_ebitda, geographies, asset_types, industries, contact_name, contact_email, status').limit(1000)
   const ql = query.toLowerCase()
   const extra = (all ?? []).filter((l) => [...(l.geographies ?? []), ...(l.asset_types ?? []), ...(l.industries ?? [])].some((x: string) => x.toLowerCase().includes(ql)))
   const rows = [...(data ?? []), ...extra.filter((e) => !(data ?? []).some((d) => d.id === e.id))].slice(0, 30)
@@ -258,7 +323,7 @@ async function findLenders(ctx: Ctx, query: string): Promise<Result> {
     ? rows
         .map(
           (l) =>
-            `[${l.id}] ${l.name}${l.status === 'inactive' ? ' (inactive)' : ''} — ${l.lending_type ?? '—'} | ${[money(l.min_loan_amount), money(l.max_loan_amount)].filter(Boolean).join('–') || 'size n/a'} | ${(l.geographies ?? []).join(', ') || 'geo n/a'} | contact: ${[l.contact_name, l.contact_email].filter(Boolean).join(' ') || '—'}`
+            `[${l.id}] ${l.name}${l.status === 'inactive' ? ' (inactive)' : ''} — ${l.lending_type ?? '—'} | ${[money(l.min_loan_amount), money(l.max_loan_amount)].filter(Boolean).join('–') || 'size n/a'}${l.min_ebitda ? ` | min EBITDA ${money(l.min_ebitda)}` : ''} | ${(l.geographies ?? []).join(', ') || 'geo n/a'} | contact: ${[l.contact_name, l.contact_email].filter(Boolean).join(' ') || '—'}`
         )
         .join('\n')
     : `No lenders match "${query}".`
@@ -266,9 +331,10 @@ async function findLenders(ctx: Ctx, query: string): Promise<Result> {
 }
 
 async function getLender(ctx: Ctx, lenderId: string): Promise<Result> {
-  const [{ data: l }, { data: subs }] = await Promise.all([
+  const [{ data: l }, { data: subs }, { data: contacts }] = await Promise.all([
     ctx.supabase.from('lenders').select('*').eq('id', lenderId).maybeSingle(),
     ctx.supabase.from('deal_submissions').select('status, sent_on, last_activity_at, deals(company_name)').eq('lender_id', lenderId),
+    ctx.supabase.from('lender_contacts').select('name, title, email, phone, linkedin_status, last_touch, notes').eq('lender_id', lenderId),
   ])
   if (!l) return { content: 'No lender with that id.', status: 'Lender not found', isError: true }
   const name = (d: unknown) => ((Array.isArray(d) ? d[0] : d) as { company_name?: string } | null)?.company_name ?? '?'
@@ -277,12 +343,43 @@ async function getLender(ctx: Ctx, lenderId: string): Promise<Result> {
     `Size: ${[money(l.min_loan_amount), money(l.max_loan_amount)].filter(Boolean).join('–') || 'n/a'} | Min revenue ${money(l.min_revenue) ?? 'n/a'} | Min EBITDA ${money(l.min_ebitda) ?? 'n/a'}`,
     `Assets: ${(l.asset_types ?? []).join(', ') || '—'} | Industries: ${(l.industries ?? []).join(', ') || '—'} | Geographies: ${(l.geographies ?? []).join(', ') || '—'}`,
     `Contact: ${[l.contact_name, l.contact_email, l.contact_phone].filter(Boolean).join(', ') || '—'} | Website: ${l.website ?? '—'}`,
-    l.mandate_notes ? `Mandate notes: ${l.mandate_notes}` : null,
+    l.mandate_notes ? `Mandate notes (read to the end — the newest, most specific facts are last): ${l.mandate_notes}` : null,
+    `People:\n${
+      (contacts ?? [])
+        .map((c) => `- ${[c.name, c.title, c.email, c.phone].filter(Boolean).join(', ') || '(no name)'}${c.linkedin_status ? ` | LinkedIn: ${c.linkedin_status}` : ''}${c.last_touch ? ` | last touch ${c.last_touch}` : ''}${c.notes ? ` | ${String(c.notes).replace(/\n/g, ' / ')}` : ''}`)
+        .join('\n') || 'None saved.'
+    }`,
     `Deals sent to them:\n${(subs ?? []).map((s) => `- ${name(s.deals)}: ${s.status} (sent ${s.sent_on ?? '—'}, last activity ${String(s.last_activity_at ?? '').slice(0, 10)})`).join('\n') || 'None.'}`,
   ]
     .filter(Boolean)
     .join('\n')
   return { content: clip(text, ctx, 10_000), status: `Opened ${l.name}` }
+}
+
+async function getLenderEmails(ctx: Ctx, lenderId: string, dealId: string | null): Promise<Result> {
+  const { data: l } = await ctx.supabase.from('lenders').select('name').eq('id', lenderId).maybeSingle()
+  if (!l) return { content: 'No lender with that id.', status: 'Lender not found', isError: true }
+  let q = ctx.supabase
+    .from('inbox_messages')
+    .select('received_at, classification, from_email, to_emails, subject, body_text, summary, deal_id, deals(company_name)')
+    .eq('lender_id', lenderId)
+    .in('classification', ['sent', 'lender_reply', 'other'])
+    .order('received_at', { ascending: false })
+    .limit(30)
+  if (dealId) q = q.eq('deal_id', dealId)
+  const { data } = await q
+  const rows = (data ?? []).reverse()
+  const dealName = (d: unknown) => ((Array.isArray(d) ? d[0] : d) as { company_name?: string } | null)?.company_name
+  const text = rows.length
+    ? rows
+        .map((e) => {
+          const who = e.classification === 'sent' ? `JED → ${e.to_emails ?? l.name}` : `${e.from_email} → JED`
+          const filed = dealName(e.deals) ? `filed on ${dealName(e.deals)}` : 'not on a deal'
+          return `[${String(e.received_at).slice(0, 10)}] ${who} — "${e.subject ?? ''}" (${filed})\n${headAndTail(ownText(String(e.body_text ?? e.summary ?? '')), 1500)}`
+        })
+        .join('\n\n')
+    : `No emails with ${l.name}${dealId ? ' on that deal' : ''}.`
+  return { content: clip(text, ctx, 30_000), status: `Read emails with ${l.name}` }
 }
 
 // Runs one tool call. Never throws — errors come back as an error result.
@@ -307,6 +404,10 @@ export async function runChatTool(ctx: Ctx, block: Anthropic.Beta.BetaToolUseBlo
         return await findLenders(ctx, FindLendersInput.parse(block.input).query)
       case 'get_lender':
         return await getLender(ctx, IdInput('lender_id').parse(block.input).lender_id as string)
+      case 'get_lender_emails': {
+        const i = LenderEmailsInput.parse(block.input)
+        return await getLenderEmails(ctx, i.lender_id, i.deal_id)
+      }
       default:
         return { content: `Unknown tool ${block.name}`, status: 'Unknown tool', isError: true }
     }

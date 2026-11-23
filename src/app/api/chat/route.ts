@@ -4,6 +4,7 @@ import { addUsage, emptyUsage, logUsage, usageCost } from '@/lib/usage'
 import { friendlyAiError } from '@/lib/ai-errors'
 import { buildDealContext, buildPipelineContext, CHAT_RULES } from '@/lib/chat/context'
 import { CHAT_TOOLS, runChatTool, TOOL_LIMITS } from '@/lib/chat/tools'
+import { loadTeamRules, parseProposedChange } from '@/lib/chat/changes'
 import { buildDocumentContent } from '@/lib/underwriting/build-content'
 import type { DocumentRecord } from '@/lib/types'
 
@@ -61,6 +62,8 @@ export async function POST(request: Request) {
   try {
     const context = dealId ? await buildDealContext(supabase, dealId) : null
     const contextText = context ? context.text : await buildPipelineContext(supabase)
+    const teamRules = await loadTeamRules(supabase)
+    const rulesText = teamRules.length ? `\n\nStanding instructions from the team (always follow these):\n${teamRules.map((r) => `- ${r}`).join('\n')}` : ''
 
     const attachedDocs = context && body.documentIds?.length ? context.documents.filter((d) => body.documentIds!.includes(d.id)) : []
     await supabase.from('ai_chat_messages').insert({
@@ -123,7 +126,7 @@ export async function POST(request: Request) {
                 // the repeated part cost a tenth.
                 cache_control: { type: 'ephemeral' },
                 system: [
-                  { type: 'text', text: CHAT_RULES },
+                  { type: 'text', text: CHAT_RULES + rulesText },
                   { type: 'text', text: `Today is ${today}.\n\n${contextText}`, cache_control: { type: 'ephemeral' } },
                 ],
                 tools: CHAT_TOOLS,
@@ -158,7 +161,22 @@ export async function POST(request: Request) {
             }
 
             messages.push({ role: 'assistant', content: message.content })
-            const results = await Promise.all(toolUses.map((b) => runChatTool({ supabase, dealId, budget }, b)))
+            const results = await Promise.all(
+              toolUses.map(async (b) => {
+                // A proposed change becomes a card with a "Do it" button in
+                // the answer; nothing is written until someone clicks it.
+                if (b.name !== 'propose_change') return runChatTool({ supabase, dealId, budget }, b)
+                try {
+                  const change = parseProposedChange(b.input)
+                  const card = `\n\n\`\`\`change\n${JSON.stringify({ id: crypto.randomUUID(), ...change })}\n\`\`\`\n\n`
+                  answer += card
+                  send(card)
+                  return { content: 'Shown to the user as a card with a "Do it" button. It happens only if they click it — don\'t repeat it in your text.', status: `Suggested: ${change.summary}` }
+                } catch (err) {
+                  return { content: `Not a valid change: ${err instanceof Error ? err.message : 'check the fields'}. Fix it and propose again.`, status: 'Change needs fixing', isError: true }
+                }
+              })
+            )
             for (const r of results) send(status(r.status))
             messages.push({
               role: 'user',
