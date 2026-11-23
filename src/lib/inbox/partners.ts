@@ -18,7 +18,14 @@ export const REFERRAL_PARTNERS: { name: string; domains: string[]; emails?: stri
 // The team itself — an intro email often names Eli or David as the loan
 // officer, which must never become the borrower's contact.
 const TEAM_NAMES = ['eli cattan', 'david cattan']
-const TEAM_DOMAINS = ['jed-capitalgroup.com']
+// Cold-outreach domains (Instantly / manual outreach), separate from the main one.
+export const OUTREACH_DOMAINS = ['jedcapital-group.com', 'jedcapitalgrp.com']
+const TEAM_DOMAINS = ['jed-capitalgroup.com', ...OUTREACH_DOMAINS]
+
+// Sent from one of the outreach domains.
+export function isOutreachEmail(email: string | null | undefined) {
+  return OUTREACH_DOMAINS.includes(domain(email))
+}
 
 const domain = (email: string | null | undefined) => (email ?? '').toLowerCase().split('@')[1] ?? ''
 

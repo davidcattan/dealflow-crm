@@ -22,7 +22,7 @@ import { addresses } from '@/lib/deals/duplicates'
 import { loadLatestPitch, refreshDraftsFromLatestPitch } from '@/lib/matching/copy-sent'
 import { ownText } from '@/lib/outlook/own-text'
 import { mailboxLabel, mailboxOwner } from '@/lib/outlook/mailbox-label'
-import { isNotBorrowerEmail, isNotBorrowerPhone, isTeamName, referralOnlyPartnerFor, referralPartnerFor } from './partners'
+import { isNotBorrowerEmail, isNotBorrowerPhone, isOutreachEmail, isTeamName, referralOnlyPartnerFor, referralPartnerFor } from './partners'
 import { companyDomain, type Prospect } from '@/lib/prospects/types'
 import { readProspectReply } from '@/lib/prospects/reply'
 import type { Snapshot } from '@/lib/snapshot/schema'
@@ -529,6 +529,29 @@ async function processMessage(
   }
   if (isTeamOnly(message, ctx.accountEmail)) {
     return { counter: 'other', record: { classification: 'other', action_taken: 'Skipped (team-only email)' } }
+  }
+  // Our own cold outreach sent from an outreach domain with a teammate on CC
+  // (e.g. David to a sponsor, Eli copied): not a deal or lender email. Marks
+  // the prospects emailed; their replies are handled as prospect replies.
+  if (isOutreachEmail(message.from)) {
+    const external = message.to.filter((r) => !isNotBorrowerEmail(r.email) || referralPartnerFor(r.email))
+    let marked = 0
+    for (const r of external) {
+      const p = ctx.prospectByEmail.get(r.email.toLowerCase())
+      if (!p) continue
+      const update: Record<string, unknown> = { last_emailed_at: message.receivedDateTime, updated_at: new Date().toISOString() }
+      if (p.status === 'new') update.status = 'emailed'
+      await supabase.from('prospects').update(update).eq('id', p.id)
+      if (p.status === 'new') p.status = 'emailed'
+      marked++
+    }
+    return {
+      counter: 'other',
+      record: {
+        classification: 'other',
+        action_taken: marked ? `Our outreach email (copy) - ${marked} prospect${marked === 1 ? '' : 's'} marked emailed` : 'Our outreach email (copy) - not filed',
+      },
+    }
   }
 
   try {
