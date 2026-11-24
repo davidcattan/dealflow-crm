@@ -16,6 +16,26 @@ const FREE_MAIL = new Set(['gmail.com', 'googlemail.com', 'outlook.com', 'hotmai
 
 export const emailDomain = (email: string | null | undefined) => (email ?? '').toLowerCase().split('@')[1] ?? ''
 
+// E-signature, file-sharing and scheduling services send email on someone's
+// behalf ("Rafy Rosario via Docusign"). They are never a lender, a borrower
+// or a contact; the email belongs to the person named. (Nov 24, 2026: a
+// Docusign envelope from Crown's Rafy Rosario became a lender "Docusign".)
+const SERVICE_DOMAINS = [
+  'docusign.net', 'docusign.com', 'echosign.com', 'adobesign.com', 'adobe.com', 'hellosign.com', 'dropboxsign.com', 'dropbox.com',
+  'pandadoc.com', 'pandadoc.net', 'signnow.com', 'rightsignature.com', 'dotloop.com', 'authentisign.com', 'notarize.com', 'proof.com',
+  'box.com', 'sharepoint.com', 'sharepointonline.com', 'onedrive.com', 'wetransfer.com', 'sendgrid.net', 'calendly.com', 'zoom.us',
+  'zoomgov.com', 'teams.microsoft.com', 'papermark.com', 'papermark.io', 'docsend.com', 'egnyte.com', 'citrixdata.com', 'sharefile.com',
+]
+export function isServiceSender(email: string | null | undefined) {
+  const d = emailDomain(email)
+  return Boolean(d) && SERVICE_DOMAINS.some((s) => d === s || d.endsWith(`.${s}`))
+}
+// "Rafy Rosario via Docusign" → "Rafy Rosario"
+export function personBehindService(fromName: string | null | undefined) {
+  const m = (fromName ?? '').match(/^\s*(.+?)\s+via\s+\S/i)
+  return m ? m[1].replace(/["']/g, '').trim() : null
+}
+
 function siteDomain(url: string | null | undefined) {
   if (!url) return ''
   return url.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
@@ -88,7 +108,7 @@ const core = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, '')
 // the Conexwest deal).
 export function couldBeNewLender(email: string, nonLenderDomains: Set<string>, dealName?: string) {
   const domain = emailDomain(email)
-  if (!domain || nonLenderDomains.has(domain) || referralPartnerFor(email)) return false
+  if (!domain || nonLenderDomains.has(domain) || referralPartnerFor(email) || isServiceSender(email)) return false
   const label = core(domain.split('.')[0])
   const deal = core(dealName ?? '')
   if (label.length >= 4 && deal.length >= 4 && (deal.includes(label) || label.includes(deal.slice(0, 8)))) return false

@@ -31,7 +31,7 @@ import type { Snapshot } from '@/lib/snapshot/schema'
 import { SUBMISSION_LABELS, type SubmissionStatus } from '@/lib/deals/submission-status'
 import { lenderMaterialNames, saveLenderMaterials } from '@/lib/lenders/lender-materials'
 import { fileFindings, learnFromSignature } from './findings'
-import { AUTO_NAME_MARK, autoAddLender, baseSubject, buildNonLenderDomains, couldBeNewLender, emailDomain, isLenderPitch } from './new-lenders'
+import { AUTO_NAME_MARK, autoAddLender, baseSubject, buildNonLenderDomains, couldBeNewLender, emailDomain, isLenderPitch, isServiceSender, personBehindService } from './new-lenders'
 
 // Deal-worthy attachment types; everything else (calendar invites, vCards,
 // signature images that aren't marked inline) is ignored.
@@ -166,7 +166,7 @@ export function findLenderBySender(
   sender: string
 ): string | null {
   const domain = domainOf(sender)
-  if (!domain || GENERIC_DOMAINS.has(domain)) return null
+  if (!domain || GENERIC_DOMAINS.has(domain) || isServiceSender(sender)) return null
   const byDomain = new Set<string>()
   for (const l of lenders) {
     if (domainOf(l.contact_email) === domain || domainOf(l.website) === domain) byDomain.add(l.id)
@@ -237,7 +237,7 @@ function isBillingError(err: unknown) {
 }
 
 // Free-mail domains never mean "same firm".
-const GENERIC_DOMAINS = new Set(['gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'yahoo.com', 'icloud.com', 'me.com', 'aol.com', 'protonmail.com', 'proton.me'])
+const GENERIC_DOMAINS = new Set(['gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'yahoo.com', 'icloud.com', 'me.com', 'aol.com', 'protonmail.com', 'proton.me', 'msn.com', 'comcast.net', 'verizon.net', 'att.net', 'optonline.net', 'mac.com', 'ymail.com', 'rocketmail.com'])
 
 function firmDomain(sender: string, accountEmail: string): string | null {
   const domain = accountEmail.split('@')[1]
@@ -247,6 +247,15 @@ function firmDomain(sender: string, accountEmail: string): string | null {
 
 // A person's lender: by email domain, or by a firm name that matches exactly
 // one lender.
+// A lender contact with exactly this name (e.g. the person behind a
+// Docusign envelope). Only a single clear match counts.
+async function lenderByPersonName(supabase: SupabaseClient, name: string | null) {
+  if (!name || name.split(/\s+/).length < 2) return null
+  const { data } = await supabase.from('lender_contacts').select('lender_id').ilike('name', name.replace(/[\\%_]/g, '\\$&'))
+  const ids = [...new Set((data ?? []).map((r) => r.lender_id as string))]
+  return ids.length === 1 ? ids[0] : null
+}
+
 function matchLender(ctx: Context, email: string | null, firm: string | null) {
   const byEmail = email ? findLenderBySender(ctx.lenders, ctx.contacts, email) : null
   if (byEmail) return byEmail
@@ -499,6 +508,11 @@ function rememberLender(ctx: Context, lender: Lender, emails: string[]) {
 // several records (one per group), so a domain can match more than one.
 function lendersAtDomain(ctx: Context, domain: string) {
   const ids = new Set<string>()
+  // Gmail etc. and Docusign etc. aren't anyone's firm: a lender whose contact
+  // used a Gmail address must not claim every Gmail sender (Nov 24, 2026:
+  // borrowers Jay Rand, Yigal Laham and Lucas Najera were filed under Porter
+  // Capital that way).
+  if (!domain || GENERIC_DOMAINS.has(domain) || GENERIC_DOMAINS.has(domain.replace(/^.*\.(?=[^.]+\.[^.]+$)/, '')) || isServiceSender(`x@${domain}`)) return []
   for (const l of ctx.lenders) {
     if (emailDomain(l.contact_email) === domain || domainOf(l.website) === domain) ids.add(l.id)
   }
@@ -580,8 +594,11 @@ async function processMessage(
       return await handleProspectReply(supabase, ctx, message, prospect)
     }
     const fromReferrer = ctx.referrerDomains.has(emailDomain(message.from))
-    let senderLenderId = fromReferrer ? null : (ctx.lenderByEmail.get(message.from) ?? null)
-    if (!senderLenderId && !internalDomain && !fromReferrer && !referralOnlyPartnerFor(message.from)) {
+    const viaService = isServiceSender(message.from)
+    let senderLenderId = fromReferrer || viaService ? null : (ctx.lenderByEmail.get(message.from) ?? null)
+    // "Rafy Rosario via Docusign": the lender is whoever Rafy works for.
+    if (viaService) senderLenderId = await lenderByPersonName(supabase, personBehindService(message.fromName))
+    if (!senderLenderId && !viaService && !internalDomain && !fromReferrer && !referralOnlyPartnerFor(message.from)) {
       // New person at a known lender: recognize the lender and save them
       // as a contact so their next email matches instantly.
       senderLenderId = findLenderBySender(ctx.lenders, ctx.contacts, message.from)
@@ -625,7 +642,7 @@ async function processMessage(
     const firmInEmail =
       (classification.people ?? []).find((p) => p.email?.toLowerCase() === message.from && p.firm)?.firm?.trim() || null
     const existingAtDomain =
-      !senderLenderId && !internalDomain && !fromReferrer ? await knownLenderForNewPerson(supabase, ctx, emailDomain(message.from), replyDealId) : null
+      !senderLenderId && !internalDomain && !fromReferrer && !viaService ? await knownLenderForNewPerson(supabase, ctx, emailDomain(message.from), replyDealId) : null
     if (existingAtDomain?.known && existingAtDomain.lenderId) {
       // New person at a bank we already have (e.g. a second contact at a
       // group that's working this deal).
