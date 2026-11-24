@@ -133,3 +133,46 @@ export function LinkLender({ messageId, dealId }: { messageId: string; dealId: s
     </span>
   )
 }
+
+// "Needs filing" emails someone checked that don't belong on any deal: one
+// link per email, or one button for the whole list. They stop counting.
+export function NotADeal({ ids, all = false }: { ids: string[]; all?: boolean }) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  if (!ids.length) return null
+  return (
+    <span className="inline-flex items-center gap-2">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true)
+          setError(null)
+          try {
+            const res = await fetch('/api/inbox/messages/not-a-deal', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ids }),
+            })
+            const parsed = await readJsonResponse(res)
+            if (!parsed.ok) throw new Error(parsed.message)
+            router.refresh()
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed')
+          } finally {
+            setBusy(false)
+          }
+        }}
+        className={
+          all
+            ? 'rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50'
+            : 'text-xs text-slate-500 hover:text-slate-800 hover:underline disabled:opacity-50'
+        }
+      >
+        {busy ? 'Saving…' : all ? `None of these go on a deal (${ids.length})` : 'Not a deal'}
+      </button>
+      {error && <span className="text-xs text-red-600">{error}</span>}
+    </span>
+  )
+}

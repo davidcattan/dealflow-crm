@@ -4,7 +4,7 @@ import { mailboxLabel } from '@/lib/outlook/mailbox-label'
 import { createClient } from '@/lib/supabase/server'
 import { InboxControls } from '../settings/inbox-controls'
 import { RetryButton } from '../settings/retry-button'
-import { AssignToDeal, LinkLender } from '../settings/assign-to-deal'
+import { AssignToDeal, LinkLender, NotADeal } from '../settings/assign-to-deal'
 import { getInboxHealth } from '@/lib/inbox/health'
 import { TimeAgo } from '@/components/time-ago'
 import { SearchBar } from '@/components/search-bar'
@@ -196,6 +196,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
             <Link href={unfiled ? '/inbox' : '/inbox?unfiled=1'} className="text-xs text-blue-700 hover:underline">
               {unfiled ? 'Show all emails' : 'Show only emails that need filing'}
             </Link>
+            {unfiled && !q && recent && recent.length > 0 && <NotADeal ids={recent.map((m) => m.id as string)} all />}
           </div>
           <div className="w-full sm:w-80">
             <SearchBar placeholder="Search emails (company, sender, subject)…" />
@@ -241,7 +242,10 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                         )}
                       </>
                     ) : (
-                      <AssignToDeal messageId={m.id} deals={dealOptions} />
+                      <>
+                        <AssignToDeal messageId={m.id} deals={dealOptions} />
+                        {unfiled && <NotADeal ids={[m.id]} />}
+                      </>
                     )}
                     {emailActions(m)}
                   </div>
@@ -297,7 +301,14 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                             )}
                           </>
                         ) : (
-                          <AssignToDeal messageId={m.id} deals={dealOptions} />
+                          <>
+                            <AssignToDeal messageId={m.id} deals={dealOptions} />
+                            {unfiled && (
+                              <span className="mt-1 block">
+                                <NotADeal ids={[m.id]} />
+                              </span>
+                            )}
+                          </>
                         )}
                       </td>
                     </tr>
